@@ -1,41 +1,128 @@
 {{define "collectors.html"}}
 <h1>Collectors</h1>
-<p class="muted">A collector is a command hearsay runs on a host to read one value, such as the operating system version. This page lists every collector that will run.</p>
+<p class="muted">A collector reads one value from each host, such as its memory size or the version of an application. The operating system, kernel, hardware model and serial number are always collected. Switch on anything else below; it is collected from the next run.</p>
 
-<div class="card" style="margin-bottom:1.5rem">
-  <h2>Add your own</h2>
-  {{if .Mine}}
-  <p>Your collectors are read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file, then test a change before collecting:</p>
-  {{else}}
-  <p>You have no collectors of your own yet. Three steps:</p>
+<h2 id="on">Switched on</h2>
+{{if .On}}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Collector</th><th scope="col">Recorded as</th><th scope="col">Runs on</th><th scope="col">Test on a host</th><th scope="col"><span class="visually-hidden">Turn off</span></th></tr></thead>
+  <tbody>
+  {{range .On}}
+    <tr>
+      <td>{{.Title}}{{if .Reveals}} <span class="chip chip--unknown" title="Shows what is inside a file or variable">content</span>{{end}}</td>
+      <td class="mono">{{.C.Attr}}</td>
+      <td>{{if .C.Stacks}}{{join .C.Stacks ", "}}{{range .Missing}} <span class="chip chip--bad" title="This stack no longer exists">{{.}} is gone</span>{{end}}{{else}}All hosts{{end}}</td>
+      <td>{{template "try-form" dict "Hosts" $.Hosts "Name" "choice" "Value" .C.ID}}</td>
+      <td><form method="post" action="/collectors/remove"><input type="hidden" name="id" value="{{.C.ID}}">
+        <button class="btn btn--ghost btn--small" type="submit">Turn off</button></form></td>
+    </tr>
   {{end}}
-  <ol>
-    {{if not .Mine}}<li>Create a starter file with one working example:<pre><code>hearsay collectors -init</code></pre>
-      It is written to <span class="mono">{{if .WantPath}}{{.WantPath}}{{else}}collectors.json next to the database{{end}}</span>, where every command finds it.</li>{{end}}
-    <li>Test it against one host. Nothing is saved:<pre><code>hearsay collectors -try &lt;id&gt; -host &lt;host name&gt;</code></pre></li>
-    <li>Collect for real:<pre><code>hearsay refresh</code></pre>{{if not .Mine}}Restart <span class="mono">hearsay serve</span> afterwards so this page and its Collect button use the new file.{{end}}</li>
-  </ol>
-  <p><a class="btn" href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">Read the step-by-step guide</a></p>
-  <p class="muted">Collectors are edited in a file, not on this page. A collector is a command that runs on every host, and this web page has no login of its own, so it must not be able to change one.</p>
-</div>
+  </tbody>
+</table></div>
+{{else}}
+<p class="muted">Nothing switched on yet. Choose from the catalog below.</p>
+{{end}}
 
+<h2 style="margin-top:2rem">Catalog</h2>
+<p class="muted">Ready-made collectors. Each runs a read-only command written into hearsay; a host without the program is simply left blank. Limit one to some stacks when it only makes sense there, such as the Splunk forwarder version on your Splunk hosts.</p>
+{{range .Catalog}}
+<h3 class="catalog__group">{{.Category}}</h3>
+<div class="catalog">
+  {{range .Rows}}{{$row := .}}
+  <div class="card catalog__item" id="cat-{{slug .T.ID}}">
+    <div class="catalog__head">
+      <strong>{{.T.Title}}</strong>
+      {{if .T.Fixed}}{{if .On}}<span class="chip chip--collector">on</span>{{end}}{{end}}
+    </div>
+    {{if .T.Description}}<p class="muted">{{.T.Description}}</p>{{end}}
+    <p class="muted small">{{join .T.Systems ", "}}{{if .T.Fixed}} · recorded as <span class="mono">{{.T.Attr}}</span>{{end}}</p>
+    {{if not .Allowed}}
+      <p class="small">Shows what is inside files or variables, which may be secrets, so it is not switched on from this page. On the hearsay server, run:</p>
+      <pre><code>hearsay collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}</code></pre>
+      {{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.Param}}</span>{{end}}</p>{{end}}
+    {{else}}
+    <details class="disclosure">
+      <summary>{{if .T.Fixed}}{{if .On}}Change where it runs{{else}}Switch on{{end}}{{else}}Add one{{end}}</summary>
+      <form class="form" method="post" action="/collectors/choose">
+        <input type="hidden" name="template" value="{{.T.ID}}">
+        {{with .T.Param}}
+        <label>{{.Label}} <span class="hint">{{.Help}}</span>
+          <input type="text" name="param" required class="mono" placeholder="{{.Placeholder}}"></label>
+        <label>Record as <span class="hint">Optional. Blank picks a name from the value, such as {{defaultAttr $row.T .Placeholder}}.</span>
+          <input type="text" name="attr" class="mono" placeholder="{{defaultAttr $row.T .Placeholder}}"></label>
+        {{end}}
+        {{template "where-fields" dict "Stacks" $.Stacks "Selected" (onStacks .On) "ID" .T.ID}}
+        <div class="form__actions"><button class="btn {{if not .On}}btn--primary{{end}}" type="submit">{{if and .T.Fixed .On}}Save{{else}}Switch on{{end}}</button></div>
+      </form>
+    </details>
+    {{if not .T.Fixed}}{{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.Param}}</span>{{end}}</p>{{end}}{{end}}
+    {{end}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+<h2 style="margin-top:2rem">Your own</h2>
 {{if .Mine}}
-<h2>Yours</h2>
-{{template "spec-table" .Mine}}
+<p class="muted">Read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file on the server to change them; the <a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">collector guide</a> explains how.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Id</th><th scope="col">Records</th><th scope="col">Systems</th><th scope="col">Command</th><th scope="col">Test on a host</th></tr></thead>
+  <tbody>
+  {{range .Mine}}
+    <tr>
+      <td class="mono">{{.ID}}</td>
+      <td class="mono">{{.Attr}}{{if .Stacks}} <span class="muted">({{join .Stacks ", "}})</span>{{end}}</td>
+      <td>{{join .OS ", "}}</td>
+      <td class="mono">{{.Command}}</td>
+      <td>{{template "try-form" dict "Hosts" $.Hosts "Name" "spec" "Value" .ID}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}
+<p class="muted">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Start with <span class="mono">hearsay collectors -init</span> on the server, then follow the <a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">collector guide</a>. Your own collectors are written in a file rather than on this page, because this page has no login of its own and a collector is a command that runs on every host.</p>
 {{end}}
 
 {{if .External}}
-<h2>External programs</h2>
-<p class="muted">Run on this machine, once per host. {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{end}}</p>
+<h2 style="margin-top:1.5rem">External programs</h2>
+<p class="muted">Run on the hearsay server, once per host. {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{end}}</p>
 <div class="table-wrap"><table>
   <thead><tr><th scope="col">Name</th><th scope="col">Program</th></tr></thead>
   <tbody>{{range .External}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Path}}</td></tr>{{end}}</tbody>
 </table></div>
 {{end}}
 
-<h2 style="margin-top:1.5rem">Built in</h2>
-<p class="muted">Shipped with hearsay. Each one only runs on the systems listed.</p>
-{{template "spec-table" .Builtin}}
+<details class="disclosure" style="margin-top:2rem">
+  <summary><strong>Always collected</strong> ({{len .Builtin}})</summary>
+  {{template "spec-table" .Builtin}}
+</details>
+{{end}}
+
+{{define "where-fields"}}
+<fieldset class="where">
+  <legend>Run on</legend>
+  <label class="check"><input type="radio" name="where" value="all" {{if not .Selected}}checked{{end}}> All hosts</label>
+  {{if .Stacks}}
+  <label class="check"><input type="radio" name="where" value="stacks" {{if .Selected}}checked{{end}}> Only hosts in these stacks:</label>
+  <div class="where__stacks">
+    {{$sel := .Selected}}
+    {{range .Stacks}}<label class="check"><input type="checkbox" name="stack" value="{{.}}" {{if has $sel .}}checked{{end}}> {{.}}</label>{{end}}
+  </div>
+  {{else}}
+  <p class="muted small">Create stacks to limit a collector to some hosts.</p>
+  {{end}}
+</fieldset>
+{{end}}
+
+{{define "try-form"}}
+{{if .Hosts}}
+<form class="form--inline" method="post" action="/collectors/try">
+  <input type="hidden" name="{{.Name}}" value="{{.Value}}">
+  <label class="visually-hidden" for="try-{{.Name}}-{{.Value}}">Host</label>
+  <select id="try-{{.Name}}-{{.Value}}" name="host">{{range .Hosts}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
+  <button class="btn btn--small" type="submit">Test</button>
+</form>
+{{else}}<span class="muted small">No host has a connection yet</span>{{end}}
 {{end}}
 
 {{define "spec-table"}}

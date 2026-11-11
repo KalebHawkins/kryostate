@@ -29,8 +29,9 @@ Read this section before you install the tool.
   them in it.
 - The web interface can add and change hosts, connections, stacks and checks.
   It refuses form submissions from other web sites, but it has no login: anyone
-  who can reach it can change the inventory. It cannot change collectors, and
-  it can only create connections that use ssh-agent.
+  who can reach it can change the inventory. It can switch catalog collectors
+  on and off but never takes a command, and it can only create connections
+  that use ssh-agent.
 
 ## 2. Description
 
@@ -197,11 +198,11 @@ one command.
 | `disagreements` | Lists disagreements. `-decide <id> -as machine\|document\|accept` settles them |
 | `refresh` | Runs `collect`, then the checks, then `detect` |
 | `set` | Records a value that you state, with `-reason`, as a human claim |
-| `collectors` | Lists collectors, creates a starter file (`-init`), and tests one without saving (`-try`) |
+| `collectors` | Lists collectors and the catalog (`-catalog`), switches catalog collectors on and off (`-enable`, `-disable`), creates a file for your own (`-init`), and tests any collector without saving (`-try`) |
 | `import` | Reads a Markdown or CSV document and records its claims |
 | `host` | Adds a host. `-retire` marks one gone and keeps its history |
 | `target` | Adds or lists a connection profile |
-| `stack` | Defines a stack, and adds or removes members. Lists stacks with no `-name` |
+| `stack` | Defines a stack, and adds or removes members, singly or from a list with roles (`-file`, `-create`, `-user`). Lists stacks with no `-name` |
 | `secret` | Manages credential references |
 | `collect` | Connects to each enabled target and records what it reports |
 | `check` | Defines and runs liveness checks |
@@ -213,11 +214,33 @@ one command.
 | `serve` | Runs the web interface |
 | `export`, `restore` | Writes and reads the whole database as JSON |
 
-### 5.3 Custom collectors
+### 5.3 Choosing what to collect
 
-A collector specification is a command, a parse rule and an attribute name.
-The [collector guide](docs/collectors.md) explains how to write one, step by
-step.
+A catalog of ready-made collectors is compiled in: CPU cores, memory size,
+time zone, DNS servers, SELinux mode, Splunk forwarder and Enterprise
+versions and install location, Java, Python, OpenSSL, nginx, httpd and Docker
+versions, and templates for a file's existence, a file's contents, an
+environment variable, and an installed package's version. Switch them on in
+the web interface on the Collectors page, or:
+
+```sh
+./hearsay collectors -catalog
+./hearsay collectors -enable memory.total
+./hearsay collectors -enable splunk.uf.version -stacks splunk-prod
+./hearsay collectors -enable file.exists -param /etc/resolv.conf
+```
+
+A choice can be limited to some stacks. Choices are stored in the database
+and take effect at the next collection. The web interface offers the
+templates that reveal content (file contents, environment variables) only
+when `serve` is started with `-allow-content-collectors`. A template's value
+is checked against a narrow pattern and single-quoted in the command.
+
+### 5.4 Custom collectors
+
+When the catalog has nothing suitable, a collector specification is a
+command, a parse rule and an attribute name. The [collector
+guide](docs/collectors.md) explains how to write one, step by step.
 
 ```sh
 ./hearsay collectors -init                       # creates collectors.json next to the database

@@ -66,7 +66,7 @@ func TestGuideIsServed(t *testing.T) {
 	for _, want := range []string{
 		"Tutorial: add your first host",
 		"Tutorial: build a stack",
-		"Tutorial: add a collector",
+		"Tutorial: choose what to collect",
 		`href="/guide"`, // the nav link
 	} {
 		if !strings.Contains(body, want) {

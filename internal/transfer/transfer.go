@@ -44,7 +44,7 @@ var tables = []string{
 	"precedence", "freshness_budget", "fact_meta",
 	"address", "conn_profile", "check_def", "evidence",
 	"stack", "stack_member",
-	"run", "probe", "discrepancy", "audit",
+	"run", "probe", "discrepancy", "audit", "collector_choice",
 }
 
 // Export reads every table into a dump.

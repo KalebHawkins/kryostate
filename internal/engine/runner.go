@@ -291,7 +291,10 @@ func (e *Engine) collectOne(ctx context.Context, runID string, p store.ConnProfi
 		return 0, err
 	}
 
-	specs := e.Specs.For(osFamily)
+	specs, err := e.specsForHost(ctx, p.CIID, osFamily)
+	if err != nil {
+		return 0, err
+	}
 	// An optional spec reads something that legitimately may not be there,
 	// such as a hardware model inside a container. Its absence is not a
 	// failed collection, so it does not turn the run partial.

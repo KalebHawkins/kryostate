@@ -6,27 +6,39 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KalebHawkins/hearsay/internal/collect"
 	"github.com/KalebHawkins/hearsay/internal/model"
 )
 
 func funcs() template.FuncMap {
 	return template.FuncMap{
-		"chip":      chipClass,
-		"ago":       ago,
-		"stamp":     stamp,
-		"pct":       pct,
-		"add":       func(a, b int) int { return a + b },
-		"sub":       func(a, b int) int { return a - b },
-		"seg":       seg,
-		"label":     attrLabel,
-		"qesc":      template.URLQueryEscaper,
-		"join":      strings.Join,
-		"hasPrefix": strings.HasPrefix,
-		"short":     short,
-		"kindText":  kindText,
-		"dict":      dict,
-		"has":       contains,
-		"slug":      func(s string) string { return slug(s, map[string]int{}) },
+		"chip":        chipClass,
+		"ago":         ago,
+		"stamp":       stamp,
+		"pct":         pct,
+		"add":         func(a, b int) int { return a + b },
+		"sub":         func(a, b int) int { return a - b },
+		"seg":         seg,
+		"label":       attrLabel,
+		"qesc":        template.URLQueryEscaper,
+		"join":        strings.Join,
+		"hasPrefix":   strings.HasPrefix,
+		"short":       short,
+		"kindText":    kindText,
+		"dict":        dict,
+		"has":         contains,
+		"slug":        func(s string) string { return slug(s, map[string]int{}) },
+		"defaultAttr": collect.DefaultAttr,
+		// onStacks is where a fixed catalog entry already runs, to pre-select
+		// it when changing that. A template adds a new choice each time, so
+		// nothing is pre-selected.
+		"onStacks": func(on []collect.Choice) []string {
+			if len(on) == 1 && on[0].Param == "" {
+				return on[0].Stacks
+			}
+			return nil
+		},
+		"multiline": func(s string) bool { return len(s) > 48 || strings.Contains(s, "\n") },
 	}
 }
 

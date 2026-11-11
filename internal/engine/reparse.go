@@ -56,8 +56,12 @@ func (e *Engine) Reparse(ctx context.Context, f store.EvidenceFilter) (ReparseSu
 		return sum, nil
 	}
 
+	all, err := e.AllSpecs(ctx)
+	if err != nil {
+		return sum, err
+	}
 	specs := map[string]collect.Spec{}
-	for _, sp := range e.Specs.Specs {
+	for _, sp := range all.Specs {
 		specs[sp.ID] = sp
 	}
 	srcID, err := e.Store.SourceID(ctx, model.SourceCollector, "builtin")

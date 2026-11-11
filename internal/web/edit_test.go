@@ -31,7 +31,9 @@ func followFlash(t *testing.T, h http.Handler, rec *httptest.ResponseRecorder) (
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected a redirect, got %d: %s", rec.Code, rec.Body.String())
 	}
-	req := httptest.NewRequest(http.MethodGet, rec.Header().Get("Location"), nil)
+	// A browser keeps the fragment to itself.
+	loc, _, _ := strings.Cut(rec.Header().Get("Location"), "#")
+	req := httptest.NewRequest(http.MethodGet, loc, nil)
 	for _, c := range rec.Result().Cookies() {
 		req.AddCookie(c)
 	}
@@ -217,14 +219,27 @@ func TestRetireAndRestoreFromTheBrowser(t *testing.T) {
 	}
 }
 
-func TestCollectorsPageIsReadOnly(t *testing.T) {
+// TestCollectorsPageOffersOnlyTheCatalog: the page may switch catalog entries
+// on, but must never take a command.
+func TestCollectorsPageOffersOnlyTheCatalog(t *testing.T) {
 	_, h, _ := testServer(t)
 	body := get(t, h, "/collectors", nil).Body.String()
-	if !strings.Contains(body, "linux.os.version") || !strings.Contains(body, "hearsay collectors -init") {
-		t.Error("the collectors page does not list the built-in collectors and how to add one")
+	for _, want := range []string{"linux.os.version", "hearsay collectors -init", "CPU cores", "Splunk Universal Forwarder version", `id="cat-file-exists"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the collectors page is missing %q", want)
+		}
 	}
-	if strings.Contains(body, "<form") && strings.Contains(body, `action="/collectors`) {
-		t.Error("the collectors page has a form that changes collectors")
+	if strings.Contains(body, `name="command"`) || strings.Contains(body, `name="pattern"`) {
+		t.Error("the collectors page has a field for a command or a parse rule")
+	}
+	// Entries that reveal content are not offered as forms by default.
+	i := strings.Index(body, `id="cat-file-contents"`)
+	if i < 0 {
+		t.Fatal("file contents entry missing")
+	}
+	card := body[i : i+strings.Index(body[i:], `class="card catalog__item"`)+1]
+	if strings.Contains(card, `action="/collectors/choose"`) || !strings.Contains(card, "hearsay collectors -enable file.contents") {
+		t.Error("the file contents collector is offered from the page without permission")
 	}
 	guide := get(t, h, "/guide/collectors", nil)
 	if guide.Code != http.StatusOK || !strings.Contains(guide.Body.String(), "Step 5: test it") {

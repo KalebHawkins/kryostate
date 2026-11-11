@@ -1,0 +1,27 @@
+{{define "try.html"}}
+<p><a href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">← Collectors</a></p>
+<h1>Test: {{.Title}}</h1>
+<p class="muted">On <a href="/hosts/{{.HostID}}">{{.Host}}</a>. Nothing was saved.</p>
+
+{{if .Err}}
+<div class="flash flash--error">{{.Err}}</div>
+<p class="muted">hearsay could not run the command. Check the host's connection on <a href="/hosts/{{.HostID}}#connection">its page</a>.</p>
+{{else}}
+{{with .Result}}
+{{if not .OSMatches}}<div class="notice">The host says it runs <span class="mono">{{.OS}}</span>, and this collector has no command for it, so a real collection will skip this host. The command below was run anyway because you asked.</div>{{end}}
+<div class="card">
+  <p class="muted small">Command</p>
+  <pre><code>{{.Spec.Command}}</code></pre>
+  <p class="muted small">What it printed</p>
+  <pre><code>{{if .Reading.Output}}{{.Reading.Output}}{{else}}(nothing){{end}}</code></pre>
+</div>
+{{end}}
+{{if .Problem}}
+<div class="flash flash--error" style="margin-top:1rem">{{.Problem}}</div>
+<p class="muted">For a catalog collector this usually means the program is not installed on this host, or is somewhere other than its usual place. Hosts without it are simply left blank.</p>
+{{else}}
+<div class="flash flash--ok" style="margin-top:1rem">Recorded as <span class="mono">{{.Result.Spec.Attr}}</span>: <strong class="mono">{{.Value}}</strong></div>
+<p class="muted">This is what the next collection will record for {{.Host}}.</p>
+{{end}}
+{{end}}
+{{end}}

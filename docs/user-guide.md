@@ -232,33 +232,52 @@ Checks run with every collection.
 ## 5. Tutorial: build a stack
 
 A **stack** is a deployed system, such as "the payments service in
-production". A host can belong to more than one stack. hearsay does not
-discover stacks; you say which hosts belong.
+production". A host can belong to more than one stack, and plays a **role**
+in each, such as `app` or `database`. hearsay does not discover stacks; you
+say which hosts belong.
 
-### Step 1: add the other hosts
+### The fast way: paste the list
 
-Add `db01` and `lb01` the same way as `web01` in section 4, each with a
-connection.
-
-### Step 2: create the stack
+If you have the hosts in a spreadsheet or a wiki page, you can create the
+stack, its hosts, their roles and their connections in one step.
 
 **In the web interface:** open **Stacks**, then **New stack**. Enter a name
-such as `payments-prod`, and optionally the environment, the owner and a
-description. Select **Create stack**.
+such as `payments-prod`, and optionally the environment, owner and
+description. In **Hosts**, put one host per line: the name, then its role.
 
-**On the command line:**
+```text
+web01 app
+web02 app
+db01.example.com database
+lb01 loadbalancer lb01.example.com
+```
+
+A name with dots in it is taken as the fully qualified name, and may come
+first or last. Words may be separated by spaces, tabs or commas, so columns
+copied from a spreadsheet work. Hosts that hearsay does not know yet are
+added. Fill in **Connect new hosts as user** to give each new host a
+connection that logs in as that user with your ssh-agent. Select **Create
+stack**.
+
+To add more hosts later, use **Add several hosts** in the stack's card.
+
+**On the command line:** put the same lines in a file, then:
 
 ```sh
 hearsay stack -name payments-prod -environment production \
-    -owner payments-team -description "Payments API and its database"
+    -owner payments-team -file hosts.txt -create -user svc-ro
 ```
 
-### Step 3: add hosts to it
+`-create` adds hosts that are not recorded yet; without it, an unknown name is
+reported and skipped. A short list can go straight on the command line:
+`-add web01:app,db01:database`.
 
-**In the web interface:** there are two ways.
+### One host at a time
+
+**In the web interface:**
 
 - On the **Stacks** page, in the stack's card, type a host name in **Host**,
-  optionally a **Role** such as `database`, and select **Add host**.
+  optionally a **Role**, and select **Add host**.
 - On a host's page, use **Stacks**. Typing the name of a stack that does not
   exist yet creates it.
 
@@ -266,11 +285,9 @@ hearsay stack -name payments-prod -environment production \
 
 ```sh
 hearsay stack -name payments-prod -add web01 -role app
-hearsay stack -name payments-prod -add db01 -role database
-hearsay stack -name payments-prod -add lb01 -role loadbalancer
 ```
 
-### Step 4: look at it
+### Look at it
 
 The **Stacks** page shows each stack with its members and counts: collected,
 failed, never collected, and open disagreements. **Open in inventory** lists
@@ -323,29 +340,56 @@ Import the same file again after you edit it; unchanged claims are not
 duplicated, and stack details you set by hand are kept. A CSV file works the
 same way.
 
-## 6. Tutorial: add a collector
+## 6. Tutorial: choose what to collect
 
-A collector teaches hearsay to read a new value from your hosts, such as the
-version of nginx. It is a command, a rule for which part of the output to
-keep, and a name for the value. You do not need to write a program.
+hearsay always reads the operating system, its version, the kernel, the
+hardware model and the serial number. Anything else, you switch on. A
+**collector** reads one value from each host.
 
-The short version:
+### Step 1: pick from the catalog
+
+The catalog has ready-made collectors for CPU cores, memory size, time zone,
+DNS servers, SELinux mode, the Splunk forwarder and Splunk Enterprise
+versions, Splunk's install location, and the versions of Java, Python,
+OpenSSL, nginx, Apache httpd and Docker. It also has fill-in-the-blank ones:
+**file exists**, **file contents**, **an environment variable**
+such as `SPLUNK_HOME`, and **an installed package's version**.
+
+**In the web interface:** open **Collectors**. Find what you want, open
+**Switch on**, choose **All hosts** or only some stacks, and select **Switch
+on**. Then choose a host in the **Switched on** list and select **Test** to
+see what it reads. A test saves nothing.
+
+**On the command line:**
 
 ```sh
-hearsay collectors -init                                  # 1. create your file
-#                                                           2. edit it
-hearsay collectors -try linux.nginx.version -host web01   # 3. test, saves nothing
-hearsay refresh                                           # 4. collect
+hearsay collectors -catalog
+hearsay collectors -try memory.total -host web01
+hearsay collectors -enable memory.total
+hearsay collectors -enable splunk.uf.version -stacks splunk-prod
+hearsay collectors -enable file.exists -param /etc/resolv.conf
 ```
 
-The **[collector guide](collectors.md)** walks through each step with
-examples, explains every field, and lists what to do when something does not
-work. The **Collectors** page in the web interface lists every collector that
-will run.
+### Step 2: collect
 
-Collectors are kept in a file rather than edited in the web interface: a
-collector is a command run on every host, and the web interface has no login
-of its own.
+Select **Collect now** on the **Overview** page, or run `hearsay refresh`.
+The new values appear on each host's page. To see one for every host, open
+**Inventory**, then **Columns**, and tick it.
+
+### Step 3 (only if nothing fits): write your own
+
+Any read-only command can become a collector. You write the command, a rule
+for which part of its output to keep, and a name, in a file on the hearsay
+server. You do not need to write a program.
+
+```sh
+hearsay collectors -init                                  # create the file
+hearsay collectors -try example.nodename -host web01      # test, saves nothing
+```
+
+The **[collector guide](collectors.md)** explains the catalog in more detail
+and walks through writing your own, with examples and a table of what to do
+when something does not work.
 
 ## 7. Everyday use
 
@@ -414,7 +458,7 @@ hearsay restore -db new.db -in backup.json
 | Stacks | One card for each stack | Create, edit and delete stacks; add and remove members |
 | Charts | One chart for each attribute; each bar links to its hosts | |
 | Runs | The collection history | |
-| Collectors | Every collector that will run | Read only; see section 6 |
+| Collectors | Every collector that will run, and the catalog | Switch catalog collectors on and off, choose their stacks, test one on a host |
 | Guide | This document | |
 
 Every change is written to the audit log with the name of the person who
@@ -465,6 +509,10 @@ change"**: the connection uses a password or a helper program. Change it with
 **A form answers "403 Forbidden"**: the browser reached hearsay under a
 different name than the proxy forwards. Start it with
 `-trusted-origin https://<the name in the address bar>`.
+
+**A path is refused as "C:/Program Files/Git/..."**: Git Bash on Windows
+rewrites arguments that start with `/`. Run `export MSYS_NO_PATHCONV=1`
+first, or use PowerShell or the web page.
 
 **Nothing in the disagreements list after a collect**: run `hearsay detect`,
 or use `hearsay refresh`, which runs it for you.

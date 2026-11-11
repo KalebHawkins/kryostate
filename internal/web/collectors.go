@@ -26,6 +26,12 @@ type collectorsData struct {
 	External []collect.External
 	// WantPath is where a new collectors file goes.
 	WantPath string
+
+	Catalog        []catalogGroup
+	On             []choiceRow
+	Stacks         []string
+	Hosts          []hostOption // hosts that can be tested on: those with a connection
+	AllowRevealing bool
 }
 
 // handleCollectors lists what runs against hosts. It is read-only on purpose:
@@ -55,6 +61,21 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 		}
 		d.External = s.Engine.Externals
 	}
+	var err error
+	if d.Catalog, d.On, d.Stacks, err = s.catalogData(r.Context()); err != nil {
+		s.fail(w, err)
+		return
+	}
+	d.AllowRevealing = s.AllowRevealing
+	if targets, err := s.Store.CollectTargets(r.Context(), ""); err == nil {
+		seen := map[string]bool{}
+		for _, p := range targets {
+			if c, err := s.Store.CI(r.Context(), p.CIID); err == nil && !seen[c.ID] {
+				seen[c.ID] = true
+				d.Hosts = append(d.Hosts, hostOption{ID: c.ID, Label: c.Label})
+			}
+		}
+	}
 	s.render(w, r, "collectors.html", "Collectors", "collectors", d)
 }
 
@@ -70,3 +91,5 @@ func (s *Server) renderDocs() {
 	s.guide, s.guideTOC = renderMarkdown(docs.UserGuide)
 	s.collectorGuide, s.collectorGuideTOC = renderMarkdown(docs.Collectors)
 }
+
+type hostOption struct{ ID, Label string }

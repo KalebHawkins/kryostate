@@ -38,6 +38,10 @@ const (
 	ParseField ParseKind = "field"
 	// ParseJSONPath walks a dotted path through a JSON document.
 	ParseJSONPath ParseKind = "json_path"
+	// ParseAll keeps the whole output, trimmed, for a value that is a whole
+	// file or a list. It is cut at MaxValue so one large file cannot bloat
+	// every assertion row.
+	ParseAll ParseKind = "all"
 )
 
 // Parse describes how to extract a value. Fields not relevant to the chosen
@@ -90,9 +94,25 @@ func Extract(p Parse, out string) (string, error) {
 		return byField(p.Marker, p.Field, out)
 	case ParseJSONPath:
 		return byJSONPath(p.Path, out)
+	case ParseAll:
+		return byAll(out)
 	default:
 		return "", fmt.Errorf("unknown parse kind %q", p.Kind)
 	}
+}
+
+// MaxValue bounds a value read whole, in bytes.
+const MaxValue = 8 << 10
+
+func byAll(out string) (string, error) {
+	v := strings.TrimSpace(strings.ReplaceAll(out, "\r\n", "\n"))
+	if v == "" {
+		return "", ErrNoMatch
+	}
+	if len(v) > MaxValue {
+		v = v[:MaxValue]
+	}
+	return v, nil
 }
 
 func firstLine(out string) (string, error) {

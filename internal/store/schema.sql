@@ -315,3 +315,20 @@ SELECT assertion_id, ci_id, attr, scope, raw_value, value_type,
        observed_at, confirmed_at, decided
 FROM ranked_assertion
 WHERE rn = 1;
+
+-- A catalog collector a person switched on. The command itself is not stored:
+-- it is rendered from the catalog compiled into the binary, so a row here can
+-- only ever select from commands that shipped with the tool. param is the one
+-- value a template takes, checked again every time it is rendered. stacks is
+-- a comma-separated list of stack names the collector is limited to; empty
+-- means every host.
+CREATE TABLE IF NOT EXISTS collector_choice (
+    id         INTEGER PRIMARY KEY,
+    template   TEXT NOT NULL,
+    param      TEXT NOT NULL DEFAULT '',
+    attr       TEXT NOT NULL,
+    stacks     TEXT NOT NULL DEFAULT '',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE (template, param)
+);

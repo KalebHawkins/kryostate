@@ -268,6 +268,7 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	stale := fs.Duration("stale-after", 14*24*time.Hour, "age at which a collected value is called stale, zero to not check")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
 	trusted := fs.String("trusted-origin", "", "comma-separated origins, such as https://cmdb.example.com, allowed to submit forms when a proxy serves this under another name")
+	allowContent := fs.Bool("allow-content-collectors", false, "let the web interface switch on catalog collectors that read the contents of files and variables")
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -286,6 +287,7 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	}
 	srv.StaleAfter = *stale
 	srv.TrustedOrigins = splitIDs(*trusted)
+	srv.AllowRevealing = *allowContent
 	files := engineFiles{Rules: *rules, Collectors: *collectors, Externals: *externals}.resolved()
 	srv.Config = web.ConfigFiles{Dir: dataDir, Collectors: files.Collectors,
 		Rules: files.Rules, Externals: files.Externals}
@@ -890,9 +892,12 @@ func cmdStack(ctx context.Context, args []string) error {
 	desc := fs.String("description", "", "what this stack is")
 	owner := fs.String("owner", "", "who is responsible for it")
 	env := fs.String("environment", "", "environment label")
-	add := fs.String("add", "", "comma-separated hosts (names or ids) to add as members")
+	add := fs.String("add", "", "comma-separated hosts to add, each as name or name:role")
+	file := fs.String("file", "", "file listing hosts to add, one per line: name, then role, optionally an fqdn")
+	create := fs.Bool("create", false, "with -add or -file: record hosts that are not known yet")
+	user := fs.String("user", "", "with -add or -file: give hosts with no connection one that logs in as this user through ssh-agent")
 	remove := fs.String("remove", "", "comma-separated hosts (names or ids) to take out")
-	role := fs.String("role", "", "role the added members play in this stack")
+	role := fs.String("role", "", "role for added members that do not name their own")
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -932,18 +937,43 @@ func cmdStack(ctx context.Context, args []string) error {
 		return err
 	}
 
-	addIDs, err := st.LookupCIs(ctx, splitIDs(*add))
-	if err != nil {
-		return err
+	// Hosts to add come from -add, as name or name:role, and from -file, one
+	// per line in the same forms the web page accepts.
+	var lines []ingest.HostLine
+	var problems []string
+	for _, item := range splitIDs(*add) {
+		ls, ps := ingest.ParseHostList(item)
+		lines, problems = append(lines, ls...), append(problems, ps...)
 	}
+	if *file != "" {
+		b, err := os.ReadFile(*file)
+		if err != nil {
+			return err
+		}
+		ls, ps := ingest.ParseHostList(string(b))
+		lines, problems = append(lines, ls...), append(problems, ps...)
+	}
+	for i := range lines {
+		if lines[i].Role == "" {
+			lines[i].Role = *role
+		}
+	}
+	if len(lines) > 0 {
+		res, err := ingest.AddHostsToStack(ctx, st, *name, lines,
+			ingest.BulkOptions{Create: *create, User: *user, By: actor()})
+		if err != nil {
+			return err
+		}
+		res.Problems = append(problems, res.Problems...)
+		fmt.Println(res.Summary(*name))
+		if len(res.Problems) > 0 && !*create {
+			fmt.Println("To add hosts that are not recorded yet, repeat with -create.")
+		}
+	}
+
 	removeIDs, err := st.LookupCIs(ctx, splitIDs(*remove))
 	if err != nil {
 		return err
-	}
-	for _, ci := range addIDs {
-		if err := st.AddToStack(ctx, id, ci, *role); err != nil {
-			return err
-		}
 	}
 	for i, ci := range removeIDs {
 		ok, err := st.RemoveFromStack(ctx, id, ci)

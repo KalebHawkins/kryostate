@@ -307,7 +307,16 @@ func (s *Server) handleCreateStack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "create stack", st.Name, st.Description)
-	done(w, r, "/stacks#"+stackAnchor(st.Name), "Stack "+st.Name+" created. Add hosts to it below.")
+	msg := "Stack " + st.Name + " created. Add hosts to it below."
+	if strings.TrimSpace(r.FormValue("hosts")) != "" {
+		added, err := s.bulkAdd(r, st.Name)
+		if err != nil {
+			refuse(w, r, "/stacks#"+stackAnchor(st.Name), errors.New("the stack was created, but its hosts were not added: "+err.Error()))
+			return
+		}
+		msg = "Stack " + st.Name + " created. " + added
+	}
+	done(w, r, "/stacks#"+stackAnchor(st.Name), msg)
 }
 
 func (s *Server) handleEditStack(w http.ResponseWriter, r *http.Request) {

@@ -20,9 +20,9 @@
   {{range .Facts}}
     <tr>
       <th scope="row">{{label .Attr}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</th>
-      <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{short .Raw 48}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
+      <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{template "long-value" .Raw}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
         {{if .Contested}}<span class="chip chip--contested">disagrees</span>{{end}}</td>
-      <td class="mono muted">{{short .Raw 48}}</td>
+      <td class="mono muted">{{template "long-value" .Raw}}</td>
       <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>
       <td class="mono">{{ago .ObservedAt}}</td>
     </tr>
@@ -31,7 +31,7 @@
       <tr>
         <th scope="row"></th>
         <td class="mono muted">also claimed: {{if .Norm}}{{.Norm}}{{else}}{{.Raw}}{{end}}</td>
-        <td class="mono muted">{{short .Raw 48}}</td>
+        <td class="mono muted">{{template "long-value" .Raw}}</td>
         <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>
         <td class="mono muted">{{ago .ObservedAt}}</td>
       </tr>
@@ -207,3 +207,5 @@
 </div>
 <p class="muted" style="margin-top:1rem"><a href="/discrepancies?ci={{.CI.ID}}&amp;disposition=all" hx-get="/discrepancies?ci={{.CI.ID}}&amp;disposition=all" hx-target="#main" hx-push-url="true">Every disagreement about this host, settled ones included</a></p>
 {{end}}
+
+{{define "long-value"}}{{if multiline .}}<details class="fact-full"><summary>{{short . 40}}</summary><pre>{{.}}</pre></details>{{else}}{{.}}{{end}}{{end}}

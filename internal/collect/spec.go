@@ -33,6 +33,9 @@ type Spec struct {
 	Type     model.ValueType `json:"type,omitempty"`
 	Scope    string          `json:"scope,omitempty"`
 	Optional bool            `json:"optional,omitempty"`
+	// Stacks limits the spec to members of these stacks. Empty means every
+	// host whose system is listed in OS.
+	Stacks []string `json:"stacks,omitempty"`
 }
 
 type specFile struct {

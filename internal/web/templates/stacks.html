@@ -1,3 +1,10 @@
+{{define "host-list-fields"}}
+<label>Hosts <span class="hint">One per line: the name, then its role. A fully qualified name may go first or after the role. Hosts not recorded yet are added.</span>
+  <textarea name="hosts" rows="5" class="mono" placeholder="web01 app&#10;web02 app&#10;db01.example.com database"></textarea></label>
+<label>Connect new hosts as user <span class="hint">Optional. Hosts without a connection get one that logs in as this user with your ssh-agent.</span>
+  <input type="text" name="user" class="mono" placeholder="svc-readonly"></label>
+{{end}}
+
 {{define "stacks.html"}}
 <h1>Stacks</h1>
 <p class="muted">A stack is a deployed system, such as "payments in production". A host can belong to several stacks.</p>
@@ -11,6 +18,7 @@
       <label>Owner <input type="text" name="owner" placeholder="payments-team"></label>
     </div>
     <label>Description <input type="text" name="description" placeholder="Payments API and its database"></label>
+    {{template "host-list-fields" .}}
     <div class="form__actions"><button class="btn btn--primary" type="submit">Create stack</button></div>
   </form>
 </details>
@@ -45,6 +53,15 @@
     <label>Role <input type="text" name="role" placeholder="app, database…"></label>
     <button class="btn" type="submit">Add host</button>
   </form>
+
+  <details class="disclosure">
+    <summary>Add several hosts</summary>
+    <form class="form" method="post" action="/stacks/hosts">
+      <input type="hidden" name="stack" value="{{$name}}">
+      {{template "host-list-fields" $}}
+      <div class="form__actions"><button class="btn" type="submit">Add hosts</button></div>
+    </form>
+  </details>
 
   <details class="disclosure">
     <summary>Edit details</summary>

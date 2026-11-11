@@ -50,6 +50,10 @@ type Server struct {
 	// Config says where custom collector files are looked for, for the
 	// collectors page.
 	Config ConfigFiles
+	// AllowRevealing lets the collectors page switch on catalog entries that
+	// read the contents of files or variables. Off by default: those values
+	// may be secrets, and the page has no login of its own.
+	AllowRevealing bool
 
 	tmpl *template.Template
 	// guide is the rendered user guide. It is fixed at build time, so it is
@@ -108,6 +112,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /stacks/members", s.handleAddMember)
 	mux.HandleFunc("POST /stacks/members/remove", s.handleRemoveMember)
 	mux.HandleFunc("GET /collectors", s.handleCollectors)
+	mux.HandleFunc("POST /collectors/choose", s.handleChoose)
+	mux.HandleFunc("POST /collectors/remove", s.handleUnchoose)
+	mux.HandleFunc("POST /collectors/try", s.handleTry)
+	mux.HandleFunc("POST /stacks/hosts", s.handleBulkHosts)
 	mux.HandleFunc("GET /runs", s.handleRuns)
 	mux.HandleFunc("GET /guide", s.handleGuide)
 	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)
