@@ -1,0 +1,61 @@
+{{define "hosts.html"}}
+<h1>Inventory <span class="muted">({{len .Rows}} hosts)</span></h1>
+<div class="filterbar">
+  <form hx-get="/hosts" hx-target="#main" hx-push-url="true">
+    <label for="q" class="visually-hidden">Search names</label>
+    <input id="q" type="search" name="q" value="{{.Filter.Search}}" placeholder="name contains…"
+           hx-get="/hosts" hx-target="#main" hx-push-url="true" hx-trigger="keyup changed delay:300ms, search">
+    <label for="stack" class="visually-hidden">Stack</label>
+    <input id="stack" type="text" name="stack" value="{{.Filter.Stack}}" placeholder="stack">
+    {{if .Filter.Attr}}<input type="hidden" name="attr" value="{{.Filter.Attr}}">{{end}}
+    {{if .Filter.Value}}<input type="hidden" name="value" value="{{.Filter.Value}}">{{end}}
+    {{if .Filter.Unknown}}<input type="hidden" name="unknown" value="{{.Filter.Unknown}}">{{end}}
+    {{if .Filter.Because}}<input type="hidden" name="because" value="{{.Filter.Because}}">{{end}}
+    {{if .Filter.Unparsed}}<input type="hidden" name="unparsed" value="{{.Filter.Unparsed}}">{{end}}
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn btn--ghost" href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Clear</a>
+  </form>
+  {{if .Filter.Attr}}<span class="chip chip--document">{{label .Filter.Attr}} = {{.Filter.Value}}</span>{{end}}
+  {{if .Filter.Unknown}}<span class="chip chip--unknown">no {{label .Filter.Unknown}}{{if .Filter.Because}} · {{label .Filter.Because}}{{end}}</span>{{end}}
+  {{if .Filter.Unparsed}}<span class="chip chip--unknown">{{label .Filter.Unparsed}} not understood</span>{{end}}
+</div>
+
+<div class="table-wrap">
+<table>
+  <caption class="visually-hidden">Hosts and their currently winning attribute values</caption>
+  <thead>
+    <tr>
+      <th scope="col">Host</th>
+      {{range .Columns}}<th scope="col">{{label .}}</th>{{end}}
+      <th scope="col">Stacks</th>
+      <th scope="col">Last collected</th>
+      <th scope="col">Open</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{range .Rows}}
+    <tr>
+      <td class="host"><a href="/hosts/{{.CI.ID}}" hx-get="/hosts/{{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.CI.Label}}</a></td>
+      {{$row := .}}
+      {{range $.Columns}}
+        <td class="mono">
+          {{$v := index $row.Values .}}
+          {{if $v}}{{$v}}{{else}}<span class="chip chip--unknown">unknown</span>{{end}}
+          {{if index $row.Contested .}}<span class="chip chip--contested">disagrees</span>{{end}}
+        </td>
+      {{end}}
+      <td>{{join .Stacks ", "}}</td>
+      <td class="mono">
+        {{if .HasCollected}}
+          {{ago .LastCollect}}{{if not .CollectOK}} <span class="chip chip--stale">failed</span>{{end}}
+        {{else}}<span class="chip chip--unknown">never</span>{{end}}
+      </td>
+      <td class="num">{{if .OpenDiscreps}}<a href="/discrepancies">{{.OpenDiscreps}}</a>{{else}}0{{end}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="9" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">hearsay import</span>, or add one with <span class="mono">hearsay host -name &lt;name&gt;</span>.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

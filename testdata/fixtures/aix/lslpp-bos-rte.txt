@@ -1,0 +1,8 @@
+  Fileset                      Level  State  Type  Description (Uninstaller)
+  ----------------------------------------------------------------------------
+  bos.rte                    7.2.5.0    C     F    Base Operating System Runtime
+
+State codes:
+ A -- Applied.
+ B -- Broken.
+ C -- Committed.

@@ -1,0 +1,6 @@
+# Captured command output must keep the line endings the machine produced.
+# Git's autocrlf would rewrite AIX and Linux fixtures to CRLF on Windows
+# checkouts, which changes the bytes the parsers are tested against.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

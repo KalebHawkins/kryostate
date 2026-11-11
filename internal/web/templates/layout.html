@@ -1,0 +1,29 @@
+{{define "layout.html"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} — hearsay</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/sse.js" defer></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body hx-indicator="#spinner">
+<a class="skip-link" href="#main">Skip to content</a>
+<nav class="nav">
+  <a class="nav__brand" href="/">hearsay</a>
+  <a href="/" {{if eq .Nav "home"}}aria-current="page"{{end}} hx-get="/" hx-target="#main" hx-push-url="true">Overview</a>
+  <a href="/discrepancies" {{if eq .Nav "discrepancies"}}aria-current="page"{{end}} hx-get="/discrepancies" hx-target="#main" hx-push-url="true">Disagreements{{if .OpenDisc}} <span class="chip chip--contested">{{.OpenDisc}}</span>{{end}}</a>
+  <a href="/hosts" {{if eq .Nav "hosts"}}aria-current="page"{{end}} hx-get="/hosts" hx-target="#main" hx-push-url="true">Inventory</a>
+  <a href="/stacks" {{if eq .Nav "stacks"}}aria-current="page"{{end}} hx-get="/stacks" hx-target="#main" hx-push-url="true">Stacks</a>
+  <a href="/charts" {{if eq .Nav "charts"}}aria-current="page"{{end}} hx-get="/charts" hx-target="#main" hx-push-url="true">Charts</a>
+  <a href="/runs" {{if eq .Nav "runs"}}aria-current="page"{{end}} hx-get="/runs" hx-target="#main" hx-push-url="true">Runs</a>
+  <span class="nav__spacer"></span>
+  <span class="htmx-indicator muted" id="spinner">working…</span>
+</nav>
+<main class="content" id="main">
+{{.Content}}
+</main>
+</body>
+</html>{{end}}

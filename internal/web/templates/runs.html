@@ -1,0 +1,24 @@
+{{define "runs.html"}}
+<h1>Collection runs</h1>
+<p class="muted">A run is recorded before it starts and closed when it ends, so a pass that died halfway is not mistaken for a complete one.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Started</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col">Targets</th><th scope="col">Ok</th><th scope="col">Failed</th><th scope="col">Duration</th></tr></thead>
+  <tbody>
+  {{range .}}
+    <tr>
+      <td class="mono">{{stamp .Started}}</td>
+      <td>{{.Collector}}</td>
+      <td>{{if eq .Status "complete"}}<span class="chip chip--collector">{{.Status}}</span>{{else if eq .Status "running"}}<span class="chip chip--unknown">{{.Status}}</span>{{else}}<span class="chip chip--bad">{{.Status}}</span>{{end}}</td>
+      <td class="num">{{.Targets}}</td>
+      <td class="num">{{.Succeeded}}</td>
+      <td class="num">{{.Failed}}</td>
+      <td class="mono">{{if .Finished.IsZero}}—{{else}}{{.Finished.Sub .Started}}{{end}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="7" class="muted">Nothing has run yet. A run starts from the button on the home page, or with <span class="mono">hearsay collect</span>.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

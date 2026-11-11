@@ -1,0 +1,21 @@
+{{define "charts.html"}}
+<h1>Charts</h1>
+<p class="muted">Counts of the value that currently wins for each attribute. Hosts with no value are shown as their own bucket, split by why: never collected, collection failed, or collected and not understood. Click a bar to see the hosts behind it.</p>
+<div class="cards">
+{{range .Charts}}
+  <div class="card">
+    <h2>{{.Title}} <span class="muted">({{.Total}})</span></h2>
+    {{.SVG}}
+  </div>
+{{else}}
+  <div class="card"><p class="muted">Nothing has enough values to chart yet.</p></div>
+{{end}}
+</div>
+{{if .Skipped}}
+<h2>Not charted</h2>
+<p class="muted">These attributes have close to one distinct value per host, so a bar chart of them would be a list with extra steps. Open one anyway if you want it.</p>
+<ul>
+{{range .Skipped}}<li><a href="/charts?attr={{qesc .Attr}}" hx-get="/charts?attr={{qesc .Attr}}" hx-target="#main" hx-push-url="true">{{label .Attr}}</a> <span class="muted">{{.Distinct}} distinct over {{.CICount}} hosts</span></li>{{end}}
+</ul>
+{{end}}
+{{end}}

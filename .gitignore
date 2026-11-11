@@ -1,0 +1,30 @@
+# The binary.
+/hearsay
+/hearsay.exe
+
+# Inventory databases. These hold hostnames, addresses and credential
+# references for a real estate; none of that belongs in a public repository.
+*.db
+*.db-wal
+*.db-shm
+
+# Exports, for the same reason.
+*.hearsay.json
+
+# Key material should never be here, and a mistake should fail to commit
+# rather than be caught in review.
+*.pem
+*.key
+*.age
+id_rsa*
+id_ed25519*
+
+# Fuzzing corpus found by a local run.
+testdata/fuzz/
+
+# Editor and OS droppings.
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

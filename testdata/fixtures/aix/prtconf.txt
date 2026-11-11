@@ -1,0 +1,6 @@
+System Model: IBM,9009-22A
+Machine Serial Number: 21A1B2C
+Processor Type: PowerPC_POWER9
+Number Of Processors: 4
+Memory Size: 32768 MB
+Good Memory Size: 32768 MB

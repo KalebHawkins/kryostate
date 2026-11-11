@@ -1,0 +1,37 @@
+{{define "disc-row"}}
+<div class="disc" id="disc-{{.ID}}">
+  <div class="disc__head">
+    <a href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true" class="mono">{{.CILabel}}</a>
+    — {{kindText .Kind}}{{if .Attr}} on <span class="mono">{{.Attr}}</span>{{end}}
+    <span class="muted">· detected {{ago .DetectedAt}}</span>
+  </div>
+  {{if .Summary}}<div class="disc__why muted">{{.Summary}}</div>{{end}}
+  <div class="disc__claim">
+    {{if .Claimed}}{{.Claimed}}{{else}}<span class="chip chip--unknown">nothing claimed</span>{{end}}
+    <div><span class="chip chip--document">{{.ClaimedBy}}</span></div>
+  </div>
+  <div class="disc__vs">vs</div>
+  <div class="disc__observed">
+    {{if .Observed}}{{.Observed}}{{else}}<span class="chip chip--unknown">no answer</span>{{end}}
+    <div><span class="chip chip--collector">{{.ObservedBy}}</span></div>
+  </div>
+  <div class="disc__actions">
+    {{if eq .Disposition "open"}}
+      <form hx-post="/discrepancies/{{.ID}}/dispose" hx-target="#disc-{{.ID}}" hx-swap="outerHTML">
+        <input type="hidden" name="disposition" value="confirm_machine">
+        <button class="btn" type="submit" title="The machine is right; record its value as the one that stands.">Machine wins</button>
+      </form>
+      <form hx-post="/discrepancies/{{.ID}}/dispose" hx-target="#disc-{{.ID}}" hx-swap="outerHTML">
+        <input type="hidden" name="disposition" value="keep_document">
+        <button class="btn" type="submit" title="The collector misread it; keep the documented value.">Document wins</button>
+      </form>
+      <form hx-post="/discrepancies/{{.ID}}/dispose" hx-target="#disc-{{.ID}}" hx-swap="outerHTML">
+        <input type="hidden" name="disposition" value="accepted">
+        <button class="btn btn--ghost" type="submit" title="Known and tolerated.">Accept</button>
+      </form>
+    {{else}}
+      <span class="chip chip--human">{{.Disposition}}{{if .DisposedBy}} · {{.DisposedBy}}{{end}}</span>
+    {{end}}
+  </div>
+</div>
+{{end}}

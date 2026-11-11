@@ -1,0 +1,1 @@
+{{define "progress.html"}}<div>{{if eq .Outcome "ok"}}<span class="chip chip--collector">ok</span>{{else}}<span class="chip chip--bad">{{.Outcome}}</span>{{end}} <span class="mono">{{.Label}}</span> <span class="muted">{{.Done}}/{{.Total}}{{if .Facts}} · {{.Facts}} facts{{end}}{{if .Detail}} · {{short .Detail 80}}{{end}}</span></div>{{end}}

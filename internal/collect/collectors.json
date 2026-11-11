@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "specs": [
+    {
+      "id": "aix.os.family",
+      "attr": "os.family",
+      "os": ["aix"],
+      "command": "uname -s",
+      "parse": { "kind": "first_line" },
+      "type": "text"
+    },
+    {
+      "id": "aix.os.version",
+      "attr": "os.version",
+      "os": ["aix"],
+      "comment": "oslevel -s is the only AIX source that carries the technology level and service pack. oslevel alone rounds to the base release and loses the thing anyone actually asks about.",
+      "command": "oslevel -s",
+      "parse": { "kind": "first_line" },
+      "type": "version"
+    },
+    {
+      "id": "aix.os.bos",
+      "attr": "os.bos_level",
+      "os": ["aix"],
+      "command": "lslpp -L bos.rte",
+      "parse": { "kind": "field", "marker": "bos.rte", "field": 2 },
+      "type": "version"
+    },
+    {
+      "id": "aix.host.wpar",
+      "attr": "host.wpar",
+      "os": ["aix"],
+      "comment": "Non-zero means the commands above describe a workload partition, not the machine hosting it. Without this the same frame is counted several times.",
+      "command": "uname -W",
+      "parse": { "kind": "first_line" },
+      "type": "flag"
+    },
+    {
+      "id": "aix.hw.model",
+      "attr": "hw.model",
+      "os": ["aix"],
+      "command": "uname -M",
+      "parse": { "kind": "first_line" },
+      "type": "text"
+    },
+    {
+      "id": "aix.hw.serial",
+      "attr": "hw.serial",
+      "os": ["aix"],
+      "command": "prtconf",
+      "parse": { "kind": "colon_kv", "key": "Machine Serial Number" },
+      "type": "text"
+    },
+
+    {
+      "id": "linux.os.family",
+      "attr": "os.family",
+      "os": ["linux"],
+      "command": "uname -s",
+      "parse": { "kind": "first_line" },
+      "type": "text"
+    },
+    {
+      "id": "linux.os.version",
+      "attr": "os.version",
+      "os": ["linux"],
+      "command": "cat /etc/os-release",
+      "parse": { "kind": "kv", "key": "PRETTY_NAME" },
+      "type": "version"
+    },
+    {
+      "id": "linux.os.kernel",
+      "attr": "os.kernel",
+      "os": ["linux"],
+      "command": "uname -r",
+      "parse": { "kind": "first_line" },
+      "type": "version"
+    },
+    {
+      "id": "linux.host.machine_id",
+      "attr": "host.machine_id",
+      "os": ["linux"],
+      "comment": "Identity evidence, not a fact about the machine. A cloned image carries its source machine-id, so a collision is a prompt for review rather than a merge.",
+      "command": "cat /etc/machine-id",
+      "parse": { "kind": "first_line" },
+      "type": "text",
+      "optional": true
+    },
+    {
+      "id": "linux.hw.model",
+      "attr": "hw.model",
+      "os": ["linux"],
+      "command": "cat /sys/class/dmi/id/product_name",
+      "parse": { "kind": "first_line" },
+      "type": "text",
+      "optional": true
+    },
+
+    {
+      "id": "windows.os.version",
+      "attr": "os.version",
+      "os": ["windows"],
+      "comment": "One command carries several facts, so the output is read as a property list rather than paying for a round trip per value.",
+      "command": "Get-CimInstance Win32_OperatingSystem | Format-List Caption,Version,BuildNumber,OSArchitecture,CSName,InstallDate",
+      "parse": { "kind": "colon_kv", "key": "Caption" },
+      "type": "version"
+    },
+    {
+      "id": "windows.os.build",
+      "attr": "os.build",
+      "os": ["windows"],
+      "command": "Get-CimInstance Win32_OperatingSystem | Format-List Caption,Version,BuildNumber,OSArchitecture,CSName,InstallDate",
+      "parse": { "kind": "colon_kv", "key": "Version" },
+      "type": "version"
+    },
+    {
+      "id": "windows.os.arch",
+      "attr": "os.arch",
+      "os": ["windows"],
+      "command": "Get-CimInstance Win32_OperatingSystem | Format-List Caption,Version,BuildNumber,OSArchitecture,CSName,InstallDate",
+      "parse": { "kind": "colon_kv", "key": "OSArchitecture" },
+      "type": "text"
+    },
+    {
+      "id": "windows.hw.serial",
+      "attr": "hw.serial",
+      "os": ["windows"],
+      "command": "Get-CimInstance Win32_BIOS | Select-Object -ExpandProperty SerialNumber",
+      "parse": { "kind": "first_line" },
+      "type": "text",
+      "optional": true
+    },
+    {
+      "id": "windows.host.machine_id",
+      "attr": "host.machine_id",
+      "os": ["windows"],
+      "command": "Get-CimInstance Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID",
+      "parse": { "kind": "first_line" },
+      "type": "text",
+      "optional": true
+    }
+  ]
+}

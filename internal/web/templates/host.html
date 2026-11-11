@@ -1,0 +1,99 @@
+{{define "host.html"}}
+<h1 class="mono">{{.CI.Label}}</h1>
+<p class="muted">Internal id <span class="mono">{{.CI.ID}}</span> · first recorded {{stamp .CI.CreatedAt}}{{if .CI.RetiredAt}} · retired {{stamp .CI.RetiredAt}}{{end}}</p>
+
+{{if .Discs}}
+<h2>Open against this host</h2>
+{{range .Discs}}{{template "disc-row" .}}{{end}}
+{{end}}
+
+<h2>Facts</h2>
+<p class="muted">Each value is the assertion that currently wins for that attribute. Where sources disagree, every claim is listed.</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">Attribute</th><th scope="col">Value</th><th scope="col">Raw</th><th scope="col">Source</th><th scope="col">Observed</th></tr></thead>
+  <tbody>
+  {{$conf := .Conflicts}}
+  {{range .Facts}}
+    <tr>
+      <th scope="row">{{label .Attr}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</th>
+      <td class="mono">{{if .Norm}}{{.Norm}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
+        {{if .Contested}}<span class="chip chip--contested">disagrees</span>{{end}}</td>
+      <td class="mono muted">{{short .Raw 48}}</td>
+      <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>
+      <td class="mono">{{ago .ObservedAt}}</td>
+    </tr>
+    {{with index $conf .Attr}}
+      {{range .}}
+      <tr>
+        <th scope="row"></th>
+        <td class="mono muted">also claimed: {{if .Norm}}{{.Norm}}{{else}}{{.Raw}}{{end}}</td>
+        <td class="mono muted">{{short .Raw 48}}</td>
+        <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>
+        <td class="mono muted">{{ago .ObservedAt}}</td>
+      </tr>
+      {{end}}
+    {{end}}
+  {{else}}
+    <tr><td colspan="5" class="muted">Nothing asserted about this host yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<div class="cards" style="margin-top:1.5rem">
+  <div class="card">
+    <h2>Reachability</h2>
+    <p class="muted">Separate questions, separately answered. A host that pings but refuses a login is not "up".</p>
+    {{if not .Reach}}<p class="muted">No probe has run against this host.</p>{{end}}
+    <ul>
+    {{range $kind, $p := .Reach}}
+      <li><span class="mono">{{$kind}}</span>:
+        {{if eq $p.Outcome "ok"}}<span class="chip chip--collector">{{$p.Outcome}}</span>
+        {{else}}<span class="chip chip--bad">{{$p.Outcome}}</span>{{end}}
+        <span class="muted">{{ago $p.At}}{{if $p.Detail}} · {{short $p.Detail 60}}{{end}}</span></li>
+    {{end}}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Identities</h2>
+    <p class="muted">Evidence that this record is the same machine as last time. The display name is not one.</p>
+    <ul>
+    {{range .Identities}}<li><span class="mono">{{.Scheme}}</span> <span class="mono">{{.Value}}</span> <span class="muted">seen {{ago .LastSeen}}</span></li>{{else}}<li class="muted">None recorded.</li>{{end}}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Addresses</h2>
+    <p class="muted">Observations from a resolver, not instructions. Where a name answers with several, a person chooses.</p>
+    {{if gt (len .Addresses) 1}}
+    <form method="post" action="/hosts/{{.CI.ID}}/address">
+      {{range .Addresses}}
+      <div><label><input type="radio" name="address" value="{{.Addr}}" {{if .Selected}}checked{{end}}>
+        <span class="mono">{{.Addr}}</span> <span class="muted">{{.Resolver}} · {{ago .ObservedAt}}{{if .SelectedBy}} · chosen by {{.SelectedBy}}{{end}}</span></label></div>
+      {{end}}
+      <button class="btn" type="submit">Use this address</button>
+    </form>
+    {{else}}
+    <ul>{{range .Addresses}}<li><span class="mono">{{.Addr}}</span> <span class="muted">{{.Resolver}} · {{ago .ObservedAt}}</span></li>{{else}}<li class="muted">Nothing resolved.</li>{{end}}</ul>
+    {{end}}
+  </div>
+
+  <div class="card">
+    <h2>Connection</h2>
+    <p class="muted">Credential references only. No secret is stored here.</p>
+    <ul>
+    {{range .Profiles}}
+      <li><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}:{{.Port}}
+        <span class="chip chip--human">{{.CredentialRef}}</span>
+        {{if .BastionRef}}<span class="muted">via bastion</span>{{end}}
+        {{if not .Enabled}}<span class="chip chip--unknown">disabled</span>{{end}}
+        {{if .HostKey}}<span class="muted">key pinned</span>{{else}}<span class="chip chip--stale">no pinned key</span>{{end}}</li>
+    {{else}}
+      <li class="muted">No connection profile. Nothing will ever be collected from this host.</li>
+    {{end}}
+    </ul>
+  </div>
+</div>
+{{end}}

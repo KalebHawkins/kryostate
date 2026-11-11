@@ -1,0 +1,29 @@
+{{define "home.html"}}
+<h1>What the documents and the machines disagree about</h1>
+<p class="muted">Coverage is counted from probes and collector runs, not from rows in a table.</p>
+
+<div class="stats">
+  <div class="stat"><span class="stat__value">{{.Coverage.Hosts}}</span><span class="stat__label">hosts</span></div>
+  <div class="stat"><span class="stat__value">{{.Coverage.WithProfile}}</span><span class="stat__label">have a way in</span></div>
+  <div class="stat"><span class="stat__value">{{.Coverage.FreshLast24h}}</span><span class="stat__label">collected 24h</span></div>
+  <div class="stat"><span class="stat__value">{{.Coverage.Stale}}</span><span class="stat__label">older than {{.StaleDays}}d</span></div>
+  <div class="stat"><span class="stat__value">{{.Coverage.NeverSeen}}</span><span class="stat__label">never collected</span></div>
+  <div class="stat"><span class="stat__value">{{.Coverage.FailingNow}}</span><span class="stat__label">failing now</span></div>
+</div>
+
+<div class="card">
+  <h2>Run a collection</h2>
+  <p class="muted">Opens a session to every enabled target, then compares what came back against what the documents say. Progress streams below; nothing in the interface blocks on it.</p>
+  <button class="btn btn--primary" hx-post="/collect" hx-target="#runstatus" hx-swap="innerHTML">Collect now</button>
+  <div id="runstatus"></div>
+  <div id="runlog" hx-ext="sse" sse-connect="/events" sse-swap="progress" hx-swap="afterbegin"></div>
+  {{with .LastRun}}<p class="muted">Last run {{ago .Started}}: {{.Succeeded}} ok, {{.Failed}} failed, status {{.Status}}.</p>{{end}}
+</div>
+
+<h2 style="margin-top:1.5rem">Open disagreements{{if .Total}} ({{.Total}}){{end}}</h2>
+{{if not .Recent}}
+  <p class="muted">Nothing open. That means either the estate agrees with the documents, or nothing has been collected yet — check the counts above before believing the first one.</p>
+{{end}}
+{{range .Recent}}{{template "disc-row" .}}{{end}}
+{{if gt .Total 25}}<p><a href="/discrepancies" hx-get="/discrepancies" hx-target="#main" hx-push-url="true">All {{.Total}} disagreements</a></p>{{end}}
+{{end}}

@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "aix-oslevel-s",
+      "attr": "os.version",
+      "comment": "oslevel -s prints VVRR-TL-SP-YYWW with no separators between version and release: 7200 is 7.2.",
+      "pattern": "^(?P<v>[0-9])(?P<r>[0-9])(?P<x>[0-9]{2})-(?P<tl>[0-9]{2})-(?P<sp>[0-9]{2})(-[0-9]{4})?$",
+      "family": "AIX",
+      "major": "${v}",
+      "minor": "${r}",
+      "patch": "TL${tl}-SP${sp}",
+      "value": "AIX ${v}.${r} TL${tl}-SP${sp}"
+    },
+    {
+      "id": "aix-oslevel-r",
+      "attr": "os.version",
+      "comment": "oslevel -r omits the service pack.",
+      "pattern": "^(?P<v>[0-9])(?P<r>[0-9])(?P<x>[0-9]{2})-(?P<tl>[0-9]{2})$",
+      "family": "AIX",
+      "major": "${v}",
+      "minor": "${r}",
+      "patch": "TL${tl}",
+      "value": "AIX ${v}.${r} TL${tl}"
+    },
+    {
+      "id": "aix-uname",
+      "attr": "os.version",
+      "pattern": "^AIX\\s+(?P<major>[0-9])\\.(?P<minor>[0-9])$",
+      "family": "AIX",
+      "major": "${major}",
+      "minor": "${minor}",
+      "value": "AIX ${major}.${minor}"
+    },
+    {
+      "id": "rhel-pretty",
+      "attr": "os.version",
+      "pattern": "^Red Hat Enterprise Linux(?: Server)?(?: release)? (?P<major>[0-9]+)(?:\\.(?P<minor>[0-9]+))?.*$",
+      "family": "RHEL",
+      "major": "${major}",
+      "minor": "${minor}",
+      "value": "RHEL ${major}.${minor}"
+    },
+    {
+      "id": "sles-pretty",
+      "attr": "os.version",
+      "pattern": "^SUSE Linux Enterprise Server (?P<major>[0-9]+)(?: SP(?P<minor>[0-9]+))?.*$",
+      "family": "SLES",
+      "major": "${major}",
+      "minor": "${minor}",
+      "value": "SLES ${major} SP${minor}"
+    },
+    {
+      "id": "ubuntu-pretty",
+      "attr": "os.version",
+      "pattern": "^Ubuntu (?P<major>[0-9]+)\\.(?P<minor>[0-9]+)(\\.[0-9]+)?.*$",
+      "family": "Ubuntu",
+      "major": "${major}",
+      "minor": "${minor}",
+      "value": "Ubuntu ${major}.${minor}"
+    },
+    {
+      "id": "debian-pretty",
+      "attr": "os.version",
+      "pattern": "^Debian GNU/Linux (?P<major>[0-9]+)(?:\\.(?P<minor>[0-9]+))?.*$",
+      "family": "Debian",
+      "major": "${major}",
+      "minor": "${minor}",
+      "value": "Debian ${major}"
+    },
+    {
+      "id": "windows-caption",
+      "attr": "os.version",
+      "comment": "Win32_OperatingSystem Caption. The edition is dropped from the grouped value and kept in the raw.",
+      "pattern": "^Microsoft Windows Server (?P<major>[0-9]+)(?: (?P<r2>R2))?(?: (?P<edition>Standard|Datacenter|Enterprise))?.*$",
+      "family": "Windows Server",
+      "major": "${major}",
+      "minor": "${r2}",
+      "value": "Windows Server ${major} ${r2}"
+    },
+    {
+      "id": "windows-build",
+      "attr": "os.build",
+      "pattern": "^(?P<major>10)\\.(?P<minor>0)\\.(?P<build>[0-9]+)(\\.(?P<rev>[0-9]+))?$",
+      "family": "Windows Server",
+      "major": "${major}",
+      "minor": "${minor}",
+      "patch": "${build}",
+      "value": "build ${build}"
+    },
+    {
+      "id": "semver-three",
+      "attr": "*.version",
+      "comment": "Fallback for application versions that report three or four dotted numbers, keeping only the first two for grouping.",
+      "pattern": "^(?:v)?(?P<major>[0-9]+)\\.(?P<minor>[0-9]+)\\.(?P<patch>[0-9]+)(?:\\.[0-9]+)?(?:[-+].*)?$",
+      "family": "",
+      "major": "${major}",
+      "minor": "${minor}",
+      "patch": "${patch}",
+      "value": "${major}.${minor}"
+    },
+    {
+      "id": "semver-two",
+      "attr": "*.version",
+      "pattern": "^(?:v)?(?P<major>[0-9]+)\\.(?P<minor>[0-9]+)$",
+      "major": "${major}",
+      "minor": "${minor}",
+      "value": "${major}.${minor}"
+    },
+    {
+      "id": "kernel-release",
+      "attr": "os.kernel",
+      "pattern": "^(?P<major>[0-9]+)\\.(?P<minor>[0-9]+)\\.(?P<patch>[0-9]+)[-.](?P<rel>[0-9]+).*$",
+      "major": "${major}",
+      "minor": "${minor}",
+      "patch": "${patch}",
+      "value": "${major}.${minor}"
+    }
+  ]
+}

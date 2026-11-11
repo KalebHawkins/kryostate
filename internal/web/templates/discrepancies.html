@@ -1,0 +1,24 @@
+{{define "discrepancies.html"}}
+<h1>Disagreements</h1>
+<div class="filterbar">
+  <form hx-get="/discrepancies" hx-target="#main" hx-push-url="true">
+    <label for="kind" class="visually-hidden">Kind</label>
+    <select id="kind" name="kind" onchange="this.form.requestSubmit()">
+      <option value="">every kind</option>
+      {{$k := .Filter.Kind}}
+      {{range $kind, $n := .Counts}}<option value="{{$kind}}" {{if eq $kind $k}}selected{{end}}>{{kindText $kind}} ({{$n}})</option>{{end}}
+    </select>
+    <label for="disposition" class="visually-hidden">Disposition</label>
+    <select id="disposition" name="disposition" onchange="this.form.requestSubmit()">
+      {{$d := .Filter.Disposition}}
+      <option value="open" {{if eq $d "open"}}selected{{end}}>open</option>
+      <option value="confirm_machine" {{if eq $d "confirm_machine"}}selected{{end}}>machine won</option>
+      <option value="keep_document" {{if eq $d "keep_document"}}selected{{end}}>document won</option>
+      <option value="accepted" {{if eq $d "accepted"}}selected{{end}}>accepted</option>
+    </select>
+    <noscript><button class="btn" type="submit">Filter</button></noscript>
+  </form>
+</div>
+{{if not .List}}<p class="muted">Nothing matches this filter.</p>{{end}}
+{{range .List}}{{template "disc-row" .}}{{end}}
+{{end}}

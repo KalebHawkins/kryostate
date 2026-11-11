@@ -1,0 +1,26 @@
+{{define "stacks.html"}}
+<h1>Stacks</h1>
+<p class="muted">A stack is a deployed system. Membership is many-to-many: a shared host belongs to every stack it serves.</p>
+{{if not .}}<p class="muted">No stacks defined yet.</p>{{end}}
+{{range .}}
+<div class="card" style="margin-bottom:1rem">
+  <h2>{{.View.Stack.Name}}{{if .View.Stack.Environment}} <span class="muted">· {{.View.Stack.Environment}}</span>{{end}}</h2>
+  {{if .View.Stack.Description}}<p class="muted">{{.View.Stack.Description}}</p>{{end}}
+  {{$h := .View.Health}}
+  <div class="segbar" role="img" aria-label="{{$h.Collected}} collected, {{$h.Failed}} failed, {{$h.NeverSeen}} never collected of {{$h.Members}} members">
+    <span class="segbar__seg segbar__seg--ok" style="{{seg $h.Collected $h.Members}}"></span>
+    <span class="segbar__seg segbar__seg--failed" style="{{seg $h.Failed $h.Members}}"></span>
+    <span class="segbar__seg segbar__seg--never" style="{{seg $h.NeverSeen $h.Members}}"></span>
+  </div>
+  <p class="muted">{{$h.Collected}} collected · {{$h.Failed}} failed · {{$h.NeverSeen}} never · {{$h.Members}} members{{if $h.Discrepancy}} · {{$h.Discrepancy}} open disagreements{{end}}</p>
+  <details>
+    <summary>Members</summary>
+    <ul>
+      {{range .Members}}<li class="mono"><a href="/hosts/{{.CI.ID}}" hx-get="/hosts/{{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.CI.Label}}</a>
+        {{if not .HasCollected}}<span class="chip chip--unknown">never collected</span>{{else if not .CollectOK}}<span class="chip chip--bad">last run failed</span>{{end}}</li>{{end}}
+    </ul>
+  </details>
+  <a class="btn btn--ghost" href="/hosts?stack={{qesc .View.Stack.Name}}" hx-get="/hosts?stack={{qesc .View.Stack.Name}}" hx-target="#main" hx-push-url="true">Open in inventory</a>
+</div>
+{{end}}
+{{end}}
