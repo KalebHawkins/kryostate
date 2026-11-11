@@ -13,7 +13,7 @@
 </div>
 {{if .Skipped}}
 <h2>Not charted</h2>
-<p class="muted">These attributes have close to one distinct value per host, so a bar chart of them would be a list with extra steps. Open one anyway if you want it.</p>
+<p class="muted">These attributes have close to one distinct value per host, so a chart of them groups nothing. Open one anyway if you need it.</p>
 <ul>
 {{range .Skipped}}<li><a href="/charts?attr={{qesc .Attr}}" hx-get="/charts?attr={{qesc .Attr}}" hx-target="#main" hx-push-url="true">{{label .Attr}}</a> <span class="muted">{{.Distinct}} distinct over {{.CICount}} hosts</span></li>{{end}}
 </ul>

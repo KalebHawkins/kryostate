@@ -5,22 +5,21 @@ Status: accepted
 ## Context
 
 Written inventories key on the hostname, because it is the thing people say out
-loud. It is a poor key, and the estate this was built against demonstrated
-every way it fails:
+loud. It is a poor key, and it fails in several ways at once:
 
-- Three names each resolve to two addresses, and the document carries the
-  numerically lower one — not because it is the right one to connect to, but
-  because something sorted them.
-- Seventeen documented names resolve in no zone at all. They may be
-  decommissioned, may be in a zone nobody configured, may be typos.
-- Ten hosts whose names start with the production environment letter are a
-  development rig. A decoder reading the name would file them as production,
-  with confidence.
+- A name can resolve to more than one address. A document that carries one of
+  them records whichever the resolver or a sort function put first, which is
+  not evidence about where to connect.
+- A documented name can resolve in no zone at all. It may be decommissioned,
+  it may be in a zone nobody configured, it may be a typo.
+- A naming convention can mislabel a host. A decoder that reads an environment
+  letter out of a name will file a development rig as production, with
+  confidence and no evidence.
 - A name carries no site. A parser that infers one is inventing data and
   attributing it to the machine.
 
-Each of these is a case where a name-keyed record is confidently wrong, which
-is worse than being absent.
+Each of these is a case where a name-keyed record is confidently wrong. That is
+worse than a record that is absent, because nothing prompts anyone to check it.
 
 ## Decision
 
@@ -45,7 +44,8 @@ Two further rules follow from the same reasoning:
 environment or identity.** The `derived` source is marked `allowed=0` for
 `env` and `site` in the precedence table, so a derived claim about either is
 filtered out *before* ranking. It cannot win even when it is the only claimant.
-This is the dev-rig lesson written into the schema rather than into a comment.
+This is the third bullet of the Context written into the schema rather than
+into a comment.
 
 **Addresses are observations, never instructions.** Every A record is recorded.
 None is a management endpoint until a person chooses one with `SelectAddress`,

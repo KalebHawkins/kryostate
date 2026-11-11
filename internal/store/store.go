@@ -671,12 +671,21 @@ func (s *Store) Distribution(ctx context.Context, attr string) ([]Bucket, error)
 	}
 
 	// An attribute where nothing normalised is free text: a role, a site, an
-	// owner. Nobody wrote a rule because none is wanted, and calling every
-	// value "not understood" would be this tool blaming the estate for its own
-	// lack of an opinion. An attribute where some values normalised and others
+	// owner. Nobody wrote a rule because none is wanted, so every value is a
+	// bucket of its own. An attribute where some values normalised and others
 	// did not is the real case: a rule exists and these values escaped it,
 	// which is a bar nobody can act on and a rule somebody should write.
-	freeText := len(counts) == 0
+	//
+	// The test is over every row, not over the values that reached counts. A
+	// host-wide value shadows a scoped one, and a host whose instances
+	// disagree is diverted to "varies", so counts can be empty while a rule
+	// exists. FreeTextAttrs asks the same question for the host page, and the
+	// two must agree or the same value is a bucket on one page and "not
+	// understood" on the other.
+	freeText, err := s.freeTextAttr(ctx, attr)
+	if err != nil {
+		return nil, err
+	}
 	unparsed := 0
 	for _, raw := range unnormalised {
 		if freeText {
@@ -727,10 +736,10 @@ func (s *Store) Distribution(ctx context.Context, attr string) ([]Bucket, error)
 // alone dates the first sighting and would rank a value confirmed this morning
 // below one abandoned last week.
 //
-// Ranking, per-source deduplication and the conflict queries all use this. Two
-// of them once used observed_at, which let the winning value and the list of
-// competing values disagree about what a single source currently claims —
-// showing a source contradicting itself.
+// Ranking, per-source deduplication and the conflict queries must all use
+// this. If one of them ranks on observed_at instead, the winning value and the
+// list of competing values can disagree about what a single source currently
+// claims, which shows a source contradicting itself.
 const freshness = `MAX(observed_at, COALESCE(NULLIF(confirmed_at, ''), observed_at))`
 
 // lastCollectorRunFailed is true for a host whose most recent collector run
@@ -739,8 +748,8 @@ const freshness = `MAX(observed_at, COALESCE(NULLIF(confirmed_at, ''), observed_
 // match both — letting an earlier failure outvote the later success.
 //
 // The same predicate drives the chart bucket and the filter the bucket links
-// to. Written twice they drifted, and a bar counting eleven hosts opened a
-// page listing none.
+// to. Keep them on this one constant: two copies can diverge, and a bar that
+// counts hosts the linked page does not list is worse than no bar.
 const lastCollectorRunFailed = `EXISTS (
     SELECT 1 FROM probe p
     WHERE p.ci_id = c.id AND p.kind = 'collector_run' AND p.outcome <> 'ok'
@@ -775,8 +784,8 @@ func (s *Store) unknownBreakdown(ctx context.Context, attr string, missing, unpa
 	}
 }
 
-// RecordProbe appends a probe event. Probes are never updated: the row saying
-// SSH was refused on Tuesday stays there after Wednesday's success.
+// RecordProbe appends a probe event. Probes are never updated: a row saying
+// SSH was refused stays there after the next success.
 func (s *Store) RecordProbe(ctx context.Context, p model.Probe) error {
 	if p.At.IsZero() {
 		p.At = time.Now()
@@ -1093,6 +1102,52 @@ func (s *Store) Identities(ctx context.Context, ciID string) ([]model.Identity, 
 		out = append(out, i)
 	}
 	return out, rows.Err()
+}
+
+// FreeTextAttrs names the attributes for which no value anywhere normalised.
+//
+// Distribution applies the same rule when it builds a chart: an attribute
+// where nothing normalised is free text, such as a role or an owner, and
+// nobody wrote a rule because none is wanted. The host page needs the same
+// answer, or it labels every role "not understood" while the chart of the same
+// attribute shows the roles grouped correctly. Both read freeTextAttr's
+// predicate; this one answers for every attribute in one query.
+func (s *Store) FreeTextAttrs(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT f.attr FROM current_fact f JOIN ci c ON c.id=f.ci_id
+		 WHERE c.retired_at IS NULL AND c.kind='host'
+		 GROUP BY f.attr
+		 HAVING SUM(CASE WHEN f.norm_value<>'' THEN 1 ELSE 0 END)=0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var attr string
+		if err := rows.Scan(&attr); err != nil {
+			return nil, err
+		}
+		out[attr] = true
+	}
+	return out, rows.Err()
+}
+
+// freeTextAttr answers FreeTextAttrs' question for one attribute.
+//
+// The predicate is the same: over live hosts, no value of this attribute
+// normalised. Distribution needs the single-attribute form, and the two must
+// not drift apart.
+func (s *Store) freeTextAttr(ctx context.Context, attr string) (bool, error) {
+	var normalised int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(CASE WHEN f.norm_value<>'' THEN 1 ELSE 0 END),0)
+		 FROM current_fact f JOIN ci c ON c.id=f.ci_id
+		 WHERE f.attr=? AND c.retired_at IS NULL AND c.kind='host'`, attr).Scan(&normalised)
+	if err != nil {
+		return false, err
+	}
+	return normalised == 0, nil
 }
 
 // Attrs lists every attribute present, with the counts used to decide whether

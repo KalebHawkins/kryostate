@@ -33,8 +33,7 @@ failed.
 
 **Not defended against:** anyone with privileges on the host running the tool.
 They can read process memory, attach a debugger, replace the binary, or read
-whatever the credential helper returns. There is no design that beats this and
-pretending otherwise would be the most dangerous sentence in this file.
+whatever the credential helper returns. No design in this tool prevents that.
 
 ## Credentials
 
@@ -61,8 +60,8 @@ how a password ends up being tried as a file path and written to a log.
 
 Everything in categories 2 and 3 above: hostnames, addresses, what runs where,
 which credential reference each host uses, and the full assertion history. It
-does not give them credentials. The intended result of theft is an inventory
-leak, which is bad, rather than an estate compromise, which is worse.
+does not give them credentials. Theft of the file leaks the inventory. It does
+not hand over access to the hosts the inventory describes.
 
 It also gives them up to 8 KB of output per host and collector spec.
 The shipped commands read release files and version strings, but a site that
@@ -75,14 +74,14 @@ requires connecting to every host again.
 
 Every credential resolution writes an audit row naming the reference with its
 value truncated, the action, and whether it succeeded. The material is never
-written. An audit trail that says which credential was used without saying
-where to find it is the point.
+written. The row records which credential was used. It does not record where
+that credential is kept.
 
 ### Deliberate omissions
 
 - **No cryptography is implemented here.** Where material must rest on disk it
-  is held in an age-encrypted file using `filippo.io/age`. Rolling a cipher for
-  this would be the worst decision in the project.
+  is held in an age-encrypted file using `filippo.io/age`. This project does
+  not implement its own cipher.
 - **Zeroing is best-effort.** `Secret.Zero` overwrites the slice it holds. Go
   copies and moves memory, so this narrows the window in which a heap dump is
   useful and does not close it.
@@ -176,7 +175,7 @@ mean two binaries and a protocol between them, which has not been built.
 
 ## Known gaps
 
-These are listed because a threat model that only lists wins is marketing.
+These are the weaknesses known at the time of writing.
 
 - No authentication, no authorisation, no CSRF token. All three are delegated
   to a proxy that may not be there.
@@ -188,7 +187,8 @@ These are listed because a threat model that only lists wins is marketing.
 - `env:` credential references sit in process memory for the process lifetime.
 - No rate limiting anywhere.
 - `govulncheck` reports fourteen findings in the Go standard library when
-  built with Go 1.27.1, two of them escaping bugs in `html/template`. They are
-  fixed in 1.27.2. Build with a current toolchain; the `go` directive is left
-  at 1.27.1 only so that the project still builds on an unpatched one, which is
-  a tradeoff and not a judgement that the findings do not matter.
+  built with Go 1.27.1, two of them escaping bugs in `html/template`
+  (GO-2026-6600 and GO-2026-6599). They are fixed in 1.27.2. Build with a
+  current toolchain and run `govulncheck ./...` yourself; the `go` directive is
+  left at 1.27.1 only so that the project still builds on an unpatched one,
+  which is a tradeoff and not a judgement that the findings do not matter.

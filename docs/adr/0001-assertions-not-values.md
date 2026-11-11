@@ -4,20 +4,18 @@ Status: accepted
 
 ## Context
 
-The inventory this replaces is a set of Markdown tables: one row per host, one
-column per attribute, each cell holding the current value. The tables were
-generated once by a program that has since been deleted, then hand-edited for
-two years. Nothing in them records where a value came from or when it was last
-true.
+The common shape for an inventory is a table: one row per host, one column per
+attribute, each cell holding the current value. Such a table records neither
+where a value came from nor when it was last true.
 
 That shape has a specific failure. When a cell is wrong there is no way to tell
-whether a person typed it wrong, the generator misread something, or the host
+whether a person typed it wrong, a generator misread something, or the host
 changed. The only repair is to overwrite the cell, which destroys the evidence
 that would have explained the error.
 
-A table of current values cannot represent the most common real state, which is
-*two sources disagree*. It has one cell, so one of them has to be discarded at
-write time, by whoever wrote last.
+A table of current values also cannot represent the state this tool exists to
+find, which is *two sources disagree*. It has one cell, so one of the two
+values must be discarded at write time, by whoever writes last.
 
 ## Decision
 
@@ -49,9 +47,8 @@ a table, so no code path can write to it.
   which SQLite is comfortable with and which is cheap to prune by age if it
   ever stops being.
 - Every read of a current value goes through a window function. This costs more
-  than reading a column. On an estate of this size it is not close to
-  mattering, and when it does the answer is a materialised view, not a mutable
-  column.
+  than reading a column. For a few hundred hosts the cost is not measurable;
+  if it ever is, the answer is a materialised view, not a mutable column.
 - `Assert` does not insert a new row for a repeat of the same value from the
   same source, so nightly collection of an unchanged value does not bury real
   history. The repeat is recorded as a confirmation on the existing row, which

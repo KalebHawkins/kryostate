@@ -157,8 +157,9 @@ const (
 	ProbeHealth ProbeKind = "health"
 )
 
-// Outcome records how a probe ended. A failure is data: "SSH refused since
-// Tuesday, ICMP fine" is the signal that finds a mislabelled host.
+// Outcome records how a probe ended. A failure is data: "SSH refused for three
+// days, the service port answering throughout" is the signal that finds a
+// mislabelled host.
 type Outcome string
 
 const (
@@ -234,8 +235,8 @@ const (
 	DispLapsed Disposition = "lapsed"
 )
 
-// Discrepancy is a disagreement about one attribute of one CI. These are the
-// product; the inventory is the byproduct.
+// Discrepancy is a disagreement about one attribute of one CI. Finding these
+// is the purpose of the tool; the list of hosts supports it.
 type Discrepancy struct {
 	ID          int64
 	CIID        string

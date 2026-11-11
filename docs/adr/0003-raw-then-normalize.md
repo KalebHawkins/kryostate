@@ -69,9 +69,8 @@ and this tool failed to understand the answer. That is a bug report, not a dead
 host, and conflating the two means the bug is never fixed.
 
 An empty rule pattern is rejected at load. `regexp.Compile("")` succeeds and
-matches every input, so a rule missing its pattern would silently claim every
-value in the estate and attribute them all to itself. This was found by a test,
-not by reading the code.
+matches every input, so a rule missing its pattern would claim every value and
+attribute them all to itself.
 
 ## Consequences
 

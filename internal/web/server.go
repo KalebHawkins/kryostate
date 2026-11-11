@@ -217,6 +217,9 @@ type hostData struct {
 	Reach      store.Reachability
 	Discs      []model.Discrepancy
 	Stacks     []string
+	// FreeText names the attributes no rule was ever written for, so that the
+	// value column shows what the source said instead of calling it unparsed.
+	FreeText map[string]bool
 }
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
@@ -249,10 +252,16 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	profiles, _ := s.Store.ConnProfiles(ctx, id)
 	reach, _ := s.Store.Reachability(ctx, id)
 	discs, _ := s.Store.Discrepancies(ctx, store.DiscrepancyFilter{CIID: id}, 50)
+	freeText, err := s.Store.FreeTextAttrs(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
 
 	s.render(w, r, "host.html", ci.Label, "hosts", hostData{
 		CI: ci, Facts: facts, Conflicts: conflicts, Identities: ids,
 		Addresses: addrs, Profiles: profiles, Reach: reach, Discs: discs,
+		FreeText: freeText,
 	})
 }
 

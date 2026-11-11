@@ -12,8 +12,8 @@ some HTML.
 The default answer in 2025 is a JavaScript application with a JSON API behind
 it. That buys client-side routing and optimistic updates, and costs a build
 step, a dependency tree, a second data model, and a second set of bugs where
-the two disagree. For a tool whose entire thesis is that duplicated state
-drifts, maintaining a client-side copy of the inventory would be funny.
+the two disagree. This tool exists because duplicated state drifts, so a
+client-side copy of the inventory is a poor fit for it.
 
 ## Decision
 
@@ -22,9 +22,8 @@ as SVG by Go.
 
 **The URL is the only source of truth for filter state.** Every filter —
 attribute, value, stack, search, contested, the three kinds of unknown — is a
-query parameter. A filtered view can be pasted into a message and opens the
-same thing for the next person. There is no client-side state to get out of
-step with it.
+query parameter. Two people who open the same URL see the same view. There is
+no client-side state to get out of step with it.
 
 **One handler serves both a page and a fragment.** With `HX-Request: true` it
 returns the content template; otherwise it wraps it in the layout. Every
@@ -46,9 +45,8 @@ anyone can act on. Unknown buckets are exempt: they are the hosts worth
 chasing.
 
 **Every asset ships in the binary.** HTMX and the SSE extension are vendored
-into `internal/web/static` and embedded. An estate with no route to the
-internet gets a working interface, and nothing here depends on a CDN being up
-or honest.
+into `internal/web/static` and embedded. A host with no route to the internet
+serves a working interface. No asset is fetched from a third party at runtime.
 
 **Glass is applied to chrome only.** Header, navigation, cards. Surfaces
 carrying tabular data are solid and high contrast. A translucent, blurred

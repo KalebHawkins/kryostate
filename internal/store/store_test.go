@@ -90,10 +90,9 @@ func TestCollectorOutranksDocument(t *testing.T) {
 	}
 }
 
-// TestBarredSourceCannotWinUnopposed is the lesson from inventories whose
-// environment was decoded from a naming convention: a source barred from an
-// attribute must lose even when it is the only claimant, because being the
-// only claimant is exactly when a wrong guess does damage.
+// TestBarredSourceCannotWinUnopposed guards the naming-convention case: a
+// source barred from an attribute must lose even when it is the only claimant,
+// because being the only claimant is exactly when a wrong guess does damage.
 func TestBarredSourceCannotWinUnopposed(t *testing.T) {
 	s := testStore(t)
 	ci := mustHost(t, s, "node-b")
@@ -265,8 +264,9 @@ func TestAmbiguousIdentityStops(t *testing.T) {
 }
 
 // TestDistributionAlwaysAccountsForEveryHost is the rule that stops a chart
-// from flattering the estate: the buckets must add up to the number of hosts,
-// and every host without a usable value must appear in a bucket naming why.
+// from reporting better coverage than it has: the buckets must add up to the
+// number of hosts, and every host without a usable value must appear in a
+// bucket naming why.
 func TestDistributionAlwaysAccountsForEveryHost(t *testing.T) {
 	ctx := context.Background()
 	s := testStore(t)
@@ -410,8 +410,8 @@ func TestReachabilityKeepsProbeKindsApart(t *testing.T) {
 }
 
 // TestFreeTextAttributeIsNotCalledUnparsed. Nobody writes a normaliser rule
-// for a role or an owner, and reporting every one of them as "not understood"
-// would be the tool blaming the estate for its own lack of an opinion.
+// for a role or an owner. Reporting every one of those values as "not
+// understood" would report a parse failure where no rule was ever wanted.
 func TestFreeTextAttributeIsNotCalledUnparsed(t *testing.T) {
 	ctx := context.Background()
 	s := testStore(t)
@@ -468,5 +468,57 @@ func TestChartableSkipsIdentifiers(t *testing.T) {
 		if got := chartable(c.distinct, c.hosts, c.total); got != c.want {
 			t.Errorf("chartable(%d, %d, %d) = %v", c.distinct, c.hosts, c.total, got)
 		}
+	}
+}
+
+// TestChartAndHostPageAgreeOnFreeText covers the case where the two pages
+// could label the same value differently. Distribution counts one value per
+// host, so a host-wide raw value hides a normalised scoped one and the chart
+// sees no normalised value at all. The host page reads every row. If the two
+// decided free text separately, the chart would group these values and the
+// host page would call the same values "not understood".
+func TestChartAndHostPageAgreeOnFreeText(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	src := mustSource(t, s, model.SourceCollector, "builtin")
+
+	a := mustHost(t, s, "node-a")
+	b := mustHost(t, s, "node-b")
+	now := time.Now()
+	assertValue(t, s, a, "os.version", "not a version", src, now)
+	assertValue(t, s, b, "os.version", "also not a version", src, now)
+
+	// A scoped value that a rule did understand. The host-wide value above
+	// shadows it, so it never reaches the chart's counts.
+	if _, err := s.Assert(ctx, model.Assertion{
+		CIID: a, Attr: "os.version", Scope: "instance-1", Raw: "9.4",
+		SourceID: src, ObservedAt: now, ValueType: model.TypeVersion,
+	}, &Normalized{Value: "9.4", Major: "9", Minor: "4", RuleID: "test"}); err != nil {
+		t.Fatal(err)
+	}
+
+	free, err := s.FreeTextAttrs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if free["os.version"] {
+		t.Error("the host page calls os.version free text although a rule understood a value")
+	}
+
+	buckets, err := s.Distribution(ctx, "os.version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unparsed := 0
+	for _, bk := range buckets {
+		if bk.Label == "not understood" {
+			unparsed = bk.Count
+		}
+		if bk.Key == "not a version" || bk.Key == "also not a version" {
+			t.Errorf("the chart grouped %q as a value although the host page will not", bk.Key)
+		}
+	}
+	if unparsed != 2 {
+		t.Errorf("unparsed count is %d, want 2: %+v", unparsed, buckets)
 	}
 }

@@ -246,7 +246,7 @@ func TestChartBarsLinkToTheHostsTheyCount(t *testing.T) {
 }
 
 // TestEveryHostIsAccountedForOnTheChartsPage. A chart whose bars do not add up
-// to the estate flatters it, which is the failure this whole tool is against.
+// to the host count reports better coverage than it has.
 func TestEveryHostIsAccountedForOnTheChartsPage(t *testing.T) {
 	_, h, st := testServer(t)
 	seed(t, st)
@@ -382,4 +382,60 @@ func itoa(n int64) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+// TestFreeTextIsShownNotCalledUnparsed keeps the host page consistent with the
+// chart of the same attribute. Nobody writes a normaliser rule for a role, so
+// the value column must show what the source said. Labelling it "not
+// understood" blames the estate for a rule this tool never wanted.
+func TestFreeTextIsShownNotCalledUnparsed(t *testing.T) {
+	_, h, st := testServer(t)
+	id := seed(t, st)
+
+	ctx := context.Background()
+	doc, err := st.SourceID(ctx, model.SourceDocument, "inventory.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Assert(ctx, model.Assertion{
+		CIID: id, Attr: "role", Raw: "loadbalancer", SourceID: doc,
+		ObservedAt: time.Now().Add(-time.Hour),
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	body := get(t, h, "/hosts/"+id, nil).Body.String()
+	row, ok := cell(body, "Role")
+	if !ok {
+		t.Fatal("the host page has no row for role")
+	}
+	if !strings.Contains(row, "loadbalancer") {
+		t.Errorf("the role row does not show the value: %s", row)
+	}
+	if strings.Contains(row, "not understood") {
+		t.Errorf("free text was reported as unparsed: %s", row)
+	}
+
+	// os.version does have rules, so a value that escapes them must still be
+	// reported rather than quietly shown as though it were understood.
+	if _, err := st.Assert(ctx, model.Assertion{
+		CIID: id, Attr: "os.version", Raw: "something no rule matches",
+		SourceID: doc, Decided: true, ObservedAt: time.Now(),
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	body = get(t, h, "/hosts/"+id, nil).Body.String()
+	if row, ok := cell(body, "OS Version"); !ok || !strings.Contains(row, "not understood") {
+		t.Errorf("an unparsed value on a rule-bearing attribute was not flagged: %s", row)
+	}
+}
+
+// cell returns the table row whose heading is label.
+func cell(body, label string) (string, bool) {
+	for _, row := range strings.Split(body, "<tr>") {
+		if strings.Contains(row, ">"+label+"<") {
+			return row, true
+		}
+	}
+	return "", false
 }

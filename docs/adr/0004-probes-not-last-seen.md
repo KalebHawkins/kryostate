@@ -52,13 +52,13 @@ buckets with distinguishable causes:
 - **not understood** — the host answered and no rule parsed the answer
 
 These are disjoint by construction and each is clickable through to the hosts
-in it. A chart that quietly drops the hosts it has no data for is flattering
-the estate, which is the specific dishonesty this tool exists to remove.
+in it. A chart that quietly drops the hosts it has no data for reports better
+coverage than it has.
 
 ## Consequences
 
 - "Is this host up?" has no single answer, and the interface declines to invent
-  one. This is a feature and it will occasionally annoy someone.
+  one. Somebody who wants one answer will not get it.
 - Probe history is the raw material for questions nobody has asked yet: which
   hosts fail authentication intermittently, which site degraded last Tuesday.
 - Row counts grow with probes rather than with hosts. Pruning by age is a

@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// fixturesDir holds captured command output with hostnames and serials
-// replaced. Spacing, field order and line endings are the machine's own, which
-// is what the parsers depend on. The alternative — test input written from
-// memory of what a command prints — only proves the parser agrees with the
-// author's recollection.
+// fixturesDir holds the output of each supplied command, one file per command
+// per platform. The hostnames and serial numbers in them are not real. Keep
+// the spacing, the field order and the line endings exactly as a real command
+// prints them: those are what the parsers depend on, and test input written
+// from memory only proves the parser agrees with the author's recollection.
 const fixturesDir = "../../testdata/fixtures"
 
 func readFixture(t *testing.T, name string) string {

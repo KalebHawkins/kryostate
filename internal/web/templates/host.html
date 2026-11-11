@@ -14,10 +14,11 @@
   <thead><tr><th scope="col">Attribute</th><th scope="col">Value</th><th scope="col">Raw</th><th scope="col">Source</th><th scope="col">Observed</th></tr></thead>
   <tbody>
   {{$conf := .Conflicts}}
+  {{$free := .FreeText}}
   {{range .Facts}}
     <tr>
       <th scope="row">{{label .Attr}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</th>
-      <td class="mono">{{if .Norm}}{{.Norm}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
+      <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{short .Raw 48}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
         {{if .Contested}}<span class="chip chip--contested">disagrees</span>{{end}}</td>
       <td class="mono muted">{{short .Raw 48}}</td>
       <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>

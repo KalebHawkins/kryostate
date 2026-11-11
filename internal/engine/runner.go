@@ -3,9 +3,9 @@
 //
 // Two rules shape everything here. A failure is recorded, never swallowed:
 // "we could not reach this host" is a finding, and a host that silently drops
-// out of a run is how an inventory starts flattering itself. And nothing is
-// retried automatically after a timeout, because a local timeout does not stop
-// a command that is still running on the far end.
+// out of a run leaves the inventory reporting better coverage than it has. And
+// nothing is retried automatically after a timeout, because a local timeout
+// does not stop a command that is still running on the far end.
 package engine
 
 import (
