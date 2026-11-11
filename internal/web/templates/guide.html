@@ -1,0 +1,13 @@
+{{define "guide.html"}}
+<div class="guide">
+  <nav class="guide__toc" aria-label="Contents">
+    <p class="guide__toc-title">Contents</p>
+    <ul>
+    {{range .TOC}}<li class="toc-l{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}
+    </ul>
+  </nav>
+  <article class="guide__body prose">
+    {{.Body}}
+  </article>
+</div>
+{{end}}

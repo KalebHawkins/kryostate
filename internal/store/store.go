@@ -853,6 +853,9 @@ type HostFilter struct {
 	// collection_failed, or unparsed.
 	Because  string
 	Unparsed string // attribute whose value no rule understood
+	// Retired lists retired hosts instead of live ones, so one retired by
+	// mistake can be found again and restored.
+	Retired bool
 }
 
 // Hosts returns the inventory rows matching a filter, with the listed
@@ -860,7 +863,11 @@ type HostFilter struct {
 func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 	var where []string
 	var args []any
-	where = append(where, "c.retired_at IS NULL", "c.kind='host'")
+	if f.Retired {
+		where = append(where, "c.retired_at IS NOT NULL", "c.kind='host'")
+	} else {
+		where = append(where, "c.retired_at IS NULL", "c.kind='host'")
+	}
 
 	if f.Search != "" {
 		where = append(where, `(c.label LIKE ? OR EXISTS (SELECT 1 FROM identity i WHERE i.ci_id=c.id AND i.value LIKE ?))`)

@@ -1,0 +1,56 @@
+{{define "collectors.html"}}
+<h1>Collectors</h1>
+<p class="muted">A collector is a command hearsay runs on a host to read one value, such as the operating system version. This page lists every collector that will run.</p>
+
+<div class="card" style="margin-bottom:1.5rem">
+  <h2>Add your own</h2>
+  {{if .Mine}}
+  <p>Your collectors are read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file, then test a change before collecting:</p>
+  {{else}}
+  <p>You have no collectors of your own yet. Three steps:</p>
+  {{end}}
+  <ol>
+    {{if not .Mine}}<li>Create a starter file with one working example:<pre><code>hearsay collectors -init</code></pre>
+      It is written to <span class="mono">{{if .WantPath}}{{.WantPath}}{{else}}collectors.json next to the database{{end}}</span>, where every command finds it.</li>{{end}}
+    <li>Test it against one host. Nothing is saved:<pre><code>hearsay collectors -try &lt;id&gt; -host &lt;host name&gt;</code></pre></li>
+    <li>Collect for real:<pre><code>hearsay refresh</code></pre>{{if not .Mine}}Restart <span class="mono">hearsay serve</span> afterwards so this page and its Collect button use the new file.{{end}}</li>
+  </ol>
+  <p><a class="btn" href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">Read the step-by-step guide</a></p>
+  <p class="muted">Collectors are edited in a file, not on this page. A collector is a command that runs on every host, and this web page has no login of its own, so it must not be able to change one.</p>
+</div>
+
+{{if .Mine}}
+<h2>Yours</h2>
+{{template "spec-table" .Mine}}
+{{end}}
+
+{{if .External}}
+<h2>External programs</h2>
+<p class="muted">Run on this machine, once per host. {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{end}}</p>
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Name</th><th scope="col">Program</th></tr></thead>
+  <tbody>{{range .External}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Path}}</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}
+
+<h2 style="margin-top:1.5rem">Built in</h2>
+<p class="muted">Shipped with hearsay. Each one only runs on the systems listed.</p>
+{{template "spec-table" .Builtin}}
+{{end}}
+
+{{define "spec-table"}}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Id</th><th scope="col">Records</th><th scope="col">Systems</th><th scope="col">Command</th><th scope="col">Reads</th></tr></thead>
+  <tbody>
+  {{range .}}
+    <tr>
+      <td class="mono">{{.ID}}{{if .Optional}} <span class="chip chip--unknown" title="A host without this is not counted as a failed collection">optional</span>{{end}}</td>
+      <td class="mono">{{.Attr}}{{if .Scope}} <span class="muted">[{{.Scope}}]</span>{{end}}</td>
+      <td>{{join .OS ", "}}</td>
+      <td class="mono">{{.Command}}</td>
+      <td class="mono muted">{{if .Parse.Kind}}{{.Parse.Kind}}{{else}}first_line{{end}}{{with .Parse.Key}} {{.}}{{end}}{{with .Parse.Pattern}} {{.}}{{end}}{{with .Parse.Path}} {{.}}{{end}}{{with .Parse.Marker}} “{{.}}”{{end}}{{if .Parse.Field}} field {{.Parse.Field}}{{end}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{end}}

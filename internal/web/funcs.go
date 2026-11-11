@@ -25,6 +25,8 @@ func funcs() template.FuncMap {
 		"short":     short,
 		"kindText":  kindText,
 		"dict":      dict,
+		"has":       contains,
+		"slug":      func(s string) string { return slug(s, map[string]int{}) },
 	}
 }
 

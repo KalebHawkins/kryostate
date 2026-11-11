@@ -1,5 +1,9 @@
 # hearsay
 
+New to the tool? Start with the [user guide](docs/user-guide.md). It has
+tutorials for adding a host, building a stack and adding a collector, and the
+web interface serves it at `/guide`.
+
 hearsay is a configuration management database for servers. It records what
 your documents claim about each host. It connects to each host over SSH or
 WinRM and records what the host reports. It then shows you where the two do
@@ -23,7 +27,10 @@ Read this section before you install the tool.
   send alerts.
 - The tool does not map dependencies. Hosts belong to a stack because you put
   them in it.
-- The web interface has no CSRF token on the forms that change data.
+- The web interface can add and change hosts, connections, stacks and checks.
+  It refuses form submissions from other web sites, but it has no login: anyone
+  who can reach it can change the inventory. It cannot change collectors, and
+  it can only create connections that use ssh-agent.
 
 ## 2. Description
 
@@ -53,7 +60,9 @@ ranks are:
 
 A lower rank wins. Three attributes have different defaults, because a machine
 cannot report them: `env`, `site` and `owner` rank a human first. A derived
-source is barred from `env` and `site`.
+source is barred from `env` and `site`. To record a human claim, use
+`hearsay set <host> env=production -reason "..."` or the form on the host
+page.
 
 When two sources of equal rank disagree, the source that confirmed its value
 most recently wins.
@@ -148,27 +157,33 @@ network access to serve its own interface.
 
 ```sh
 # 1. Record a host.
-./hearsay host -name appnode1 -fqdn appnode1.example.invalid
+./hearsay host appnode1 -fqdn appnode1.example.invalid
 
-# 2. Tell the tool how to reach it. Use the id printed by step 1.
-./hearsay target -ci <id> -address appnode1.example.invalid \
-    -transport ssh -user svc-ro -credential agent:
+# 2. Tell the tool how to reach it. The address defaults to the fqdn, and
+#    the credential defaults to agent:.
+./hearsay target -host appnode1 -user svc-ro
 
 # 3. Or import a document you already have.
 ./hearsay import -name inventory.md -map ./mapping.json inventory.md
 
-# 4. Collect, then compare the sources.
-./hearsay collect
-./hearsay detect
-
-# 5. Define a health check and run it.
-./hearsay check -ci <id> -name https \
+# 4. Define a health check.
+./hearsay check -host appnode1 -name https \
     -http https://appnode1.example.invalid/health
-./hearsay check -run
+
+# 5. Collect, run the checks, and compare the sources, in one command.
+./hearsay refresh
 
 # 6. Read the results.
+./hearsay hosts
+./hearsay show appnode1
+./hearsay disagreements
 ./hearsay serve -addr 127.0.0.1:8099
 ```
+
+Every command that takes a host accepts its name, its fqdn, any other
+identity value, its id, or the first six or more characters of its id. A name
+that matches more than one host is an error that lists each match. The tool
+does not choose one. The `-ci` flag still works as an alias of `-host`.
 
 ### 5.2 Commands
 
@@ -177,10 +192,16 @@ one command.
 
 | Command | Function |
 |---|---|
+| `hosts` | Lists hosts, with chosen attributes as columns. `-json` for scripts |
+| `show` | Shows the facts, claims, probes and open disagreements for one host |
+| `disagreements` | Lists disagreements. `-decide <id> -as machine\|document\|accept` settles them |
+| `refresh` | Runs `collect`, then the checks, then `detect` |
+| `set` | Records a value that you state, with `-reason`, as a human claim |
+| `collectors` | Lists collectors, creates a starter file (`-init`), and tests one without saving (`-try`) |
 | `import` | Reads a Markdown or CSV document and records its claims |
 | `host` | Adds a host. `-retire` marks one gone and keeps its history |
 | `target` | Adds or lists a connection profile |
-| `stack` | Defines a stack and adds members |
+| `stack` | Defines a stack, and adds or removes members. Lists stacks with no `-name` |
 | `secret` | Manages credential references |
 | `collect` | Connects to each enabled target and records what it reports |
 | `check` | Defines and runs liveness checks |
@@ -194,11 +215,18 @@ one command.
 
 ### 5.3 Custom collectors
 
-A collector specification is a command, a parse rule and an attribute name:
+A collector specification is a command, a parse rule and an attribute name.
+The [collector guide](docs/collectors.md) explains how to write one, step by
+step.
 
 ```sh
-./hearsay collect -collectors ./my-collectors.json
+./hearsay collectors -init                       # creates collectors.json next to the database
+./hearsay collectors -try <id> -host appnode1    # runs it once and saves nothing
 ```
+
+Every command reads `collectors.json`, `rules.json` and `externals.json` from
+the folder that holds the database. The `-collectors`, `-rules` and
+`-externals` flags name a different file.
 
 An external collector is a program that you supply:
 
@@ -301,8 +329,11 @@ decisions: the machine wins, the document wins, or the value is accepted.
 
 ![Disagreements](docs/images/disagreements.png)
 
-The inventory shows one row for each host. You can filter by name or by stack.
-A value that no source claims is marked unknown, not left blank.
+The inventory shows one row for each host. You can filter by name or by stack,
+and choose the attribute columns (`?col=os.version,env`). The CSV link
+downloads the same view. A value that no source claims is marked unknown, not
+left blank. In the CSV, a value that starts with `=`, `+`, `-` or `@` gets a
+leading apostrophe, so that a spreadsheet does not run it as a formula.
 
 ![Inventory](docs/images/inventory.png)
 
@@ -321,7 +352,8 @@ its open disagreements. A host that serves two stacks appears in both.
 The host page shows the value that currently wins for each attribute, with the
 raw string, the source, and the time of observation. Where sources disagree,
 every claim is listed. Reachability, identity evidence, addresses and
-connection details are separate cards.
+connection details are separate cards. A form records a value that you state,
+with a reason.
 
 ![Host](docs/images/host.png)
 

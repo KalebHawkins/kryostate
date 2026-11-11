@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KalebHawkins/hearsay/internal/collect"
 	"github.com/KalebHawkins/hearsay/internal/engine"
 	"github.com/KalebHawkins/hearsay/internal/model"
 	"github.com/KalebHawkins/hearsay/internal/normalize"
@@ -30,7 +31,11 @@ func testServer(t *testing.T) (*Server, http.Handler, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eng := &engine.Engine{Store: st, Norm: n}
+	specs, err := collect.BuiltinSpecs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := &engine.Engine{Store: st, Norm: n, Specs: specs}
 	s, err := New(st, eng, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)

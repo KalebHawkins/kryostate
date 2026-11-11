@@ -229,10 +229,17 @@ func lookPython(t *testing.T) string {
 		names = []string{"python", "python3"}
 	}
 	for _, n := range names {
-		if p, err := exec.LookPath(n); err == nil {
+		p, err := exec.LookPath(n)
+		if err != nil {
+			continue
+		}
+		// Windows ships an App Execution Alias named python.exe that only
+		// opens the Store. It is on PATH and exits 9009, so finding the file
+		// is not proof there is an interpreter behind it.
+		if exec.Command(p, "-c", "pass").Run() == nil {
 			return p
 		}
 	}
-	t.Skip("no python on PATH; this test needs a real program to run")
+	t.Skip("no working python on PATH; this test needs a real program to run")
 	return ""
 }

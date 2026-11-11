@@ -11,10 +11,13 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/csv"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,10 +43,24 @@ type Server struct {
 	// detection pass that follows a run raises it. Zero turns the check off
 	// rather than defaulting to a number nobody chose.
 	StaleAfter time.Duration
+	// TrustedOrigins are extra origins allowed to submit forms, for a proxy
+	// that serves this interface under a different host name than it
+	// forwards. Same-origin requests need no entry.
+	TrustedOrigins []string
+	// Config says where custom collector files are looked for, for the
+	// collectors page.
+	Config ConfigFiles
 
 	tmpl *template.Template
-	hub  *hub
-	mu   sync.Mutex
+	// guide is the rendered user guide. It is fixed at build time, so it is
+	// rendered once rather than on every request.
+	guide    template.HTML
+	guideTOC []tocEntry
+
+	collectorGuide    template.HTML
+	collectorGuideTOC []tocEntry
+	hub               *hub
+	mu                sync.Mutex
 	// running guards against two collection runs at once. Opening a second
 	// wave of sessions into the estate because somebody clicked twice is not
 	// a thing a tool should allow.
@@ -61,6 +78,7 @@ func New(st *store.Store, eng *engine.Engine, log *slog.Logger) (*Server, error)
 		return nil, err
 	}
 	s.tmpl = t
+	s.renderDocs()
 	return s, nil
 }
 
@@ -69,17 +87,46 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleHome)
 	mux.HandleFunc("GET /hosts", s.handleHosts)
+	mux.HandleFunc("GET /hosts.csv", s.handleHostsCSV)
 	mux.HandleFunc("GET /hosts/{id}", s.handleHost)
 	mux.HandleFunc("GET /stacks", s.handleStacks)
 	mux.HandleFunc("GET /charts", s.handleCharts)
 	mux.HandleFunc("GET /discrepancies", s.handleDiscrepancies)
 	mux.HandleFunc("POST /discrepancies/{id}/dispose", s.handleDispose)
 	mux.HandleFunc("POST /hosts/{id}/address", s.handleSelectAddress)
+	mux.HandleFunc("POST /hosts/{id}/claim", s.handleClaim)
+	mux.HandleFunc("POST /hosts", s.handleCreateHost)
+	mux.HandleFunc("POST /hosts/{id}/retire", s.handleRetire)
+	mux.HandleFunc("POST /hosts/{id}/unretire", s.handleUnretire)
+	mux.HandleFunc("POST /hosts/{id}/connection", s.handleConnection)
+	mux.HandleFunc("POST /hosts/{id}/connection/delete", s.handleDeleteConnection)
+	mux.HandleFunc("POST /hosts/{id}/checks", s.handleAddCheck)
+	mux.HandleFunc("POST /hosts/{id}/checks/delete", s.handleDeleteCheck)
+	mux.HandleFunc("POST /stacks", s.handleCreateStack)
+	mux.HandleFunc("POST /stacks/edit", s.handleEditStack)
+	mux.HandleFunc("POST /stacks/delete", s.handleDeleteStack)
+	mux.HandleFunc("POST /stacks/members", s.handleAddMember)
+	mux.HandleFunc("POST /stacks/members/remove", s.handleRemoveMember)
+	mux.HandleFunc("GET /collectors", s.handleCollectors)
 	mux.HandleFunc("GET /runs", s.handleRuns)
+	mux.HandleFunc("GET /guide", s.handleGuide)
+	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)
 	mux.HandleFunc("POST /collect", s.handleCollect)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.Handle("GET /static/", http.FileServerFS(staticFS))
-	return mux
+
+	// Every POST here changes the inventory, and the interface has no login
+	// of its own. Without this, any web page the operator visits could submit
+	// those forms to a hearsay running on localhost. The check uses the
+	// Sec-Fetch-Site and Origin headers browsers send, so it needs no token
+	// in the forms and leaves non-browser clients alone.
+	cop := http.NewCrossOriginProtection()
+	for _, o := range s.TrustedOrigins {
+		if err := cop.AddTrustedOrigin(o); err != nil && s.Log != nil {
+			s.Log.Error("trusted origin", "origin", o, "err", err)
+		}
+	}
+	return cop.Handler(mux)
 }
 
 type pageData struct {
@@ -87,6 +134,7 @@ type pageData struct {
 	Nav      string
 	Content  template.HTML
 	OpenDisc int
+	Flash    *flash
 }
 
 // render writes either the fragment or the whole page.
@@ -113,7 +161,8 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name, title, nav
 	if _, total, err := s.Store.DiscrepancyCounts(r.Context()); err == nil {
 		open = total
 	}
-	page := pageData{Title: title, Nav: nav, Content: template.HTML(buf.String()), OpenDisc: open}
+	page := pageData{Title: title, Nav: nav, Content: template.HTML(buf.String()), OpenDisc: open,
+		Flash: takeFlash(w, r)}
 	if err := s.tmpl.ExecuteTemplate(w, "layout.html", page); err != nil {
 		s.fail(w, err)
 	}
@@ -140,7 +189,14 @@ type homeData struct {
 // opens.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	const staleAfter = 14 * 24 * time.Hour
+	// The overview follows -stale-after so that its "older than" tile and the
+	// stale findings raised after a run use the same window. Zero turns the
+	// findings off, but a coverage tile still needs some window to count
+	// against, so it keeps the default.
+	staleAfter := s.StaleAfter
+	if staleAfter <= 0 {
+		staleAfter = 14 * 24 * time.Hour
+	}
 
 	cov, err := s.Store.Coverage(ctx, staleAfter)
 	if err != nil {
@@ -157,7 +213,8 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	d := homeData{Coverage: cov, Counts: counts, Total: total, Recent: recent, StaleDays: 14}
+	d := homeData{Coverage: cov, Counts: counts, Total: total, Recent: recent,
+		StaleDays: int(staleAfter.Hours() / 24)}
 	if runs, err := s.Store.Runs(ctx, 1); err == nil && len(runs) > 0 {
 		d.LastRun = &runs[0]
 	}
@@ -177,9 +234,26 @@ type hostsData struct {
 // cardinality costs nothing.
 var defaultColumns = []string{"os.version", "app.name", "role", "env", "site"}
 
-func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := store.HostFilter{
+// columnsFrom reads the chosen columns from the URL. Both repeated
+// "col=a&col=b" (what a form of checkboxes sends) and "col=a,b" (what a person
+// types) are accepted.
+func columnsFrom(q url.Values) []string {
+	var cols []string
+	for _, v := range q["col"] {
+		for _, c := range strings.Split(v, ",") {
+			if c = strings.TrimSpace(c); c != "" && !contains(cols, c) {
+				cols = append(cols, c)
+			}
+		}
+	}
+	if len(cols) == 0 {
+		return defaultColumns
+	}
+	return cols
+}
+
+func hostFilterFrom(q url.Values) store.HostFilter {
+	return store.HostFilter{
 		Attr:     q.Get("attr"),
 		Value:    q.Get("value"),
 		Stack:    q.Get("stack"),
@@ -190,7 +264,13 @@ func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 		// The UI calls this "disagrees" everywhere else, and a URL is part of
 		// the UI: it gets pasted into chat messages and tickets.
 		Contested: q.Get("disagrees") == "1" || q.Get("contested") == "1",
+		Retired:   q.Get("retired") == "1",
 	}
+}
+
+func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := hostFilterFrom(q)
 	rows, err := s.Store.Hosts(r.Context(), f)
 	if err != nil {
 		s.fail(w, err)
@@ -202,9 +282,51 @@ func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "hosts.html", "Inventory", "hosts", hostsData{
-		Rows: rows, Attrs: attrs, Columns: defaultColumns, Filter: f,
+		Rows: rows, Attrs: attrs, Columns: columnsFrom(q), Filter: f,
 		Query: template.URL(r.URL.RawQuery),
 	})
+}
+
+// handleHostsCSV writes the inventory view that the same query string shows
+// on screen, for the spreadsheet somebody will inevitably want.
+func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	rows, err := s.Store.Hosts(r.Context(), hostFilterFrom(q))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	cols := columnsFrom(q)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="hearsay-inventory.csv"`)
+	cw := csv.NewWriter(w)
+	header := append([]string{"host", "id"}, cols...)
+	header = append(header, "stacks", "last_collected", "collect_ok", "open_disagreements")
+	_ = cw.Write(header)
+	for _, h := range rows {
+		rec := []string{csvSafe(h.CI.Label), h.CI.ID}
+		for _, c := range cols {
+			rec = append(rec, csvSafe(h.Values[c]))
+		}
+		last := ""
+		if h.HasCollected {
+			last = h.LastCollect.UTC().Format(time.RFC3339)
+		}
+		rec = append(rec, csvSafe(strings.Join(h.Stacks, ";")), last,
+			strconv.FormatBool(h.CollectOK), strconv.Itoa(h.OpenDiscreps))
+		_ = cw.Write(rec)
+	}
+	cw.Flush()
+}
+
+// csvSafe defuses a value that a spreadsheet would run as a formula. Values
+// here come from documents and from remote hosts, neither of which should be
+// able to put a live formula in front of whoever opens the export.
+func csvSafe(v string) string {
+	if v != "" && strings.ContainsRune("=+-@\t\r", rune(v[0])) {
+		return "'" + v
+	}
+	return v
 }
 
 type hostData struct {
@@ -217,6 +339,15 @@ type hostData struct {
 	Reach      store.Reachability
 	Discs      []model.Discrepancy
 	Stacks     []string
+	// Memberships are the stacks this host is in, with its role in each.
+	Memberships []store.Membership
+	// AllStacks feeds the "add to stack" suggestions.
+	AllStacks []string
+	Checks    []store.Check
+	// SSH is the ssh profile when the browser may edit it, and SSHLocked
+	// says one exists that only the command line may change.
+	SSH       *store.ConnProfile
+	SSHLocked bool
 	// FreeText names the attributes no rule was ever written for, so that the
 	// value column shows what the source said instead of calling it unparsed.
 	FreeText map[string]bool
@@ -251,18 +382,44 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	addrs, _ := s.Store.Addresses(ctx, id)
 	profiles, _ := s.Store.ConnProfiles(ctx, id)
 	reach, _ := s.Store.Reachability(ctx, id)
-	discs, _ := s.Store.Discrepancies(ctx, store.DiscrepancyFilter{CIID: id}, 50)
+	// The page heads this list "Open against this host"; settled ones belong
+	// on the disagreements page, filtered to this host.
+	discs, _ := s.Store.Discrepancies(ctx, store.DiscrepancyFilter{CIID: id, Disposition: model.DispOpen}, 50)
 	freeText, err := s.Store.FreeTextAttrs(ctx)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 
-	s.render(w, r, "host.html", ci.Label, "hosts", hostData{
+	d := hostData{
 		CI: ci, Facts: facts, Conflicts: conflicts, Identities: ids,
 		Addresses: addrs, Profiles: profiles, Reach: reach, Discs: discs,
 		FreeText: freeText,
-	})
+	}
+	if d.Memberships, err = s.Store.MembershipsOf(ctx, id); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if d.Checks, err = s.Store.Checks(ctx, id); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if views, err := s.Store.Stacks(ctx); err == nil {
+		for _, v := range views {
+			d.AllStacks = append(d.AllStacks, v.Stack.Name)
+		}
+	}
+	for i, p := range profiles {
+		if p.Transport != "ssh" {
+			continue
+		}
+		if webEditable(p) {
+			d.SSH = &profiles[i]
+		} else {
+			d.SSHLocked = true
+		}
+	}
+	s.render(w, r, "host.html", ci.Label, "hosts", d)
 }
 
 func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
@@ -284,7 +441,19 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, stackWithMembers{View: v, Members: m})
 	}
-	s.render(w, r, "stacks.html", "Stacks", "stacks", out)
+	hosts, err := s.Store.Hosts(r.Context(), store.HostFilter{})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	names := make([]string, 0, len(hosts))
+	for _, h := range hosts {
+		names = append(names, h.CI.Label)
+	}
+	s.render(w, r, "stacks.html", "Stacks", "stacks", struct {
+		Stacks    []stackWithMembers
+		HostNames []string
+	}{out, names})
 }
 
 func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
@@ -323,12 +492,26 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDiscrepancies(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 	f := store.DiscrepancyFilter{
-		Kind:        model.DiscrepancyKind(r.URL.Query().Get("kind")),
-		Disposition: model.Disposition(r.URL.Query().Get("disposition")),
+		Kind:        model.DiscrepancyKind(q.Get("kind")),
+		Disposition: model.Disposition(q.Get("disposition")),
+		CIID:        q.Get("ci"),
 	}
-	if f.Disposition == "" {
+	switch f.Disposition {
+	case "":
 		f.Disposition = model.DispOpen
+	case "all":
+		f.Disposition = ""
+	}
+	var hostLabel string
+	if f.CIID != "" {
+		ci, err := s.Store.CI(r.Context(), f.CIID)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		hostLabel = ci.Label
 	}
 	list, err := s.Store.Discrepancies(r.Context(), f, 500)
 	if err != nil {
@@ -337,11 +520,12 @@ func (s *Server) handleDiscrepancies(w http.ResponseWriter, r *http.Request) {
 	}
 	counts, total, _ := s.Store.DiscrepancyCounts(r.Context())
 	s.render(w, r, "discrepancies.html", "Disagreements", "discrepancies", struct {
-		List   []model.Discrepancy
-		Counts map[model.DiscrepancyKind]int
-		Total  int
-		Filter store.DiscrepancyFilter
-	}{list, counts, total, f})
+		List      []model.Discrepancy
+		Counts    map[model.DiscrepancyKind]int
+		Total     int
+		Filter    store.DiscrepancyFilter
+		HostLabel string
+	}{list, counts, total, f, hostLabel})
 }
 
 func (s *Server) handleDispose(w http.ResponseWriter, r *http.Request) {
@@ -376,6 +560,37 @@ func (s *Server) handleSelectAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/hosts/"+id, http.StatusSeeOther)
+}
+
+// handleClaim records a value a person states about a host. A reason is
+// required, as on the command line: a claim with no reason cannot be argued
+// with later.
+func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, err := s.Store.CI(r.Context(), id); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	attr := strings.TrimSpace(r.FormValue("attr"))
+	reason := strings.TrimSpace(r.FormValue("reason"))
+	if attr == "" || reason == "" {
+		refuse(w, r, hostURL(id), errors.New("an attribute and a reason are both required"))
+		return
+	}
+	value := r.FormValue("value")
+	if err := s.Store.Claim(r.Context(), id, attr, strings.TrimSpace(r.FormValue("scope")),
+		value, actorOf(r), reason); err != nil {
+		refuse(w, r, hostURL(id), err)
+		return
+	}
+	done(w, r, hostURL(id), "Recorded "+attr+" = "+value+".")
+}
+
+func (s *Server) handleGuide(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "guide.html", "User guide", "guide", struct {
+		Body template.HTML
+		TOC  []tocEntry
+	}{s.guide, s.guideTOC})
 }
 
 func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {

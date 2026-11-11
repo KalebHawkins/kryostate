@@ -37,24 +37,34 @@ const usage = `hearsay — an inventory is hearsay until a machine confirms it
 
 Usage: hearsay <command> [flags]
 
-Commands:
-  serve        run the web interface
-  import       read a Markdown or CSV inventory as document claims
-  collect      connect to every enabled target and record what it reports
-  check        run the liveness checks and record the results
-  resolve      look names up in DNS and record the answers
-  detect       compare sources and raise disagreements
-  renormalize  re-run normaliser rules over values already collected
-  reparse      re-run collector parse rules over stored command output
-  evidence     list or delete the stored output of collector commands
-  host         add a host
-  target       add or list a connection profile
-  stack        define a stack or add members
-  secret       manage credential references
-  export       write the whole store to a JSON file
-  restore      load a JSON file into an empty store
+Everyday:
+  hosts          list hosts, with a few attributes as columns
+  show           everything known about one host
+  disagreements  list open disagreements, or settle them with -decide
+  refresh        collect, run checks and compare, in one go
+  set            state a value yourself, such as env or owner
+  collectors     list collectors, create your own, and test one safely
+  serve          run the web interface
 
-Run "hearsay <command> -h" for the flags of one command.
+Setup and maintenance:
+  import         read a Markdown or CSV inventory as document claims
+  collect        connect to every enabled target and record what it reports
+  check          run the liveness checks and record the results
+  resolve        look names up in DNS and record the answers
+  detect         compare sources and raise disagreements
+  renormalize    re-run normaliser rules over values already collected
+  reparse        re-run collector parse rules over stored command output
+  evidence       list or delete the stored output of collector commands
+  host           add a host
+  target         add or list a connection profile
+  stack          define a stack or add members
+  secret         manage credential references
+  export         write the whole store to a JSON file
+  restore        load a JSON file into an empty store
+
+Wherever a command takes a host, a name, fqdn, or id (or its first 6+
+characters) is accepted. Run "hearsay <command> -h" for the flags of one
+command.
 `
 
 func main() {
@@ -68,6 +78,18 @@ func main() {
 
 	var err error
 	switch os.Args[1] {
+	case "hosts", "ls":
+		err = cmdHosts(ctx, os.Args[2:])
+	case "show":
+		err = cmdShow(ctx, os.Args[2:])
+	case "set":
+		err = cmdSet(ctx, os.Args[2:])
+	case "disagreements", "disc":
+		err = cmdDisagreements(ctx, os.Args[2:])
+	case "collectors":
+		err = cmdCollectors(ctx, os.Args[2:])
+	case "refresh":
+		err = cmdRefresh(ctx, log, os.Args[2:])
 	case "serve":
 		err = cmdServe(ctx, log, os.Args[2:])
 	case "import":
@@ -128,14 +150,27 @@ func defaultDB() string {
 	return filepath.Join(dir, "hearsay", "hearsay.db")
 }
 
+// dataDir is the folder holding the database this process opened. Custom
+// collector, rule and external files placed there are picked up without a
+// flag, so a new user's collector file works with every command.
+var dataDir string
+
 func openStore(path string) (*store.Store, error) {
 	if path != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, err
 		}
+		dataDir = filepath.Dir(path)
 	}
 	return store.Open(path)
 }
+
+// The names of the files looked for in dataDir.
+const (
+	defaultCollectorsFile = "collectors.json"
+	defaultRulesFile      = "rules.json"
+	defaultExternalsFile  = "externals.json"
+)
 
 // engineFiles are the optional overrides of what is compiled in.
 type engineFiles struct {
@@ -147,10 +182,32 @@ type engineFiles struct {
 	NoEvidence bool
 }
 
+// resolved fills each file not named by a flag with the default file in the
+// database folder, when that file exists.
+func (f engineFiles) resolved() engineFiles {
+	if dataDir == "" {
+		return f
+	}
+	pick := func(flagged *string, name string) {
+		if *flagged != "" {
+			return
+		}
+		p := filepath.Join(dataDir, name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			*flagged = p
+		}
+	}
+	pick(&f.Collectors, defaultCollectorsFile)
+	pick(&f.Rules, defaultRulesFile)
+	pick(&f.Externals, defaultExternalsFile)
+	return f
+}
+
 // buildEngine wires the pieces that talk to hosts. Rule and collector files
 // are optional overrides of what is compiled in, so a site can add a command
 // without rebuilding.
 func buildEngine(st *store.Store, f engineFiles, log *slog.Logger) (*engine.Engine, error) {
+	f = f.resolved()
 	norm, err := normalize.Builtin()
 	if err != nil {
 		return nil, err
@@ -161,7 +218,7 @@ func buildEngine(st *store.Store, f engineFiles, log *slog.Logger) (*engine.Engi
 			return nil, err
 		}
 		if err := norm.Merge(b); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", f.Rules, err)
 		}
 	}
 	specs, err := collect.BuiltinSpecs()
@@ -173,8 +230,10 @@ func buildEngine(st *store.Store, f engineFiles, log *slog.Logger) (*engine.Engi
 		if err != nil {
 			return nil, err
 		}
+		// Naming the file matters here: it may have been picked up without
+		// a flag, and an error that does not say where would be a puzzle.
 		if err := specs.Merge(b); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", f.Collectors, err)
 		}
 	}
 	var externals []collect.External
@@ -208,6 +267,7 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	externals := fs.String("externals", "", "file listing external collector programs")
 	stale := fs.Duration("stale-after", 14*24*time.Hour, "age at which a collected value is called stale, zero to not check")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
+	trusted := fs.String("trusted-origin", "", "comma-separated origins, such as https://cmdb.example.com, allowed to submit forms when a proxy serves this under another name")
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -225,6 +285,15 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 		return err
 	}
 	srv.StaleAfter = *stale
+	srv.TrustedOrigins = splitIDs(*trusted)
+	files := engineFiles{Rules: *rules, Collectors: *collectors, Externals: *externals}.resolved()
+	srv.Config = web.ConfigFiles{Dir: dataDir, Collectors: files.Collectors,
+		Rules: files.Rules, Externals: files.Externals}
+	for _, p := range []string{files.Collectors, files.Rules, files.Externals} {
+		if p != "" {
+			log.Info("loaded", "file", p)
+		}
+	}
 	h := &http.Server{
 		Addr:              *addr,
 		Handler:           srv.Routes(),
@@ -331,7 +400,7 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("collect", flag.ExitOnError)
 	db := dbFlag(fs)
 	transport := fs.String("transport", "", "limit to one transport (ssh or winrm)")
-	only := fs.String("only", "", "comma-separated configuration item ids")
+	only := fs.String("only", "", "comma-separated hosts (names or ids)")
 	conc := fs.Int("concurrency", 8, "how many hosts at once")
 	timeout := fs.Duration("host-timeout", 2*time.Minute, "limit for everything done against one host")
 	rules := fs.String("rules", "", "extra normaliser rules file")
@@ -351,27 +420,24 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 		return err
 	}
 
+	ids, err := st.LookupCIs(ctx, splitIDs(*only))
+	if err != nil {
+		return err
+	}
 	opt := engine.Options{
-		Transport: *transport, Concurrency: *conc,
+		Transport: *transport, Concurrency: *conc, Only: ids,
 		HostTimeout: *timeout, Actor: actor(),
 	}
-	if *only != "" {
-		opt.Only = strings.Split(*only, ",")
-	}
-	progress := make(chan engine.Progress, 32)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for p := range progress {
-			fmt.Printf("[%d/%d] %-28s %-10s %s\n", p.Done, p.Total, p.Label, p.Outcome, p.Detail)
-		}
-	}()
-	sum, err := eng.Collect(ctx, opt, progress)
-	<-done
+	sum, err := runCollect(ctx, eng, opt, false)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("run %s: %d targets, %d ok, %d failed\n", sum.ID, sum.Targets, sum.Succeeded, sum.Failed)
+	if sum.Targets == 0 {
+		fmt.Println("no enabled targets; add one with: hearsay target -host <name> -address <addr> -user <user> -credential agent:")
+	} else {
+		fmt.Println("compare the sources with: hearsay detect   (or use hearsay refresh next time)")
+	}
 	return nil
 }
 
@@ -381,7 +447,7 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 func cmdCheck(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	db := dbFlag(fs)
-	ci := fs.String("ci", "", "configuration item id")
+	ci := hostFlag(fs, "host the check belongs to")
 	name := fs.String("name", "", "a name for this check, unique per host")
 	tcp := fs.String("tcp", "", "host:port to connect to")
 	httpURL := fs.String("http", "", "URL to request")
@@ -390,7 +456,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 	del := fs.Bool("delete", false, "remove the named check from -ci")
 	list := fs.Bool("list", false, "list the checks on -ci")
 	run := fs.Bool("run", false, "run every enabled check and record the results")
-	only := fs.String("only", "", "comma-separated configuration item ids, with -run")
+	only := fs.String("only", "", "comma-separated hosts (names or ids), with -run")
 	disable := fs.Bool("disable", false, "keep the check but stop running it")
 	fs.Parse(args)
 
@@ -399,6 +465,12 @@ func cmdCheck(ctx context.Context, args []string) error {
 		return err
 	}
 	defer st.Close()
+	label := *ci
+	if *ci != "" {
+		if *ci, err = st.LookupCI(ctx, *ci); err != nil {
+			return err
+		}
+	}
 
 	switch {
 	case *run:
@@ -406,12 +478,16 @@ func cmdCheck(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		results, err := eng.RunChecks(ctx, splitIDs(*only), 16)
+		ids, err := st.LookupCIs(ctx, splitIDs(*only))
+		if err != nil {
+			return err
+		}
+		results, err := eng.RunChecks(ctx, ids, 16)
 		if err != nil {
 			return err
 		}
 		if len(results) == 0 {
-			fmt.Println("no checks defined; add one with: hearsay check -ci <id> -name <name> -tcp host:port")
+			fmt.Println("no checks defined; add one with: hearsay check -host <name> -name <name> -tcp host:port")
 			return nil
 		}
 		for _, r := range results {
@@ -428,7 +504,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 
 	case *list:
 		if *ci == "" {
-			return errors.New("-list needs -ci")
+			return errors.New("-list needs -host")
 		}
 		cs, err := st.Checks(ctx, *ci)
 		if err != nil {
@@ -445,13 +521,13 @@ func cmdCheck(ctx context.Context, args []string) error {
 
 	case *del:
 		if *ci == "" || *name == "" {
-			return errors.New("-delete needs -ci and -name")
+			return errors.New("-delete needs -host and -name")
 		}
 		return st.DeleteCheck(ctx, *ci, *name)
 	}
 
 	if *ci == "" || *name == "" || (*tcp == "" && *httpURL == "") {
-		return errors.New("usage: hearsay check -ci <id> -name <name> (-tcp host:port | -http url [-expect 2xx]) | -list -ci <id> | -run")
+		return errors.New("usage: hearsay check -host <host> -name <name> (-tcp host:port | -http url [-expect 2xx]) | -list -host <host> | -run")
 	}
 	c := store.Check{
 		CIID: *ci, Name: *name, Expect: *expect,
@@ -465,7 +541,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 	if err := st.PutCheck(ctx, c); err != nil {
 		return err
 	}
-	fmt.Printf("check %s on %s recorded; run it with: hearsay check -run -only %s\n", c.Name, *ci, *ci)
+	fmt.Printf("check %s on %s recorded; run it with: hearsay check -run -only %s\n", c.Name, label, label)
 	return nil
 }
 
@@ -557,7 +633,7 @@ func cmdReparse(ctx context.Context, args []string) error {
 	db := dbFlag(fs)
 	attr := fs.String("attr", "", "SQL LIKE pattern for the attributes to redo, blank for all")
 	spec := fs.String("spec", "", "single collector id to redo")
-	ci := fs.String("ci", "", "single configuration item id to redo")
+	ci := hostFlag(fs, "single host to redo")
 	collectors := fs.String("collectors", "", "extra collector spec file")
 	rules := fs.String("rules", "", "extra normaliser rules file")
 	fs.Parse(args)
@@ -567,6 +643,11 @@ func cmdReparse(ctx context.Context, args []string) error {
 		return err
 	}
 	defer st.Close()
+	if *ci != "" {
+		if *ci, err = st.LookupCI(ctx, *ci); err != nil {
+			return err
+		}
+	}
 	eng, err := buildEngine(st, engineFiles{Rules: *rules, Collectors: *collectors}, nil)
 	if err != nil {
 		return err
@@ -597,7 +678,7 @@ func cmdReparse(ctx context.Context, args []string) error {
 func cmdEvidence(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("evidence", flag.ExitOnError)
 	db := dbFlag(fs)
-	ci := fs.String("ci", "", "configuration item id")
+	ci := hostFlag(fs, "only this host")
 	spec := fs.String("spec", "", "collector id")
 	attr := fs.String("attr", "", "SQL LIKE pattern for attributes")
 	forget := fs.Bool("forget", false, "delete the matching stored output instead of listing it")
@@ -609,6 +690,11 @@ func cmdEvidence(ctx context.Context, args []string) error {
 		return err
 	}
 	defer st.Close()
+	if *ci != "" {
+		if *ci, err = st.LookupCI(ctx, *ci); err != nil {
+			return err
+		}
+	}
 	f := store.EvidenceFilter{CIID: *ci, SpecID: *spec, Attr: *attr}
 
 	if *forget {
@@ -653,10 +739,15 @@ func cmdHost(ctx context.Context, args []string) error {
 	db := dbFlag(fs)
 	name := fs.String("name", "", "display name")
 	fqdn := fs.String("fqdn", "", "fully qualified name, stronger identity evidence than a bare name")
-	retire := fs.String("retire", "", "mark the given configuration item id as gone")
+	retire := fs.String("retire", "", "mark the given host (name or id) as gone")
 	unretire := fs.String("unretire", "", "undo a retirement")
 	reason := fs.String("reason", "", "why, recorded in the audit log")
-	fs.Parse(args)
+	if pos := parseInterspersed(fs, args); len(pos) == 1 && *name == "" {
+		// "hearsay host web01" reads as naturally as "hearsay host -name web01".
+		*name = pos[0]
+	} else if len(pos) > 0 {
+		return errors.New("usage: hearsay host <name> [-fqdn <fqdn>]")
+	}
 
 	if *retire != "" || *unretire != "" {
 		st, err := openStore(*db)
@@ -665,21 +756,29 @@ func cmdHost(ctx context.Context, args []string) error {
 		}
 		defer st.Close()
 		if *retire != "" {
-			if err := st.Retire(ctx, *retire, actor(), *reason); err != nil {
+			id, err := st.LookupCI(ctx, *retire)
+			if err != nil {
 				return err
 			}
-			fmt.Printf("retired %s; history kept, collection stopped\n", *retire)
+			if err := st.Retire(ctx, id, actor(), *reason); err != nil {
+				return err
+			}
+			fmt.Printf("retired %s (%s); history kept, collection stopped\n", *retire, shortID(id))
 			return nil
 		}
-		if err := st.Unretire(ctx, *unretire, actor(), *reason); err != nil {
+		id, err := st.LookupCI(ctx, *unretire)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("restored %s; re-enable its connection profile to collect again\n", *unretire)
+		if err := st.Unretire(ctx, id, actor(), *reason); err != nil {
+			return err
+		}
+		fmt.Printf("restored %s (%s); re-enable its connection profile to collect again\n", *unretire, shortID(id))
 		return nil
 	}
 
 	if *name == "" {
-		return errors.New("usage: hearsay host -name <name> [-fqdn <fqdn>] | hearsay host -retire <id> [-reason <why>]")
+		return errors.New("usage: hearsay host <name> [-fqdn <fqdn>] | hearsay host -retire <host> [-reason <why>]")
 	}
 	st, err := openStore(*db)
 	if err != nil {
@@ -696,7 +795,8 @@ func cmdHost(ctx context.Context, args []string) error {
 		return err
 	}
 	if created {
-		fmt.Printf("created %s\n", id)
+		fmt.Printf("created %s (id %s)\n", *name, id)
+		fmt.Printf("next: hearsay target -host %s -user <user>\n", *name)
 	} else {
 		fmt.Printf("already known as %s\n", id)
 	}
@@ -706,12 +806,12 @@ func cmdHost(ctx context.Context, args []string) error {
 func cmdTarget(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("target", flag.ExitOnError)
 	db := dbFlag(fs)
-	ci := fs.String("ci", "", "configuration item id")
+	ci := hostFlag(fs, "host to reach")
 	transport := fs.String("transport", "ssh", "ssh or winrm")
-	address := fs.String("address", "", "address or name to connect to")
+	address := fs.String("address", "", "address or name to connect to, blank for the host's fqdn or name")
 	port := fs.Int("port", 0, "port, zero for the transport default")
 	user := fs.String("user", "", "username")
-	cred := fs.String("credential", "", "credential reference, for example agent: or keyring:hearsay/ops")
+	cred := fs.String("credential", "agent:", "credential reference, for example agent: or keyring:hearsay/ops")
 	bastion := fs.String("bastion", "", "bastion as user@host:port/credential-ref")
 	disable := fs.Bool("disable", false, "record the profile but never collect through it")
 	fs.Parse(args)
@@ -727,13 +827,31 @@ func cmdTarget(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		for _, p := range profiles {
-			fmt.Printf("%s %s %s@%s:%d %s\n", p.CIID, p.Transport, p.Username, p.Address, p.Port, p.CredentialRef)
+		if len(profiles) == 0 {
+			fmt.Println("no enabled targets; add one with: hearsay target -host <name> -user <user>")
+			return nil
 		}
-		return nil
+		tw := newTable(os.Stdout)
+		fmt.Fprintln(tw, "HOST\tID\tTRANSPORT\tCONNECT AS\tCREDENTIAL")
+		for _, p := range profiles {
+			name := p.CIID
+			if c, err := st.CI(ctx, p.CIID); err == nil {
+				name = c.Label
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s@%s%s\t%s\n", name, shortID(p.CIID), p.Transport,
+				p.Username, p.Address, portSuffix(p.Port), p.CredentialRef)
+		}
+		return tw.Flush()
+	}
+	ref := *ci
+	if *ci, err = st.LookupCI(ctx, *ci); err != nil {
+		return err
+	}
+	if *address == "" {
+		*address = defaultAddress(ctx, st, *ci)
 	}
 	if *address == "" || *user == "" || *cred == "" {
-		return errors.New("a target needs -address, -user and -credential")
+		return errors.New("a target needs -user (and -address when the host has no name to connect to)")
 	}
 	p := store.ConnProfile{
 		CIID: *ci, Transport: *transport, Address: *address, Port: *port,
@@ -743,8 +861,26 @@ func cmdTarget(ctx context.Context, args []string) error {
 	if err := st.PutConnProfile(ctx, p); err != nil {
 		return err
 	}
-	fmt.Println("recorded")
+	fmt.Printf("recorded: %s via %s as %s@%s using %s\n", ref, p.Transport, p.Username, p.Address, p.CredentialRef)
+	fmt.Printf("try it with: hearsay refresh -only %s\n", ref)
 	return nil
+}
+
+// defaultAddress picks the strongest name a host is known by: its fqdn, then
+// its hostname, then its label.
+func defaultAddress(ctx context.Context, st *store.Store, ciID string) string {
+	ids, _ := st.Identities(ctx, ciID)
+	for _, scheme := range []model.IdentityScheme{model.IdentFQDN, model.IdentHostname} {
+		for _, i := range ids {
+			if i.Scheme == scheme && i.Value != "" {
+				return i.Value
+			}
+		}
+	}
+	if c, err := st.CI(ctx, ciID); err == nil {
+		return c.Label
+	}
+	return ""
 }
 
 func cmdStack(ctx context.Context, args []string) error {
@@ -754,36 +890,99 @@ func cmdStack(ctx context.Context, args []string) error {
 	desc := fs.String("description", "", "what this stack is")
 	owner := fs.String("owner", "", "who is responsible for it")
 	env := fs.String("environment", "", "environment label")
-	add := fs.String("add", "", "comma-separated configuration item ids to add as members")
+	add := fs.String("add", "", "comma-separated hosts (names or ids) to add as members")
+	remove := fs.String("remove", "", "comma-separated hosts (names or ids) to take out")
 	role := fs.String("role", "", "role the added members play in this stack")
 	fs.Parse(args)
 
-	if *name == "" {
-		return errors.New("usage: hearsay stack -name <name> [-add <ci-id,...>]")
-	}
 	st, err := openStore(*db)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 
-	id, err := st.PutStack(ctx, model.Stack{
-		Name: *name, Description: *desc, Owner: *owner, Environment: *env,
-	})
+	if *name == "" {
+		return listStacks(ctx, st)
+	}
+
+	// Membership changes on an existing stack must not wipe the description,
+	// owner and environment just because those flags were not repeated.
+	views, err := st.Stacks(ctx)
 	if err != nil {
 		return err
 	}
-	for _, ci := range strings.Split(*add, ",") {
-		ci = strings.TrimSpace(ci)
-		if ci == "" {
-			continue
+	stk := model.Stack{Name: *name}
+	for _, v := range views {
+		if v.Stack.Name == *name {
+			stk = v.Stack
 		}
+	}
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "description":
+			stk.Description = *desc
+		case "owner":
+			stk.Owner = *owner
+		case "environment":
+			stk.Environment = *env
+		}
+	})
+	id, err := st.PutStack(ctx, stk)
+	if err != nil {
+		return err
+	}
+
+	addIDs, err := st.LookupCIs(ctx, splitIDs(*add))
+	if err != nil {
+		return err
+	}
+	removeIDs, err := st.LookupCIs(ctx, splitIDs(*remove))
+	if err != nil {
+		return err
+	}
+	for _, ci := range addIDs {
 		if err := st.AddToStack(ctx, id, ci, *role); err != nil {
 			return err
 		}
 	}
-	fmt.Printf("stack %s saved\n", *name)
+	for i, ci := range removeIDs {
+		ok, err := st.RemoveFromStack(ctx, id, ci)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Printf("%s was not a member\n", splitIDs(*remove)[i])
+		}
+	}
+	members, err := st.StackMembers(ctx, *name)
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(members))
+	for _, m := range members {
+		names = append(names, m.CI.Label)
+	}
+	fmt.Printf("stack %s saved, members (%d): %s\n", *name, len(members), strings.Join(names, ", "))
 	return nil
+}
+
+func listStacks(ctx context.Context, st *store.Store) error {
+	views, err := st.Stacks(ctx)
+	if err != nil {
+		return err
+	}
+	if len(views) == 0 {
+		fmt.Println("no stacks; define one with: hearsay stack -name <name> -add <host,...>")
+		return nil
+	}
+	tw := newTable(os.Stdout)
+	fmt.Fprintln(tw, "STACK\tENV\tOWNER\tMEMBERS\tCOLLECTED\tFAILED\tNEVER\tOPEN")
+	for _, v := range views {
+		h := v.Health
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", v.Stack.Name, dash(v.Stack.Environment),
+			dash(v.Stack.Owner), h.Members, h.Collected, h.Failed, h.NeverSeen, h.Discrepancy)
+	}
+	return tw.Flush()
 }
 
 func cmdSecret(ctx context.Context, args []string) error {

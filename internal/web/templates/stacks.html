@@ -1,10 +1,25 @@
 {{define "stacks.html"}}
 <h1>Stacks</h1>
-<p class="muted">A stack is a deployed system. Membership is many-to-many: a shared host belongs to every stack it serves.</p>
-{{if not .}}<p class="muted">No stacks defined yet.</p>{{end}}
-{{range .}}
-<div class="card" style="margin-bottom:1rem">
-  <h2>{{.View.Stack.Name}}{{if .View.Stack.Environment}} <span class="muted">· {{.View.Stack.Environment}}</span>{{end}}</h2>
+<p class="muted">A stack is a deployed system, such as "payments in production". A host can belong to several stacks.</p>
+
+<details class="card disclosure" {{if not .Stacks}}open{{end}}>
+  <summary><strong>New stack</strong></summary>
+  <form class="form" method="post" action="/stacks">
+    <div class="form__row">
+      <label>Name <input type="text" name="name" required placeholder="payments-prod"></label>
+      <label>Environment <input type="text" name="environment" placeholder="production"></label>
+      <label>Owner <input type="text" name="owner" placeholder="payments-team"></label>
+    </div>
+    <label>Description <input type="text" name="description" placeholder="Payments API and its database"></label>
+    <div class="form__actions"><button class="btn btn--primary" type="submit">Create stack</button></div>
+  </form>
+</details>
+
+{{if not .Stacks}}<p class="muted">No stacks yet. Create one above, then add hosts to it.</p>{{end}}
+{{range .Stacks}}
+{{$name := .View.Stack.Name}}
+<div class="card stack" id="stack-{{slug $name}}">
+  <h2>{{$name}}{{if .View.Stack.Environment}} <span class="muted">· {{.View.Stack.Environment}}</span>{{end}}{{if .View.Stack.Owner}} <span class="muted">· {{.View.Stack.Owner}}</span>{{end}}</h2>
   {{if .View.Stack.Description}}<p class="muted">{{.View.Stack.Description}}</p>{{end}}
   {{$h := .View.Health}}
   <div class="segbar" role="img" aria-label="{{$h.Collected}} collected, {{$h.Failed}} failed, {{$h.NeverSeen}} never collected of {{$h.Members}} members">
@@ -13,14 +28,43 @@
     <span class="segbar__seg segbar__seg--never" style="{{seg $h.NeverSeen $h.Members}}"></span>
   </div>
   <p class="muted">{{$h.Collected}} collected · {{$h.Failed}} failed · {{$h.NeverSeen}} never · {{$h.Members}} members{{if $h.Discrepancy}} · {{$h.Discrepancy}} open disagreements{{end}}</p>
-  <details>
-    <summary>Members</summary>
-    <ul>
-      {{range .Members}}<li class="mono"><a href="/hosts/{{.CI.ID}}" hx-get="/hosts/{{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.CI.Label}}</a>
-        {{if not .HasCollected}}<span class="chip chip--unknown">never collected</span>{{else if not .CollectOK}}<span class="chip chip--bad">last run failed</span>{{end}}</li>{{end}}
-    </ul>
+
+  <h3>Members</h3>
+  <ul class="list">
+    {{range .Members}}<li class="mono"><a href="/hosts/{{.CI.ID}}" hx-get="/hosts/{{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.CI.Label}}</a>
+      {{if not .HasCollected}}<span class="chip chip--unknown">never collected</span>{{else if not .CollectOK}}<span class="chip chip--bad">last run failed</span>{{end}}
+      <form class="inline" method="post" action="/stacks/members/remove">
+        <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="ci" value="{{.CI.ID}}"><input type="hidden" name="back" value="/stacks">
+        <button class="btn btn--ghost btn--small" type="submit" aria-label="Remove {{.CI.Label}} from {{$name}}">Remove</button>
+      </form></li>
+    {{else}}<li class="muted">No members yet.</li>{{end}}
+  </ul>
+  <form class="form form--inline" method="post" action="/stacks/members">
+    <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="/stacks">
+    <label>Host <input type="text" name="host" list="all-hosts" required placeholder="name or fqdn"></label>
+    <label>Role <input type="text" name="role" placeholder="app, database…"></label>
+    <button class="btn" type="submit">Add host</button>
+  </form>
+
+  <details class="disclosure">
+    <summary>Edit details</summary>
+    <form class="form" method="post" action="/stacks/edit">
+      <input type="hidden" name="stack" value="{{$name}}">
+      <div class="form__row">
+        <label>Environment <input type="text" name="environment" value="{{.View.Stack.Environment}}"></label>
+        <label>Owner <input type="text" name="owner" value="{{.View.Stack.Owner}}"></label>
+      </div>
+      <label>Description <input type="text" name="description" value="{{.View.Stack.Description}}"></label>
+      <div class="form__actions"><button class="btn" type="submit">Save</button></div>
+    </form>
+    <form method="post" action="/stacks/delete" onsubmit="return confirm('Delete the stack {{$name}}? Its hosts are not changed.')">
+      <input type="hidden" name="stack" value="{{$name}}">
+      <button class="btn btn--danger" type="submit">Delete stack</button>
+    </form>
   </details>
-  <a class="btn btn--ghost" href="/hosts?stack={{qesc .View.Stack.Name}}" hx-get="/hosts?stack={{qesc .View.Stack.Name}}" hx-target="#main" hx-push-url="true">Open in inventory</a>
+
+  <a class="btn btn--ghost" href="/hosts?stack={{qesc $name}}" hx-get="/hosts?stack={{qesc $name}}" hx-target="#main" hx-push-url="true">Open in inventory</a>
 </div>
 {{end}}
+<datalist id="all-hosts">{{range $.HostNames}}<option value="{{.}}">{{end}}</datalist>
 {{end}}

@@ -291,7 +291,17 @@ func (e *Engine) collectOne(ctx context.Context, runID string, p store.ConnProfi
 		return 0, err
 	}
 
-	readings := collect.Run(ctx, t, e.Specs.For(osFamily))
+	specs := e.Specs.For(osFamily)
+	// An optional spec reads something that legitimately may not be there,
+	// such as a hardware model inside a container. Its absence is not a
+	// failed collection, so it does not turn the run partial.
+	optional := map[string]bool{}
+	for _, s := range specs {
+		if s.Optional {
+			optional[s.ID] = true
+		}
+	}
+	readings := collect.Run(ctx, t, specs)
 	written := 0
 	var failures []string
 	for _, r := range readings {
@@ -308,7 +318,9 @@ func (e *Engine) collectOne(ctx context.Context, runID string, p store.ConnProfi
 			}
 		}
 		if r.Err != nil {
-			failures = append(failures, r.SpecID)
+			if !optional[r.SpecID] {
+				failures = append(failures, r.SpecID)
+			}
 			continue
 		}
 		aid, err := e.assertID(ctx, p.CIID, r, srcID, runID)

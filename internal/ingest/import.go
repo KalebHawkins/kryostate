@@ -138,7 +138,7 @@ func (im *Importer) Import(ctx context.Context, tables []Table, m Mapping) (Resu
 
 			if m.StackColumn != "" {
 				if name := strings.TrimSpace(row.Values[m.StackColumn]); name != "" {
-					id, err := im.Store.PutStack(ctx, model.Stack{Name: name})
+					id, err := im.Store.EnsureStack(ctx, name)
 					if err != nil {
 						return res, err
 					}

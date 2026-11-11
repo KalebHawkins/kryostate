@@ -1,6 +1,7 @@
 package collect
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -53,8 +54,12 @@ func BuiltinSpecs() (*SpecSet, error) { return LoadSpecs(builtinSpecs) }
 // LoadSpecs parses a spec file and checks it before anything runs.
 func LoadSpecs(b []byte) (*SpecSet, error) {
 	var f specFile
-	if err := json.Unmarshal(b, &f); err != nil {
-		return nil, fmt.Errorf("parse collectors: %w", err)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	// A misspelled key, such as "optinal", would otherwise be ignored and the
+	// spec would quietly behave differently from what its author wrote.
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&f); err != nil {
+		return nil, fmt.Errorf("parse collectors: %w", withLine(b, err))
 	}
 	if f.Version < 1 {
 		return nil, errors.New("collector file needs a version of 1 or more")
@@ -174,6 +179,26 @@ func Run(ctx context.Context, t Transport, specs []Spec) []Reading {
 		out = append(out, r)
 	}
 	return out
+}
+
+// withLine adds the line and column to a JSON error, which otherwise reports a
+// byte offset that nobody editing the file by hand can use.
+func withLine(b []byte, err error) error {
+	var off int64 = -1
+	var se *json.SyntaxError
+	var te *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &se):
+		off = se.Offset
+	case errors.As(err, &te):
+		off = te.Offset
+	}
+	if off < 0 || off > int64(len(b)) {
+		return err
+	}
+	line := 1 + bytes.Count(b[:off], []byte("\n"))
+	col := off - int64(bytes.LastIndexByte(b[:off], '\n'))
+	return fmt.Errorf("line %d, column %d: %w", line, col, err)
 }
 
 func firstWord(s string) string {

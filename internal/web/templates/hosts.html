@@ -1,10 +1,22 @@
 {{define "hosts.html"}}
-<h1>Inventory <span class="muted">({{len .Rows}} hosts)</span></h1>
+<h1>Inventory <span class="muted">({{len .Rows}} {{if .Filter.Retired}}retired {{end}}hosts)</span></h1>
+<details class="card disclosure" {{if not .Rows}}{{if not .Query}}open{{end}}{{end}}>
+  <summary><strong>Add a host</strong></summary>
+  <form class="form" method="post" action="/hosts">
+    <div class="form__row">
+      <label>Name <input type="text" name="name" required placeholder="web01"></label>
+      <label>Fully qualified name <span class="hint">optional, stronger evidence of identity</span>
+        <input type="text" name="fqdn" placeholder="web01.example.com"></label>
+    </div>
+    <div class="form__actions"><button class="btn btn--primary" type="submit">Add host</button>
+      <span class="muted">You can add its connection, stacks and checks on the next page.</span></div>
+  </form>
+</details>
 <div class="filterbar">
   <form hx-get="/hosts" hx-target="#main" hx-push-url="true">
     <label for="q" class="visually-hidden">Search names</label>
     <input id="q" type="search" name="q" value="{{.Filter.Search}}" placeholder="name contains…"
-           hx-get="/hosts" hx-target="#main" hx-push-url="true" hx-trigger="keyup changed delay:300ms, search">
+           hx-get="/hosts" hx-target="#main" hx-push-url="true" hx-include="closest form" hx-trigger="keyup changed delay:300ms, search">
     <label for="stack" class="visually-hidden">Stack</label>
     <input id="stack" type="text" name="stack" value="{{.Filter.Stack}}" placeholder="stack">
     {{if .Filter.Attr}}<input type="hidden" name="attr" value="{{.Filter.Attr}}">{{end}}
@@ -12,8 +24,18 @@
     {{if .Filter.Unknown}}<input type="hidden" name="unknown" value="{{.Filter.Unknown}}">{{end}}
     {{if .Filter.Because}}<input type="hidden" name="because" value="{{.Filter.Because}}">{{end}}
     {{if .Filter.Unparsed}}<input type="hidden" name="unparsed" value="{{.Filter.Unparsed}}">{{end}}
+    <details class="colpick">
+      <summary class="btn btn--ghost">Columns</summary>
+      <div class="colpick__menu">
+        {{range .Attrs}}
+        <label><input type="checkbox" name="col" value="{{.Attr}}" {{if has $.Columns .Attr}}checked{{end}}> <span class="mono">{{.Attr}}</span></label>
+        {{else}}<p class="muted">No attributes recorded yet.</p>{{end}}
+      </div>
+    </details>
     <button class="btn" type="submit">Filter</button>
     <a class="btn btn--ghost" href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Clear</a>
+    <a class="btn btn--ghost" href="/hosts.csv?{{.Query}}" download>CSV</a>
+    {{if .Filter.Retired}}<a class="btn btn--ghost" href="/hosts">Live hosts</a>{{else}}<a class="btn btn--ghost" href="/hosts?retired=1">Retired hosts</a>{{end}}
   </form>
   {{if .Filter.Attr}}<span class="chip chip--document">{{label .Filter.Attr}} = {{.Filter.Value}}</span>{{end}}
   {{if .Filter.Unknown}}<span class="chip chip--unknown">no {{label .Filter.Unknown}}{{if .Filter.Because}} · {{label .Filter.Because}}{{end}}</span>{{end}}
@@ -50,10 +72,10 @@
           {{ago .LastCollect}}{{if not .CollectOK}} <span class="chip chip--stale">failed</span>{{end}}
         {{else}}<span class="chip chip--unknown">never</span>{{end}}
       </td>
-      <td class="num">{{if .OpenDiscreps}}<a href="/discrepancies">{{.OpenDiscreps}}</a>{{else}}0{{end}}</td>
+      <td class="num">{{if .OpenDiscreps}}<a href="/discrepancies?ci={{.CI.ID}}" hx-get="/discrepancies?ci={{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.OpenDiscreps}}</a>{{else}}0{{end}}</td>
     </tr>
   {{else}}
-    <tr><td colspan="9" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">hearsay import</span>, or add one with <span class="mono">hearsay host -name &lt;name&gt;</span>.</td></tr>
+    <tr><td colspan="{{add (len .Columns) 4}}" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">hearsay import</span>, or add one with <span class="mono">hearsay host -name &lt;name&gt;</span>.</td></tr>
   {{end}}
   </tbody>
 </table>

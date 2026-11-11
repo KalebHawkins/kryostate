@@ -1,6 +1,8 @@
 {{define "host.html"}}
 <h1 class="mono">{{.CI.Label}}</h1>
-<p class="muted">Internal id <span class="mono">{{.CI.ID}}</span> · first recorded {{stamp .CI.CreatedAt}}{{if .CI.RetiredAt}} · retired {{stamp .CI.RetiredAt}}{{end}}</p>
+<p class="muted">Internal id <span class="mono">{{.CI.ID}}</span> · first recorded {{stamp .CI.CreatedAt}}{{if .CI.RetiredAt}} · <span class="chip chip--unknown">retired {{stamp .CI.RetiredAt}}</span>{{end}}
+  · <a href="#manage">Manage connection, stacks, checks…</a></p>
+{{if not .Profiles}}{{if not .CI.RetiredAt}}<div class="notice">Nothing has been collected from this host because hearsay does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}{{end}}
 
 {{if .Discs}}
 <h2>Open against this host</h2>
@@ -81,20 +83,127 @@
     {{end}}
   </div>
 
-  <div class="card">
+</div>
+
+<h2 id="manage" style="margin-top:2rem">Manage this host</h2>
+<p class="muted">Every change is written to the audit log under your name.</p>
+<div class="cards">
+
+  <div class="card" id="connection">
     <h2>Connection</h2>
-    <p class="muted">Credential references only. No secret is stored here.</p>
-    <ul>
-    {{range .Profiles}}
-      <li><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}:{{.Port}}
+    <p class="muted">How hearsay logs in to read this host. Without one, nothing is ever collected from it.</p>
+    {{range .Profiles}}{{if or (ne .Transport "ssh") $.SSHLocked}}
+      <p><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}{{if .Port}}:{{.Port}}{{end}}
         <span class="chip chip--human">{{.CredentialRef}}</span>
         {{if .BastionRef}}<span class="muted">via bastion</span>{{end}}
-        {{if not .Enabled}}<span class="chip chip--unknown">disabled</span>{{end}}
-        {{if .HostKey}}<span class="muted">key pinned</span>{{else}}<span class="chip chip--stale">no pinned key</span>{{end}}</li>
-    {{else}}
-      <li class="muted">No connection profile. Nothing will ever be collected from this host.</li>
+        {{if not .Enabled}}<span class="chip chip--unknown">disabled</span>{{end}}</p>
+      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it with <span class="mono">hearsay target -host {{$.CI.Label}} …</span></p>
+    {{end}}{{end}}
+    {{if not .SSHLocked}}
+    {{$p := .SSH}}
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/connection">
+      <label>Address <span class="hint">name or IP to connect to</span>
+        <input type="text" name="address" required class="mono" value="{{if $p}}{{$p.Address}}{{else}}{{range .Identities}}{{if eq .Scheme "fqdn"}}{{.Value}}{{end}}{{end}}{{end}}" placeholder="{{.CI.Label}}"></label>
+      <div class="form__row">
+        <label>User <input type="text" name="user" required class="mono" value="{{if $p}}{{$p.Username}}{{end}}" placeholder="svc-readonly"></label>
+        <label>Port <input type="number" name="port" min="1" max="65535" class="mono" value="{{if $p}}{{if $p.Port}}{{$p.Port}}{{end}}{{end}}" placeholder="22"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="enabled" value="1" {{if or (not $p) $p.Enabled}}checked{{end}}> Collect from this host</label>
+      <p class="muted">Logs in over SSH using your ssh-agent (<span class="mono">agent:</span>). The key never leaves the agent. {{if $p}}{{if $p.HostKey}}The host key is pinned.{{else}}The host key is pinned on the first successful collection.{{end}}{{end}}</p>
+      <div class="form__actions">
+        <button class="btn btn--primary" type="submit">{{if $p}}Save connection{{else}}Add connection{{end}}</button>
+      </div>
+    </form>
+    {{if $p}}
+    <form method="post" action="/hosts/{{.CI.ID}}/connection/delete" onsubmit="return confirm('Remove this connection? Nothing will be collected from the host until one is added again.')">
+      <input type="hidden" name="transport" value="ssh">
+      <button class="btn btn--ghost btn--danger" type="submit">Remove connection</button>
+    </form>
     {{end}}
+    {{end}}
+  </div>
+
+  <div class="card" id="stacks">
+    <h2>Stacks</h2>
+    <p class="muted">The deployed systems this host is part of.</p>
+    <ul class="list">
+    {{range .Memberships}}
+      <li><a href="/hosts?stack={{qesc .Stack}}">{{.Stack}}</a>{{if .Role}} <span class="muted">as {{.Role}}</span>{{end}}
+        <form class="inline" method="post" action="/stacks/members/remove">
+          <input type="hidden" name="stack" value="{{.Stack}}"><input type="hidden" name="ci" value="{{$.CI.ID}}">
+          <input type="hidden" name="back" value="/hosts/{{$.CI.ID}}">
+          <button class="btn btn--ghost btn--small" type="submit" aria-label="Remove from {{.Stack}}">Remove</button>
+        </form></li>
+    {{else}}<li class="muted">Not in any stack.</li>{{end}}
     </ul>
+    <form class="form" method="post" action="/stacks/members">
+      <input type="hidden" name="host" value="{{.CI.ID}}"><input type="hidden" name="back" value="/hosts/{{.CI.ID}}">
+      <div class="form__row">
+        <label>Stack <input type="text" name="stack" list="all-stacks" required placeholder="payments-prod"></label>
+        <label>Role <input type="text" name="role" placeholder="app, database…"></label>
+      </div>
+      <datalist id="all-stacks">{{range .AllStacks}}<option value="{{.}}">{{end}}</datalist>
+      <div class="form__actions"><button class="btn" type="submit">Add to stack</button>
+        <span class="muted">A new name creates the stack.</span></div>
+    </form>
+  </div>
+
+  <div class="card" id="checks">
+    <h2>Health checks</h2>
+    <p class="muted">Is the service answering? Checked on every collection, separately from logging in.</p>
+    <ul class="list">
+    {{range .Checks}}
+      <li><span class="mono">{{.Name}}</span> <span class="muted">{{.Kind}} {{short .Target 40}}{{if .Expect}} expects {{.Expect}}{{end}}{{if not .Enabled}} · disabled{{end}}</span>
+        <form class="inline" method="post" action="/hosts/{{$.CI.ID}}/checks/delete">
+          <input type="hidden" name="name" value="{{.Name}}">
+          <button class="btn btn--ghost btn--small" type="submit" aria-label="Remove check {{.Name}}">Remove</button>
+        </form></li>
+    {{else}}<li class="muted">No checks.</li>{{end}}
+    </ul>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/checks">
+      <div class="form__row">
+        <label>Name <input type="text" name="name" required placeholder="https"></label>
+        <label>Kind <select name="kind"><option value="http">HTTP request</option><option value="tcp">TCP port</option></select></label>
+      </div>
+      <label>Target <span class="hint">a URL for HTTP, host:port for TCP</span>
+        <input type="text" name="target" required class="mono" placeholder="https://{{.CI.Label}}/health"></label>
+      <label>Expected status <span class="hint">HTTP only, such as 200 or 2xx; blank accepts any</span>
+        <input type="text" name="expect" class="mono" placeholder="2xx"></label>
+      <div class="form__actions"><button class="btn" type="submit">Add check</button></div>
+    </form>
+  </div>
+
+  <div class="card" id="claim">
+    <h2>State a value</h2>
+    <p class="muted">Recorded as your claim, with your reason, beside every other source. For env, site and owner a person outranks the machine.</p>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/claim">
+      <div class="form__row">
+        <label>Attribute <input type="text" name="attr" list="claim-attrs" required placeholder="env" class="mono"></label>
+        <label>Value <input type="text" name="value" required class="mono" placeholder="production"></label>
+      </div>
+      <datalist id="claim-attrs">{{range .Facts}}<option value="{{.Attr}}">{{end}}<option value="env"><option value="site"><option value="owner"></datalist>
+      <label>Reason <input type="text" name="reason" required placeholder="why you know this, such as a ticket number"></label>
+      <div class="form__actions"><button class="btn" type="submit">Record</button></div>
+    </form>
+  </div>
+
+  <div class="card" id="retire">
+    {{if .CI.RetiredAt}}
+    <h2>Retired</h2>
+    <p class="muted">Retired {{stamp .CI.RetiredAt}}. Its history is kept and it is left out of collection, charts and counts.</p>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/unretire">
+      <label>Reason <input type="text" name="reason" placeholder="why it is back"></label>
+      <div class="form__actions"><button class="btn" type="submit">Restore host</button></div>
+    </form>
+    {{else}}
+    <h2>Retire</h2>
+    <p class="muted">For a machine that is gone. Nothing is deleted: its history stays, and collection stops.</p>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/retire" onsubmit="return confirm('Retire {{.CI.Label}}?')">
+      <label>Reason <input type="text" name="reason" required placeholder="decommissioned, CHG-2210"></label>
+      <div class="form__actions"><button class="btn btn--danger" type="submit">Retire host</button></div>
+    </form>
+    {{end}}
   </div>
 </div>
+<p class="muted" style="margin-top:1rem"><a href="/discrepancies?ci={{.CI.ID}}&amp;disposition=all" hx-get="/discrepancies?ci={{.CI.ID}}&amp;disposition=all" hx-target="#main" hx-push-url="true">Every disagreement about this host, settled ones included</a></p>
 {{end}}

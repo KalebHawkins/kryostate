@@ -3,6 +3,7 @@ package collect
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -57,5 +58,19 @@ func TestOnlyACommandThatRanIsReplayable(t *testing.T) {
 		if r[0].Ran != c.ran {
 			t.Errorf("%s: Ran = %v, want %v", c.name, r[0].Ran, c.ran)
 		}
+	}
+}
+
+// TestSpecFileMistakesAreExplained covers the two mistakes a person editing
+// the file by hand makes most: a misspelled key, and broken JSON.
+func TestSpecFileMistakesAreExplained(t *testing.T) {
+	_, err := LoadSpecs([]byte(`{"version": 1, "specs": [{"id": "a", "attr": "x.y", "os": ["linux"],
+  "command": "true", "optinal": true}]}`))
+	if err == nil || !strings.Contains(err.Error(), `"optinal"`) {
+		t.Errorf("a misspelled key gave %v", err)
+	}
+	_, err = LoadSpecs([]byte("{\n  \"version\": 1,\n  \"specs\": [\n    {\"id\": \"a\"}\n    {\"id\": \"b\"}\n  ]\n}"))
+	if err == nil || !strings.Contains(err.Error(), "line 5") {
+		t.Errorf("a missing comma gave %v", err)
 	}
 }

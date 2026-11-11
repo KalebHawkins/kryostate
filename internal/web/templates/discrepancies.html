@@ -15,9 +15,17 @@
       <option value="confirm_machine" {{if eq $d "confirm_machine"}}selected{{end}}>machine won</option>
       <option value="keep_document" {{if eq $d "keep_document"}}selected{{end}}>document won</option>
       <option value="accepted" {{if eq $d "accepted"}}selected{{end}}>accepted</option>
+      <option value="lapsed" {{if eq $d "lapsed"}}selected{{end}}>lapsed</option>
+      <option value="all" {{if eq $d ""}}selected{{end}}>every state</option>
     </select>
+    {{if .Filter.CIID}}<input type="hidden" name="ci" value="{{.Filter.CIID}}">{{end}}
     <noscript><button class="btn" type="submit">Filter</button></noscript>
   </form>
+  {{if .Filter.CIID}}
+    <span class="chip chip--document">host = {{.HostLabel}}</span>
+    {{$dp := or .Filter.Disposition "all"}}
+    <a class="btn btn--ghost" href="/discrepancies?disposition={{$dp}}" hx-get="/discrepancies?disposition={{$dp}}" hx-target="#main" hx-push-url="true">Every host</a>
+  {{end}}
 </div>
 {{if not .List}}<p class="muted">Nothing matches this filter.</p>{{end}}
 {{range .List}}{{template "disc-row" .}}{{end}}
