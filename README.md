@@ -247,6 +247,10 @@ never stores key material.
 Prefer `agent:`. A stolen database file discloses the inventory. It does not
 contain credentials.
 
+An `agent:` reference with no address uses `SSH_AUTH_SOCK`. On Windows it uses
+the named pipe of the OpenSSH agent, because Windows sets no such variable. To
+use a different agent, give its address: `agent:/path/to/socket`.
+
 To open an age file, set `HEARSAY_AGE_IDENTITY` to the path of the identity.
 Keep that identity in a different place from the file it opens.
 

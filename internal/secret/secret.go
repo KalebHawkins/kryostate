@@ -21,10 +21,25 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 )
+
+// windowsAgentPipe is the address Windows OpenSSH gives its agent.
+const windowsAgentPipe = `\\.\pipe\openssh-ssh-agent`
+
+// agentPipePresent reports whether anything is listening on a named pipe. A
+// pipe with no server does not open, which is the distinction wanted here.
+func agentPipePresent(name string) bool {
+	f, err := os.OpenFile(name, os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
+}
 
 // Kind describes what a resolved secret is, so a caller cannot accidentally
 // hand a password to a public-key authenticator.
@@ -153,6 +168,17 @@ func (agentResolver) Resolve(_ context.Context, value string) (Secret, error) {
 	sock := value
 	if sock == "" {
 		sock = os.Getenv("SSH_AUTH_SOCK")
+	}
+	if sock == "" && runtime.GOOS == "windows" {
+		// Windows OpenSSH listens on a fixed named pipe and sets no
+		// environment variable, so an unqualified "agent:" has an
+		// address here even though the variable is empty. Report the
+		// agent as missing rather than resolving to a pipe that is not
+		// there, so the failure arrives now and not mid-collection.
+		if !agentPipePresent(windowsAgentPipe) {
+			return Secret{}, fmt.Errorf("%w: no agent is listening on %s; start the ssh-agent service, or name an address with agent:<address>", ErrNotFound, windowsAgentPipe)
+		}
+		sock = windowsAgentPipe
 	}
 	if sock == "" {
 		return Secret{}, fmt.Errorf("%w: no agent address and SSH_AUTH_SOCK is unset", ErrNotFound)
