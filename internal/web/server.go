@@ -113,6 +113,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /stacks/members", s.handleAddMember)
 	mux.HandleFunc("POST /stacks/members/remove", s.handleRemoveMember)
 	mux.HandleFunc("GET /collectors", s.handleCollectors)
+	mux.HandleFunc("GET /collectors/{id}", s.handleCollector)
 	mux.HandleFunc("POST /collectors/choose", s.handleChoose)
 	mux.HandleFunc("POST /collectors/remove", s.handleUnchoose)
 	mux.HandleFunc("POST /collectors/try", s.handleTry)

@@ -390,9 +390,10 @@ OpenSSL, nginx, Apache httpd and Docker. It also has fill-in-the-blank ones:
 DNS), **Splunk forwarder**, **Splunk Enterprise**, **Language runtimes** and
 **Web servers**.
 
-**In the web interface:** open **Collectors**. Find a group or a collector,
-open **Switch on**, choose **All hosts** or only some stacks, and select
-**Switch on**. Then choose a host in the **Switched on** list and select
+**In the web interface:** open **Collectors**. Search or filter the list,
+select a collector, and under **Where it runs** open **Switch on**, choose
+**All hosts** or only some stacks, and select **Switch on**. (Groups are the
+buttons above the list.) Then choose a host next to it and select
 **Test** to see what it reads. A test saves nothing. You can also test from a
 host's own page, under **Test a collector**, and switch things on for one
 stack from its card on the **Stacks** page.

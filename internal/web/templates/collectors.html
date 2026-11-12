@@ -1,129 +1,100 @@
 {{define "collectors.html"}}
 <h1>Collectors</h1>
-<p class="muted">A collector reads one value from each host, such as its memory size or the version of an application. The operating system, kernel, hardware model and serial number are always collected. Switch on anything else below; it is collected from the next run.</p>
+<p class="muted">A collector reads one value from each host, such as its memory size or the version of an application. The built-in ones always run; switch on anything else from the catalog, or write your own. Open a collector to see its commands, where it runs, and its definition written out as you would write it yourself.</p>
 
-<h2 id="on">Switched on</h2>
-{{if .On}}
-<div class="table-wrap"><table>
-  <thead><tr><th scope="col">Collector</th><th scope="col">Recorded as</th><th scope="col">Runs on</th><th scope="col">Test on a host</th><th scope="col"><span class="visually-hidden">Turn off</span></th></tr></thead>
-  <tbody>
-  {{range .On}}
-    <tr>
-      <td>{{.Title}}{{if .Reveals}} <span class="chip chip--unknown" title="Shows what is inside a file or variable">content</span>{{end}}</td>
-      <td class="mono">{{.C.Attr}}</td>
-      <td class="nowrap">{{if .C.Stacks}}{{join .C.Stacks ", "}}{{range .Missing}} <span class="chip chip--bad" title="This stack no longer exists">{{.}} is gone</span>{{end}}{{else}}All hosts{{end}}</td>
-      <td>{{template "try-form" dict "Hosts" $.Hosts "Name" "choice" "Value" .C.ID}}</td>
-      <td><form method="post" action="/collectors/remove"><input type="hidden" name="id" value="{{.C.ID}}">
-        <button class="btn btn--ghost btn--small" type="submit">Turn off</button></form></td>
-    </tr>
-  {{end}}
-  </tbody>
-</table></div>
-{{else}}
-<p class="muted">Nothing switched on yet. Choose from the catalog below.</p>
-{{end}}
+{{with .FileProblem}}<div class="notice notice--bad" role="alert"><strong>collectors.json:</strong> {{.}}</div>{{end}}
 
-<h2 id="groups" style="margin-top:2rem">Groups</h2>
-<p class="muted">Switch on several related collectors at once. A group only adds: anything already on stays where it runs.</p>
-<div class="catalog">
+<form class="filterbar cfilter" method="get" action="/collectors" role="search" data-filter="#collector-list">
+  <label class="visually-hidden" for="cf-q">Search collectors</label>
+  <input type="search" id="cf-q" name="q" value="{{.Filter.Q}}" placeholder="Search by name, attribute or system…" autocomplete="off">
+  <label class="visually-hidden" for="cf-cat">Category</label>
+  <select id="cf-cat" name="cat">
+    <option value="">All categories</option>
+    {{range .Categories}}<option value="{{.Key}}" {{if eq $.Filter.Cat .Key}}selected{{end}}>{{.Title}}</option>{{end}}
+  </select>
+  <label class="visually-hidden" for="cf-source">Source</label>
+  <select id="cf-source" name="source">
+    <option value="">Any source</option>
+    {{range .Sources}}<option value="{{.Key}}" {{if eq $.Filter.Source .Key}}selected{{end}}>{{.Title}}</option>{{end}}
+  </select>
+  <label class="visually-hidden" for="cf-status">Status</label>
+  <select id="cf-status" name="status">
+    <option value="">On or off</option>
+    <option value="on" {{if eq .Filter.Status "on"}}selected{{end}}>On</option>
+    <option value="off" {{if eq .Filter.Status "off"}}selected{{end}}>Off</option>
+  </select>
+  <button class="btn btn--small" type="submit" data-filter-submit>Filter</button>
+  <span class="muted small cfilter__count" data-filter-count aria-live="polite">{{.Shown}} of {{.Total}}</span>
+</form>
+
+<section id="groups" class="cgroups" aria-label="Groups">
+  <span class="cgroups__label muted small">Groups</span>
   {{range .Groups}}
-  <div class="card catalog__item" id="{{slug .ID}}">
-    <div class="catalog__head"><strong>{{.Title}}</strong></div>
-    <p class="muted">{{.Description}}</p>
-    <p class="muted small">{{join .Titles ", "}}</p>
-    <details class="disclosure">
-      <summary>Switch on</summary>
+  <details class="cgroup colpick" id="{{slug .G.ID}}">
+    <summary class="btn btn--small" title="{{.G.Description}}">{{.G.Title}} <span class="muted">{{.On}}/{{.Total}}</span></summary>
+    <div class="colpick__menu cgroup__menu">
+      <p class="small">{{.G.Description}}</p>
+      <p class="muted small">Switches on: {{join .G.Titles ", "}}. A group only adds: anything already on keeps running where it does.</p>
       <form class="form" method="post" action="/collectors/group">
-        <input type="hidden" name="group" value="{{.ID}}">
-        {{template "where-fields" dict "Stacks" $.Stacks "Selected" nil "ID" .ID}}
-        <div class="form__actions"><button class="btn btn--primary" type="submit">Switch on {{.Title}}</button></div>
+        <input type="hidden" name="group" value="{{.G.ID}}">
+        {{template "where-fields" dict "Stacks" $.Stacks "Selected" nil "ID" .G.ID}}
+        <div class="form__actions"><button class="btn btn--primary" type="submit">Switch on {{.G.Title}}</button></div>
       </form>
-    </details>
-  </div>
-  {{end}}
-</div>
-
-<h2 style="margin-top:2rem">Catalog</h2>
-<p class="muted">Ready-made collectors. Each runs a read-only command written into KryoState; a host without the program is simply left blank. Limit one to some stacks when it only makes sense there, such as the Splunk forwarder version on your Splunk hosts.</p>
-{{range .Catalog}}
-<h3 class="catalog__group">{{.Category}}</h3>
-<div class="catalog">
-  {{range .Rows}}{{$row := .}}
-  <div class="card catalog__item" id="cat-{{slug .T.ID}}">
-    <div class="catalog__head">
-      <strong>{{.T.Title}}</strong>
-      {{if .T.Fixed}}{{if .On}}<span class="chip chip--collector">on</span>{{end}}{{end}}
     </div>
-    {{if .T.Description}}<p class="muted">{{.T.Description}}</p>{{end}}
-    <p class="muted small">{{join .T.Systems ", "}}{{if .T.Fixed}} · recorded as <span class="mono">{{.T.Attr}}</span>{{end}}</p>
-    {{if not .Allowed}}
-      <p class="small">Shows what is inside files or variables, which may be secrets, so it is not switched on from this page. On the KryoState server, run:</p>
-      <pre><code>kryostate collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}{{if .T.Param.Config}} -section {{.T.Param.SectionPlaceholder}} -key {{.T.Param.KeyPlaceholder}}{{end}}</code></pre>
-      {{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.ParamText}}</span>{{end}}</p>{{end}}
-    {{else}}
-    <details class="disclosure">
-      <summary>{{if .T.Fixed}}{{if .On}}Change where it runs{{else}}Switch on{{end}}{{else}}Add one{{end}}</summary>
-      <form class="form" method="post" action="/collectors/choose">
-        <input type="hidden" name="template" value="{{.T.ID}}">
-        {{with .T.Param}}
-        <label>{{.Label}} <span class="hint">{{.Help}}</span>
-          <input type="text" name="param" required class="mono" placeholder="{{.Placeholder}}"></label>
-        {{if .Config}}
-        <div class="form__row">
-          <label>Key <span class="hint">The name left of the =.</span>
-            <input type="text" name="key" required class="mono" placeholder="{{.KeyPlaceholder}}"></label>
-          <label>Section <span class="hint">Optional. The [name] the key sits under.</span>
-            <input type="text" name="section" class="mono" placeholder="{{.SectionPlaceholder}}"></label>
-        </div>
-        {{end}}
-        <label>Record as <span class="hint">Optional. Blank picks a name from the value, such as {{defaultAttr $row.T .Placeholder}}.</span>
-          <input type="text" name="attr" class="mono" placeholder="{{defaultAttr $row.T .Placeholder}}"></label>
-        {{end}}
-        {{template "where-fields" dict "Stacks" $.Stacks "Selected" (onStacks .On) "ID" .T.ID}}
-        <div class="form__actions"><button class="btn {{if not .On}}btn--primary{{end}}" type="submit">{{if and .T.Fixed .On}}Save{{else}}Switch on{{end}}</button></div>
-      </form>
-    </details>
-    {{if not .T.Fixed}}{{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.ParamText}}</span>{{end}}</p>{{end}}{{end}}
-    {{end}}
-  </div>
+  </details>
   {{end}}
+</section>
+
+<div class="table-wrap table-wrap--full">
+<table class="clist" id="collector-list">
+  <thead><tr><th scope="col">Collector</th><th scope="col">Records</th><th scope="col">Systems</th><th scope="col">Runs on</th><th scope="col">Status</th></tr></thead>
+  {{range .Sections}}
+  <tbody data-section {{if .Hidden}}hidden{{end}}>
+    <tr class="group"><th colspan="5" scope="colgroup">{{.Title}}</th></tr>
+    {{range .Rows}}
+    <tr data-row data-text="{{.Search}}" data-cat="{{.CategoryKey}}" data-source="{{.Source}}" data-status="{{if .On}}on{{else}}off{{end}}" {{if .Hidden}}hidden{{end}}>
+      <td class="clist__name">
+        <a href="/collectors/{{.ID}}" hx-get="/collectors/{{.ID}}" hx-target="#main" hx-push-url="true">{{.Title}}</a>
+        {{if ne .Source "catalog"}}<span class="chip chip--quiet">{{.SourceLabel}}</span>{{end}}
+        {{if .Reveals}}<span class="chip chip--unknown" title="Shows what is inside a file or variable">content</span>{{end}}
+        {{with .Description}}<div class="muted small clist__desc">{{short . 110}}</div>{{end}}
+      </td>
+      <td class="mono small">{{if .AttrExample}}<span class="muted" title="Example: the name comes from the value you give">{{join .Attrs ", "}}</span>{{else}}{{join .Attrs ", "}}{{end}}</td>
+      <td class="small nowrap">{{join .Systems ", "}}</td>
+      <td class="small">{{.Where}}</td>
+      <td>{{template "collector-status" .}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+  {{end}}
+</table>
+</div>
+<p class="muted" data-filter-empty {{if .Shown}}hidden{{end}}>No collector matches. <a href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">Show all</a></p>
+
+<div class="cards cfoot">
+  <div class="card">
+    <h2>Your own</h2>
+    {{if .Config.Collectors}}
+    <p class="muted small">{{.Own}} read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file on the server and restart to change them; this page never takes a command.</p>
+    {{else}}
+    <p class="muted small">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Every catalog entry's page shows its definition as a worked example to copy.</p>
+    <pre><code>kryostate collectors -init</code></pre>
+    {{with .WantPath}}<p class="muted small">That creates <span class="mono">{{.}}</span>.</p>{{end}}
+    {{end}}
+    <p class="small"><a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">The collector guide</a> explains each field.</p>
+  </div>
+  <div class="card">
+    <h2>External programs</h2>
+    <p class="muted small">Programs that run on the KryoState server, once per host, and print what they know.
+    {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{else}}None configured: list them in externals.json next to the database.{{end}}</p>
+  </div>
 </div>
 {{end}}
 
-<h2 style="margin-top:2rem">Your own</h2>
-{{if .Mine}}
-<p class="muted">Read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file on the server to change them; the <a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">collector guide</a> explains how.</p>
-<div class="table-wrap"><table>
-  <thead><tr><th scope="col">Id</th><th scope="col">Records</th><th scope="col">Systems</th><th scope="col">Command</th><th scope="col">Test on a host</th></tr></thead>
-  <tbody>
-  {{range .Mine}}
-    <tr>
-      <td class="mono">{{.ID}}</td>
-      <td class="mono">{{.Attr}}{{if .Stacks}} <span class="muted">({{join .Stacks ", "}})</span>{{end}}</td>
-      <td>{{join .OS ", "}}</td>
-      <td class="mono">{{.Command}}</td>
-      <td>{{template "try-form" dict "Hosts" $.Hosts "Name" "spec" "Value" .ID}}</td>
-    </tr>
-  {{end}}
-  </tbody>
-</table></div>
-{{else}}
-<p class="muted">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Start with <span class="mono">kryostate collectors -init</span> on the server, then follow the <a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">collector guide</a>. Your own collectors are written in a file rather than on this page, because this page has no login of its own and a collector is a command that runs on every host.</p>
-{{end}}
-
-{{if .External}}
-<h2 style="margin-top:1.5rem">External programs</h2>
-<p class="muted">Run on the kryostate server, once per host. {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{end}}</p>
-<div class="table-wrap"><table>
-  <thead><tr><th scope="col">Name</th><th scope="col">Program</th></tr></thead>
-  <tbody>{{range .External}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Path}}</td></tr>{{end}}</tbody>
-</table></div>
-{{end}}
-
-<details class="disclosure" style="margin-top:2rem">
-  <summary><strong>Always collected</strong> ({{len .Builtin}})</summary>
-  {{template "spec-table" .Builtin}}
-</details>
+{{define "collector-status"}}
+{{if eq .Status "always"}}<span class="chip chip--collector" title="Built in: runs on every host">always</span>
+{{else if .On}}<span class="chip chip--collector">on</span>
+{{else}}<span class="chip chip--off">off</span>{{end}}
 {{end}}
 
 {{define "where-fields"}}
@@ -145,27 +116,10 @@
 {{define "try-form"}}
 {{if .Hosts}}
 <form class="form--inline" method="post" action="/collectors/try">
-  <input type="hidden" name="{{.Name}}" value="{{.Value}}">
-  <label class="visually-hidden" for="try-{{.Name}}-{{.Value}}">Host</label>
-  <select id="try-{{.Name}}-{{.Value}}" name="host">{{range .Hosts}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
+  {{$name := .Name}}{{range .Values}}<input type="hidden" name="{{$name}}" value="{{.}}">{{end}}
+  <label class="visually-hidden" for="try-{{.Key}}">Host</label>
+  <select id="try-{{.Key}}" name="host">{{range .Hosts}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
   <button class="btn btn--small" type="submit">Test</button>
 </form>
-{{else}}<span class="muted small">No host has a connection yet</span>{{end}}
-{{end}}
-
-{{define "spec-table"}}
-<div class="table-wrap"><table>
-  <thead><tr><th scope="col">Id</th><th scope="col">Records</th><th scope="col">Systems</th><th scope="col">Command</th><th scope="col">Reads</th></tr></thead>
-  <tbody>
-  {{range .}}
-    <tr>
-      <td class="mono">{{.ID}}{{if .Optional}} <span class="chip chip--unknown" title="A host without this is not counted as a failed collection">optional</span>{{end}}</td>
-      <td class="mono">{{.Attr}}{{if .Scope}} <span class="muted">[{{.Scope}}]</span>{{end}}</td>
-      <td>{{join .OS ", "}}</td>
-      <td class="mono">{{.Command}}</td>
-      <td class="mono muted">{{if .Parse.Kind}}{{.Parse.Kind}}{{else}}first_line{{end}}{{with .Parse.Key}} {{.}}{{end}}{{with .Parse.Pattern}} {{.}}{{end}}{{with .Parse.Path}} {{.}}{{end}}{{with .Parse.Marker}} “{{.}}”{{end}}{{if .Parse.Field}} field {{.Parse.Field}}{{end}}</td>
-    </tr>
-  {{end}}
-  </tbody>
-</table></div>
+{{else}}<span class="muted small">No host has a connection yet, so there is nothing to test on.</span>{{end}}
 {{end}}

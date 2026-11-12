@@ -129,9 +129,9 @@ const configPowerShell = `$s = {{section}}; $k = {{key}}; $sec = ''; $found = $f
 
 // Catalog is every entry, in the order they are offered.
 var Catalog = []Template{
-	// ---- hardware ----
+	// ---- operating system and hardware ----
 	{
-		ID: "cpu.cores", Title: "CPU cores", Category: "Hardware", Attr: "hw.cpu.cores", Type: model.TypeNumber,
+		ID: "cpu.cores", Title: "CPU cores", Category: "OS & hardware", Attr: "hw.cpu.cores", Type: model.TypeNumber,
 		Description: "Logical processors the operating system can use.",
 		Variants: []Variant{
 			{Name: "linux", OS: linux, Command: "getconf _NPROCESSORS_ONLN", Parse: first()},
@@ -140,7 +140,7 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "memory.total", Title: "Memory total (MB)", Category: "Hardware", Attr: "hw.memory.total_mb", Type: model.TypeNumber,
+		ID: "memory.total", Title: "Memory total (MB)", Category: "OS & hardware", Attr: "hw.memory.total_mb", Type: model.TypeNumber,
 		Description: "Installed memory in megabytes. A size, not a usage figure.",
 		Variants: []Variant{
 			{Name: "linux", OS: linux, Command: `awk '/^MemTotal:/ {printf "%d\n", $2/1024}' /proc/meminfo`, Parse: first()},
@@ -149,9 +149,8 @@ var Catalog = []Template{
 		},
 	},
 
-	// ---- operating system ----
 	{
-		ID: "timezone", Title: "Time zone", Category: "Operating system", Attr: "os.timezone", Type: model.TypeText,
+		ID: "timezone", Title: "Time zone", Category: "OS & hardware", Attr: "os.timezone", Type: model.TypeText,
 		Description: "The time zone the host reports.",
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: "date +%Z", Parse: first()},
@@ -159,7 +158,7 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "dns.servers", Title: "DNS servers", Category: "Operating system", Attr: "net.dns.servers", Type: model.TypeList,
+		ID: "dns.servers", Title: "DNS servers", Category: "OS & hardware", Attr: "net.dns.servers", Type: model.TypeList,
 		Description: "The name servers the host is configured to ask, comma-separated.",
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: "awk '/^nameserver/ {print $2}' /etc/resolv.conf | paste -s -d, -", Parse: first()},
@@ -167,14 +166,14 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "selinux", Title: "SELinux mode", Category: "Operating system", Attr: "os.selinux", Type: model.TypeText,
+		ID: "selinux", Title: "SELinux mode", Category: "OS & hardware", Attr: "os.selinux", Type: model.TypeText,
 		Description: "Enforcing, Permissive or Disabled.",
 		Variants:    []Variant{{Name: "linux", OS: linux, Command: sbin("getenforce"), Parse: first()}},
 	},
 
-	// ---- applications ----
+	// ---- splunk ----
 	{
-		ID: "splunk.uf.version", Title: "Splunk Universal Forwarder version", Category: "Applications", Attr: "splunk.uf.version", Type: model.TypeText,
+		ID: "splunk.uf.version", Title: "Splunk Universal Forwarder version", Category: "Splunk", Attr: "splunk.uf.version", Type: model.TypeText,
 		Description: "Read from the forwarder's splunk.version file in its default location.",
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: "cat /opt/splunkforwarder/etc/splunk.version", Parse: kv("VERSION")},
@@ -182,7 +181,7 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "splunk.enterprise.version", Title: "Splunk Enterprise version", Category: "Applications", Attr: "splunk.enterprise.version", Type: model.TypeText,
+		ID: "splunk.enterprise.version", Title: "Splunk Enterprise version", Category: "Splunk", Attr: "splunk.enterprise.version", Type: model.TypeText,
 		Description: "Read from Splunk Enterprise's splunk.version file in its default location.",
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: "cat /opt/splunk/etc/splunk.version", Parse: kv("VERSION")},
@@ -190,15 +189,16 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "splunk.home", Title: "Splunk home (from the running splunkd)", Category: "Applications", Attr: "splunk.home", Type: model.TypePath,
+		ID: "splunk.home", Title: "Splunk home (from the running splunkd)", Category: "Splunk", Attr: "splunk.home", Type: model.TypePath,
 		Description: "Where Splunk is installed, read from the running splunkd process, so it is right even outside the default location.",
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: "ps -eo args | grep '[s]plunkd'", Parse: rx(`(/[^ ]+)/bin/splunkd`)},
 			{Name: "windows", OS: windows, Command: `(Get-CimInstance Win32_Service | Where-Object { $_.Name -like 'Splunk*' } | Select-Object -First 1).PathName`, Parse: rx(`^"?(.+?)\\bin\\splunkd`)},
 		},
 	},
+	// ---- runtimes and packages ----
 	{
-		ID: "java.version", Title: "Java version", Category: "Applications", Attr: "java.version", Type: model.TypeText,
+		ID: "java.version", Title: "Java version", Category: "Runtimes & packages", Attr: "java.version", Type: model.TypeText,
 		Description: "The java on the PATH of the collecting user.",
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: "java -version 2>&1", Parse: rx(`version "([^"]+)"`)},
@@ -206,7 +206,7 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "python.version", Title: "Python version", Category: "Applications", Attr: "python.version", Type: model.TypeText,
+		ID: "python.version", Title: "Python version", Category: "Runtimes & packages", Attr: "python.version", Type: model.TypeText,
 		Description: "python3 on Linux and AIX, python on Windows.",
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: "python3 --version 2>&1", Parse: rx(`Python ([0-9][0-9.]*)`)},
@@ -214,26 +214,17 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "openssl.version", Title: "OpenSSL version", Category: "Applications", Attr: "openssl.version", Type: model.TypeText,
+		ID: "openssl.version", Title: "OpenSSL version", Category: "Runtimes & packages", Attr: "openssl.version", Type: model.TypeText,
 		Description: "The openssl command on the PATH.",
 		Variants:    []Variant{{Name: "unix", OS: unix, Command: "openssl version", Parse: rx(`OpenSSL ([0-9][^ ]*)`)}},
 	},
 	{
-		ID: "nginx.version", Title: "nginx version", Category: "Applications", Attr: "nginx.version", Type: model.TypeText,
-		Variants: []Variant{{Name: "linux", OS: linux, Command: sbin("nginx -v 2>&1"), Parse: rx(`nginx/([0-9][0-9.]*)`)}},
-	},
-	{
-		ID: "httpd.version", Title: "Apache httpd version", Category: "Applications", Attr: "httpd.version", Type: model.TypeText,
-		Variants: []Variant{{Name: "linux", OS: linux, Command: sbin("httpd -v 2>/dev/null || apache2 -v"), Parse: rx(`Apache/([0-9][0-9.]*)`)}},
-	},
-	{
-		ID: "docker.version", Title: "Docker version", Category: "Applications", Attr: "docker.version", Type: model.TypeText,
+		ID: "docker.version", Title: "Docker version", Category: "Runtimes & packages", Attr: "docker.version", Type: model.TypeText,
 		Description: "The docker client installed on the host.",
 		Variants:    []Variant{{Name: "linux", OS: linux, Command: "docker --version", Parse: rx(`version ([0-9][0-9.]*)`)}},
 	},
-
 	{
-		ID: "package.version", Title: "Installed package version", Category: "Applications", Type: model.TypeText,
+		ID: "package.version", Title: "Installed package version", Category: "Runtimes & packages", Type: model.TypeText,
 		Description: "Any package by name: rpm or dpkg on Linux, lslpp on AIX, the installed programs list on Windows.",
 		Param:       &Param{Kind: ParamPackage, Label: "Package", Placeholder: "openssl", Help: "The package name. On Windows, the start of the program's name, such as 'Splunk'."},
 		Variants: []Variant{
@@ -243,9 +234,19 @@ var Catalog = []Template{
 		},
 	},
 
+	// ---- web servers ----
+	{
+		ID: "nginx.version", Title: "nginx version", Category: "Web servers", Attr: "nginx.version", Type: model.TypeText,
+		Variants: []Variant{{Name: "linux", OS: linux, Command: sbin("nginx -v 2>&1"), Parse: rx(`nginx/([0-9][0-9.]*)`)}},
+	},
+	{
+		ID: "httpd.version", Title: "Apache httpd version", Category: "Web servers", Attr: "httpd.version", Type: model.TypeText,
+		Variants: []Variant{{Name: "linux", OS: linux, Command: sbin("httpd -v 2>/dev/null || apache2 -v"), Parse: rx(`Apache/([0-9][0-9.]*)`)}},
+	},
+
 	// ---- templates that read a path or a variable ----
 	{
-		ID: "file.exists", Title: "File exists", Category: "Files", Type: model.TypeFlag,
+		ID: "file.exists", Title: "File exists", Category: "Files & config", Type: model.TypeFlag,
 		Description: "Records yes or no.",
 		Param:       &Param{Kind: ParamPath, Label: "Path", Placeholder: "/etc/resolv.conf", Help: "A full path. On Windows, such as C:\\app\\config.xml."},
 		Variants: []Variant{
@@ -254,7 +255,7 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "file.contents", Title: "File contents", Category: "Files", Type: model.TypeText, Reveals: true,
+		ID: "file.contents", Title: "File contents", Category: "Files & config", Type: model.TypeText, Reveals: true,
 		Description: "The whole file, up to 8 KB. Use it for small configuration files.",
 		Param:       &Param{Kind: ParamPath, Label: "Path", Placeholder: "/etc/resolv.conf", Help: "A full path to a small text file."},
 		Variants: []Variant{
@@ -263,7 +264,7 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "config.value", Title: "Setting in a config file", Category: "Files", Type: model.TypeText, Reveals: true,
+		ID: "config.value", Title: "Setting in a config file", Category: "Files & config", Type: model.TypeText, Reveals: true,
 		Description: "One key = value line from an .ini, .conf or .properties file, optionally only inside a [section]. Such as serverName in Splunk's server.conf.",
 		Param: &Param{Kind: ParamConfig, Label: "File", Placeholder: "/opt/splunkforwarder/etc/system/local/server.conf",
 			Help: "A full path to the file.", KeyPlaceholder: "serverName", SectionPlaceholder: "general"},
@@ -273,7 +274,7 @@ var Catalog = []Template{
 		},
 	},
 	{
-		ID: "env.var", Title: "Environment variable", Category: "Environment", Type: model.TypeText, Reveals: true,
+		ID: "env.var", Title: "Environment variable", Category: "Files & config", Type: model.TypeText, Reveals: true,
 		Description: "A system-wide variable, such as SPLUNK_HOME or JAVA_HOME. On Linux and AIX it is read after /etc/profile; on Windows from the machine environment.",
 		Param:       &Param{Kind: ParamEnvVar, Label: "Variable", Placeholder: "SPLUNK_HOME", Help: "Letters, digits and underscores."},
 		Variants: []Variant{

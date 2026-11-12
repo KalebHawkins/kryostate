@@ -180,6 +180,9 @@ type engineFiles struct {
 	// NoEvidence turns off keeping what each command printed. The repair
 	// path for a bad parse rule then requires contacting every host again.
 	NoEvidence bool
+	// SkipCollectors leaves the collectors file out, for a server that
+	// found it broken and runs on without it.
+	SkipCollectors bool
 }
 
 // resolved fills each file not named by a flag with the default file in the
@@ -225,7 +228,7 @@ func buildEngine(st *store.Store, f engineFiles, log *slog.Logger) (*engine.Engi
 	if err != nil {
 		return nil, err
 	}
-	if f.Collectors != "" {
+	if f.Collectors != "" && !f.SkipCollectors {
 		b, err := os.ReadFile(f.Collectors)
 		if err != nil {
 			return nil, err
@@ -258,6 +261,20 @@ func buildEngine(st *store.Store, f engineFiles, log *slog.Logger) (*engine.Engi
 	return eng, nil
 }
 
+// checkCollectorsFile reports whether a collectors file would load beside the
+// built-in specs.
+func checkCollectorsFile(path string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	specs, err := collect.BuiltinSpecs()
+	if err != nil {
+		return err
+	}
+	return specs.Merge(b)
+}
+
 func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	db := dbFlag(fs)
@@ -276,8 +293,20 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 		return err
 	}
 	defer st.Close()
-	eng, err := buildEngine(st, engineFiles{Rules: *rules, Collectors: *collectors,
-		Externals: *externals, NoEvidence: *noEvidence}, log)
+	// A broken collectors.json does not stop the server: the collectors page
+	// says what is wrong with it, which is where someone fixing it will look.
+	// Every other command still refuses to run with it.
+	files := engineFiles{Rules: *rules, Collectors: *collectors, Externals: *externals, NoEvidence: *noEvidence}.resolved()
+	collectorsErr := ""
+	if files.Collectors != "" {
+		if err := checkCollectorsFile(files.Collectors); err != nil {
+			collectorsErr = err.Error()
+			files.SkipCollectors = true
+			log.Error("collectors file not loaded; its collectors will not run until it is fixed and the server restarted",
+				"file", files.Collectors, "err", err)
+		}
+	}
+	eng, err := buildEngine(st, files, log)
 	if err != nil {
 		return err
 	}
@@ -288,11 +317,10 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	srv.StaleAfter = *stale
 	srv.TrustedOrigins = splitIDs(*trusted)
 	srv.AllowRevealing = *allowContent
-	files := engineFiles{Rules: *rules, Collectors: *collectors, Externals: *externals}.resolved()
 	srv.Config = web.ConfigFiles{Dir: dataDir, Collectors: files.Collectors,
-		Rules: files.Rules, Externals: files.Externals}
+		Rules: files.Rules, Externals: files.Externals, CollectorsErr: collectorsErr}
 	for _, p := range []string{files.Collectors, files.Rules, files.Externals} {
-		if p != "" {
+		if p != "" && (p != files.Collectors || collectorsErr == "") {
 			log.Info("loaded", "file", p)
 		}
 	}

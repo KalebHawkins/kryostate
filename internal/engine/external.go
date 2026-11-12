@@ -62,7 +62,7 @@ func LoadExternals(path string) ([]collect.External, error) {
 			return nil, fmt.Errorf("external %s has no path", e.Name)
 		}
 		seen[e.Name] = true
-		ex := collect.External{Name: e.Name, Path: e.Path, Args: e.Args, Env: e.Env}
+		ex := collect.External{Name: e.Name, Path: e.Path, Args: e.Args, Env: e.Env, Comment: e.Comment}
 		if e.Timeout != "" {
 			d, err := time.ParseDuration(e.Timeout)
 			if err != nil {
@@ -78,6 +78,16 @@ func LoadExternals(path string) ([]collect.External, error) {
 		out = append(out, ex)
 	}
 	return out, nil
+}
+
+// ExternalJSON writes one external program back out as an externals.json file
+// holding just that entry, in the form LoadExternals reads.
+func ExternalJSON(ex collect.External) ([]byte, error) {
+	e := externalEntry{Name: ex.Name, Path: ex.Path, Args: ex.Args, Env: ex.Env, Comment: ex.Comment}
+	if ex.Timeout > 0 {
+		e.Timeout = ex.Timeout.String()
+	}
+	return collect.PrettyJSON(externalFile{Version: 1, Externals: []externalEntry{e}})
 }
 
 // runExternals runs every configured program against every host in scope.

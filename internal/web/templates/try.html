@@ -1,5 +1,5 @@
 {{define "try.html"}}
-<p><a href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">← Collectors</a> · <a href="/hosts/{{.HostID}}" hx-get="/hosts/{{.HostID}}" hx-target="#main" hx-push-url="true">{{.Host}}</a></p>
+<p><a href="{{.Back}}" hx-get="{{.Back}}" hx-target="#main" hx-push-url="true">← {{if eq .Back "/collectors"}}Collectors{{else}}{{.Title}}{{end}}</a> · <a href="/hosts/{{.HostID}}" hx-get="/hosts/{{.HostID}}" hx-target="#main" hx-push-url="true">{{.Host}}</a></p>
 <h1>Test: {{.Title}}</h1>
 <p class="muted">On <a href="/hosts/{{.HostID}}">{{.Host}}</a>. Nothing was saved.</p>
 
