@@ -1306,3 +1306,26 @@ a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
 .os-tag { display: inline-block; padding: 0.0625rem var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); font-size: 0.875rem; }
 .cvariant { padding-top: var(--s-2); }
 .cvariant + .cvariant { border-top: 1px solid var(--hairline); padding-top: var(--s-3); }
+
+/* Schedules: one table, a header row per group of runs starting together. */
+.schedules tbody.sched-cluster { scroll-margin-top: calc(var(--nav-h) + var(--s-4)); }
+.schedules tr.sched-group > th {
+  padding-top: var(--s-4);
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+.schedules tr.sched-group .sched-cluster__when { margin-right: var(--s-2); }
+.schedules tr.sched-group .sched-cluster__meta,
+.schedules tr.sched-group .sched-cluster__in { font-weight: 400; margin-right: var(--s-2); }
+.schedules tr.sched-group .sched-storm { margin-top: var(--s-2); font-weight: 400; }
+.schedules tbody.sched-cluster:target tr.sched-group .sched-cluster__when { color: var(--accent-strong); }
+/* Long names wrap inside the overview's run list instead of spilling out. */
+.ov-next__what { overflow-wrap: anywhere; min-width: 0; }
+/* The test box inside the where-it-runs table stays narrow so the row fits. */
+td .hostpick { flex-wrap: wrap; }
+td .hostpick__input { width: 11rem; min-width: 0; }

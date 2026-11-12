@@ -18,55 +18,53 @@
   </div>
 </section>
 
-{{range .Clusters}}
-<section class="sched-cluster{{if .Storm}} sched-cluster--busy{{end}}" id="{{.ID}}" aria-labelledby="{{.ID}}-h">
-  <h2 class="sched-cluster__head" id="{{.ID}}-h">
-    <span class="sched-cluster__when">{{.When}}{{with .Until}}<span class="muted">–{{.}}</span>{{end}}</span>
-    <span class="sched-cluster__meta">{{.Summary}}</span>
-    <span class="sched-cluster__in muted">{{.In}}</span>
-  </h2>
-  {{if .Storm}}
-  <div class="sched-storm small">
-    <p><strong>Busy slot.</strong> About {{.Sessions}} sessions start here and take {{.Duration}} to work through. Spreading them out is gentler on the hosts.</p>
-    {{if ge (len .SpreadKeys) 2}}
-    <form method="post" action="/schedules/spread">
-      {{range .SpreadKeys}}<input type="hidden" name="collector" value="{{.}}">{{end}}
-      <input type="hidden" name="start" value="{{.SpreadStart}}">
-      <input type="hidden" name="over" value="{{.SpreadOver}}">
-      <button class="btn btn--small" type="submit">Spread these over {{.SpreadOver}}</button>
-      <span class="muted">from {{.SpreadStart}}{{if .Unmovable}}; {{.Unmovable}} that run more often than daily stay where they are{{end}}</span>
-    </form>
-    {{else}}
-    <p class="muted">Move one with <strong>Edit</strong> and <strong>Use a quiet time</strong>, or give it a longer interval.</p>
-    {{end}}
-  </div>
-  {{else if gt .Sessions 0}}<p class="sched-cluster__cost muted small">~{{.Sessions}} sessions, {{.Duration}}</p>{{end}}
-  <div class="table-wrap table-wrap--full">
-  <table class="schedules">
-    <thead><tr><th scope="col">Collector</th><th scope="col">Runs</th><th scope="col">Hosts</th><th scope="col">Last run</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
-    <tbody>
+{{if .Clusters}}
+<div class="table-wrap table-wrap--full">
+<table class="schedules">
+  <thead><tr><th scope="col">Collector</th><th scope="col">Runs</th><th scope="col" class="num">Hosts</th><th scope="col">Last run</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
+  {{range .Clusters}}
+  <tbody class="sched-cluster{{if .Storm}} sched-cluster--busy{{end}}" id="{{.ID}}">
+    <tr class="sched-group"><th scope="colgroup" colspan="5" id="{{.ID}}-h">
+      <span class="sched-cluster__when">{{.When}}{{with .Until}}<span class="muted">–{{.}}</span>{{end}}</span>
+      <span class="sched-cluster__meta">{{.Summary}}</span>
+      <span class="sched-cluster__in muted">{{.In}}{{if and (not .Storm) (gt (len .Rows) 1)}} · ~{{.Sessions}} sessions, {{.Duration}}{{end}}</span>
+      {{if .Storm}}
+      <div class="sched-storm small">
+        <p><strong>Busy slot.</strong> About {{.Sessions}} sessions start here and take {{.Duration}} to work through. Spreading them out is gentler on the hosts.</p>
+        {{if ge (len .SpreadKeys) 2}}
+        <form method="post" action="/schedules/spread">
+          {{range .SpreadKeys}}<input type="hidden" name="collector" value="{{.}}">{{end}}
+          <input type="hidden" name="start" value="{{.SpreadStart}}">
+          <input type="hidden" name="over" value="{{.SpreadOver}}">
+          <button class="btn btn--small" type="submit">Spread these over {{.SpreadOver}}</button>
+          <span class="muted">from {{.SpreadStart}}{{if .Unmovable}}; {{.Unmovable}} that run more often than daily stay where they are{{end}}</span>
+        </form>
+        {{else}}
+        <p class="muted">Move one with <strong>Edit</strong> and <strong>Use a quiet time</strong>, or give it a longer interval.</p>
+        {{end}}
+      </div>
+      {{end}}
+      {{with .Also}}<div class="muted small sched-also">Also running then: {{join . "; "}}.</div>{{end}}
+    </th></tr>
     {{range .Rows}}{{template "sched-row" .}}{{end}}
-    </tbody>
-  </table>
-  </div>
-  {{with .Also}}<p class="muted small sched-also">Also running then: {{join . "; "}}.</p>{{end}}
-</section>
+  </tbody>
+  {{end}}
+  {{with .Manual}}
+  <tbody class="sched-cluster" id="manual">
+    <tr class="sched-group"><th scope="colgroup" colspan="5"><span class="sched-cluster__when">Manual only</span> <span class="sched-cluster__meta">{{len .}} collector{{if ne (len .) 1}}s{{end}}</span></th></tr>
+    {{range .}}{{template "sched-row" .}}{{end}}
+  </tbody>
+  {{end}}
+</table>
+</div>
 {{else}}
 <p class="muted">Nothing is scheduled. Every collector runs only when asked.</p>
-{{end}}
-
 {{with .Manual}}
-<section class="sched-cluster" id="manual" aria-labelledby="h-manual">
-  <h2 class="sched-cluster__head" id="h-manual"><span class="sched-cluster__when">Manual only</span><span class="sched-cluster__meta">{{len .}} collector{{if ne (len .) 1}}s{{end}}</span></h2>
-  <div class="table-wrap table-wrap--full">
-  <table class="schedules">
-    <thead><tr><th scope="col">Collector</th><th scope="col">Runs</th><th scope="col">Hosts</th><th scope="col">Last run</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
-    <tbody>
-    {{range .}}{{template "sched-row" .}}{{end}}
-    </tbody>
-  </table>
-  </div>
-</section>
+<div class="table-wrap table-wrap--full"><table class="schedules">
+  <thead><tr><th scope="col">Collector</th><th scope="col">Runs</th><th scope="col" class="num">Hosts</th><th scope="col">Last run</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
+  <tbody>{{range .}}{{template "sched-row" .}}{{end}}</tbody>
+</table></div>
+{{end}}
 {{end}}
 <p class="muted small">The same from the command line: <span class="mono">kryostate collectors -schedules</span>, <span class="mono">kryostate collectors -schedule builtin.os -every 1d -at 02:00</span>, <span class="mono">-manual</span> or <span class="mono">-default</span>.</p>
 {{end}}
