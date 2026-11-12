@@ -105,6 +105,20 @@ export HEARSAY_DB=$HOME/hearsay/estate.db
 Your name is written to the audit trail. hearsay reads it from
 `HEARSAY_ACTOR`, then `USER`, then `USERNAME`.
 
+### Trying it without your own servers
+
+If you have Podman (or Docker with `docker` in place of `podman`), the repository
+has a lab: hearsay, an ssh-agent, and four small Linux hosts to collect from.
+
+```sh
+deploy/lab/lab.sh up      # hearsay is then on http://localhost:8099
+```
+
+Follow the tutorials below against it. Add the hosts `uf01`, `uf02`, `idx01`
+and `web01`, and use `hearsay` as the user. Or run `deploy/lab/lab.sh seed` to
+have everything set up for you, and look around. Run commands inside the
+container with `podman exec -i hearsay-lab hearsay <command>`.
+
 ## 4. Tutorial: add your first host
 
 This tutorial adds one Linux host, collects from it, and reads the result.
@@ -289,9 +303,15 @@ hearsay stack -name payments-prod -add web01 -role app
 
 ### Look at it
 
-The **Stacks** page shows each stack with its members and counts: collected,
-failed, never collected, and open disagreements. **Open in inventory** lists
+The **Stacks** page shows each stack with its members, each member's role, and
+counts: collected, failed, never collected, and open disagreements. **Collected
+here** lists what is read from the stack's hosts. **Open in inventory** lists
 the members with their values.
+
+To collect something more from just this stack, pick it under **Also collect
+on**, for example the **Splunk forwarder** group on your Splunk stack, and
+select **Switch on**. That only ever adds the stack: anything already
+collected on other hosts keeps running there.
 
 On the command line, `hearsay stack` lists the stacks and
 `hearsay hosts -stack payments-prod` lists the members.
@@ -314,7 +334,17 @@ Flags you leave out keep their current values.
 ### Importing stacks from a document
 
 If your inventory already has a stack column, the importer creates the stacks
-for you. Write a mapping file that says which column means what:
+for you:
+
+```sh
+hearsay import -name inventory.md inventory.md
+```
+
+hearsay reads the column headings and prints what it understood. It
+recognises common names: Host or Hostname, FQDN, Stack, Address or IP, Role,
+OS, Application, Version, Environment, Owner and Site. It names any column it
+left out. To import a column with another name, write a mapping file that says
+which column means what:
 
 ```json
 {
@@ -329,7 +359,7 @@ for you. Write a mapping file that says which column means what:
 }
 ```
 
-Then import the document:
+and pass it with `-map`:
 
 ```sh
 hearsay import -name inventory.md -map mapping.json inventory.md
@@ -352,13 +382,20 @@ The catalog has ready-made collectors for CPU cores, memory size, time zone,
 DNS servers, SELinux mode, the Splunk forwarder and Splunk Enterprise
 versions, Splunk's install location, and the versions of Java, Python,
 OpenSSL, nginx, Apache httpd and Docker. It also has fill-in-the-blank ones:
-**file exists**, **file contents**, **an environment variable**
-such as `SPLUNK_HOME`, and **an installed package's version**.
+**file exists**, **file contents**, **a setting in a config file** such as
+`serverName` in Splunk's `server.conf`, **an environment variable** such as
+`SPLUNK_HOME`, and **an installed package's version**.
 
-**In the web interface:** open **Collectors**. Find what you want, open
-**Switch on**, choose **All hosts** or only some stacks, and select **Switch
-on**. Then choose a host in the **Switched on** list and select **Test** to
-see what it reads. A test saves nothing.
+**Groups** switch on several at once: **Host basics** (CPU, memory, time zone,
+DNS), **Splunk forwarder**, **Splunk Enterprise**, **Language runtimes** and
+**Web servers**.
+
+**In the web interface:** open **Collectors**. Find a group or a collector,
+open **Switch on**, choose **All hosts** or only some stacks, and select
+**Switch on**. Then choose a host in the **Switched on** list and select
+**Test** to see what it reads. A test saves nothing. You can also test from a
+host's own page, under **Test a collector**, and switch things on for one
+stack from its card on the **Stacks** page.
 
 **On the command line:**
 
@@ -366,9 +403,17 @@ see what it reads. A test saves nothing.
 hearsay collectors -catalog
 hearsay collectors -try memory.total -host web01
 hearsay collectors -enable memory.total
-hearsay collectors -enable splunk.uf.version -stacks splunk-prod
+hearsay collectors -enable group.splunk.forwarder -stacks splunk-prod
 hearsay collectors -enable file.exists -param /etc/resolv.conf
+hearsay collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
+    -section general -key serverName
 ```
+
+The values come back on each host's page with readable names, such as
+**Splunk Universal Forwarder version** or **serverName in server.conf
+[general]**. A version is grouped by its first two numbers, so the charts put
+9.4.1 and 9.4.3 together. The full version is in the **Raw** column, and
+`hearsay show` prints it in brackets.
 
 ### Step 2: collect
 
@@ -454,11 +499,11 @@ hearsay restore -db new.db -in backup.json
 | Overview | Coverage counts and the newest disagreements | Start a collection |
 | Disagreements | One card for each disagreement | Decide each one |
 | Inventory | One row for each host | Add a host; choose columns; download CSV |
-| Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, stated values, retire and restore, chosen address |
-| Stacks | One card for each stack | Create, edit and delete stacks; add and remove members |
+| Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, stated values, retire and restore, chosen address; test any collector on it |
+| Stacks | One card for each stack, with roles and what is collected there | Create, edit and delete stacks; add and remove members; switch collectors on for one stack |
 | Charts | One chart for each attribute; each bar links to its hosts | |
 | Runs | The collection history | |
-| Collectors | Every collector that will run, and the catalog | Switch catalog collectors on and off, choose their stacks, test one on a host |
+| Collectors | Every collector that will run, the groups and the catalog | Switch catalog collectors and groups on and off, choose their stacks, test one on a host |
 | Guide | This document | |
 
 Every change is written to the audit log with the name of the person who
@@ -487,6 +532,19 @@ hearsay serve -trusted-origin https://cmdb.example.com
 
 **"no agent is listening"**: start ssh-agent and add your key. On Windows,
 start the "OpenSSH Authentication Agent" service.
+
+**"host key does not match the recorded key"**: the host presented a
+different key from the one hearsay pinned the first time. Either the host was
+rebuilt, or something is pretending to be it. hearsay will not connect until
+you decide. Compare the fingerprint in the message with the host's own (on
+the host: `ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub`). If they match,
+clear the old key, and the next collection pins the new one:
+
+```sh
+hearsay target -host web01 -forget-host-key
+```
+
+This is on the command line only, and is written to the audit log.
 
 **"matches 2 items"**: two hosts share that name. Use the fqdn or the id that
 the error lists.

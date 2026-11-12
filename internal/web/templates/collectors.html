@@ -11,7 +11,7 @@
     <tr>
       <td>{{.Title}}{{if .Reveals}} <span class="chip chip--unknown" title="Shows what is inside a file or variable">content</span>{{end}}</td>
       <td class="mono">{{.C.Attr}}</td>
-      <td>{{if .C.Stacks}}{{join .C.Stacks ", "}}{{range .Missing}} <span class="chip chip--bad" title="This stack no longer exists">{{.}} is gone</span>{{end}}{{else}}All hosts{{end}}</td>
+      <td class="nowrap">{{if .C.Stacks}}{{join .C.Stacks ", "}}{{range .Missing}} <span class="chip chip--bad" title="This stack no longer exists">{{.}} is gone</span>{{end}}{{else}}All hosts{{end}}</td>
       <td>{{template "try-form" dict "Hosts" $.Hosts "Name" "choice" "Value" .C.ID}}</td>
       <td><form method="post" action="/collectors/remove"><input type="hidden" name="id" value="{{.C.ID}}">
         <button class="btn btn--ghost btn--small" type="submit">Turn off</button></form></td>
@@ -22,6 +22,26 @@
 {{else}}
 <p class="muted">Nothing switched on yet. Choose from the catalog below.</p>
 {{end}}
+
+<h2 id="groups" style="margin-top:2rem">Groups</h2>
+<p class="muted">Switch on several related collectors at once. A group only adds: anything already on stays where it runs.</p>
+<div class="catalog">
+  {{range .Groups}}
+  <div class="card catalog__item" id="{{slug .ID}}">
+    <div class="catalog__head"><strong>{{.Title}}</strong></div>
+    <p class="muted">{{.Description}}</p>
+    <p class="muted small">{{join .Titles ", "}}</p>
+    <details class="disclosure">
+      <summary>Switch on</summary>
+      <form class="form" method="post" action="/collectors/group">
+        <input type="hidden" name="group" value="{{.ID}}">
+        {{template "where-fields" dict "Stacks" $.Stacks "Selected" nil "ID" .ID}}
+        <div class="form__actions"><button class="btn btn--primary" type="submit">Switch on {{.Title}}</button></div>
+      </form>
+    </details>
+  </div>
+  {{end}}
+</div>
 
 <h2 style="margin-top:2rem">Catalog</h2>
 <p class="muted">Ready-made collectors. Each runs a read-only command written into hearsay; a host without the program is simply left blank. Limit one to some stacks when it only makes sense there, such as the Splunk forwarder version on your Splunk hosts.</p>
@@ -38,8 +58,8 @@
     <p class="muted small">{{join .T.Systems ", "}}{{if .T.Fixed}} · recorded as <span class="mono">{{.T.Attr}}</span>{{end}}</p>
     {{if not .Allowed}}
       <p class="small">Shows what is inside files or variables, which may be secrets, so it is not switched on from this page. On the hearsay server, run:</p>
-      <pre><code>hearsay collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}</code></pre>
-      {{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.Param}}</span>{{end}}</p>{{end}}
+      <pre><code>hearsay collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}{{if .T.Param.Config}} -section {{.T.Param.SectionPlaceholder}} -key {{.T.Param.KeyPlaceholder}}{{end}}</code></pre>
+      {{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.ParamText}}</span>{{end}}</p>{{end}}
     {{else}}
     <details class="disclosure">
       <summary>{{if .T.Fixed}}{{if .On}}Change where it runs{{else}}Switch on{{end}}{{else}}Add one{{end}}</summary>
@@ -48,6 +68,14 @@
         {{with .T.Param}}
         <label>{{.Label}} <span class="hint">{{.Help}}</span>
           <input type="text" name="param" required class="mono" placeholder="{{.Placeholder}}"></label>
+        {{if .Config}}
+        <div class="form__row">
+          <label>Key <span class="hint">The name left of the =.</span>
+            <input type="text" name="key" required class="mono" placeholder="{{.KeyPlaceholder}}"></label>
+          <label>Section <span class="hint">Optional. The [name] the key sits under.</span>
+            <input type="text" name="section" class="mono" placeholder="{{.SectionPlaceholder}}"></label>
+        </div>
+        {{end}}
         <label>Record as <span class="hint">Optional. Blank picks a name from the value, such as {{defaultAttr $row.T .Placeholder}}.</span>
           <input type="text" name="attr" class="mono" placeholder="{{defaultAttr $row.T .Placeholder}}"></label>
         {{end}}
@@ -55,7 +83,7 @@
         <div class="form__actions"><button class="btn {{if not .On}}btn--primary{{end}}" type="submit">{{if and .T.Fixed .On}}Save{{else}}Switch on{{end}}</button></div>
       </form>
     </details>
-    {{if not .T.Fixed}}{{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.Param}}</span>{{end}}</p>{{end}}{{end}}
+    {{if not .T.Fixed}}{{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.ParamText}}</span>{{end}}</p>{{end}}{{end}}
     {{end}}
   </div>
   {{end}}

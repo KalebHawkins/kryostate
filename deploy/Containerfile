@@ -1,0 +1,28 @@
+# hearsay as a container image.
+#
+#   podman build -t hearsay -f deploy/Containerfile .
+#   podman run -d --name hearsay -p 8099:8099 -v hearsay-data:/data hearsay
+#
+# The database, and any collectors.json, rules.json or externals.json beside
+# it, live in the /data volume. The image has no shell and runs as a user with
+# no privileges; hearsay itself needs neither.
+
+FROM docker.io/library/golang:1.27 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/hearsay ./cmd/hearsay
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/hearsay /usr/local/bin/hearsay
+# Hold /data as the unprivileged user, so a fresh named volume is writable.
+COPY --from=build --chown=65532:65532 /tmp /data
+ENV HEARSAY_DB=/data/hearsay.db
+VOLUME /data
+EXPOSE 8099
+ENTRYPOINT ["/usr/local/bin/hearsay"]
+# Listen on every address inside the container; publish the port to choose
+# who can reach it. The page has no login, so publish it only to localhost or
+# behind a proxy that asks people to sign in.
+CMD ["serve", "-addr", "0.0.0.0:8099"]

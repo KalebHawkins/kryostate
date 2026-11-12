@@ -391,3 +391,22 @@ func (s *Store) stackHealth(ctx context.Context, stackID int64) (model.StackHeal
 func (s *Store) StackMembers(ctx context.Context, name string) ([]HostRow, error) {
 	return s.Hosts(ctx, HostFilter{Stack: name})
 }
+
+// StackRoles maps each member of a stack to the role it plays there.
+func (s *Store) StackRoles(ctx context.Context, name string) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT m.ci_id, m.role FROM stack_member m JOIN stack s ON s.id=m.stack_id WHERE s.name=?`, name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, role string
+		if err := rows.Scan(&id, &role); err != nil {
+			return nil, err
+		}
+		out[id] = role
+	}
+	return out, rows.Err()
+}

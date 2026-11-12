@@ -12,7 +12,8 @@ import (
 // than on someone's estate.
 func TestCatalogEntriesAreWellFormed(t *testing.T) {
 	seen := map[string]bool{}
-	params := map[ParamKind]string{ParamPath: "/etc/resolv.conf", ParamEnvVar: "SPLUNK_HOME", ParamPackage: "openssl"}
+	params := map[ParamKind]string{ParamPath: "/etc/resolv.conf", ParamEnvVar: "SPLUNK_HOME", ParamPackage: "openssl",
+		ParamConfig: "/opt/splunk/etc/system/local/server.conf#[general]serverName"}
 	for _, tpl := range Catalog {
 		if seen[tpl.ID] {
 			t.Errorf("duplicate catalog id %s", tpl.ID)
@@ -57,6 +58,8 @@ func TestTemplateValuesCannotBecomeCommands(t *testing.T) {
 		},
 		ParamEnvVar:  {"HOME;id", "A B", "$(id)", "1ABC", "X}", ""},
 		ParamPackage: {"openssl;id", "a'b", "-rf", "x$(id)", "*", "a/b"},
+		ParamConfig: {"/etc/x.conf", "/etc/x.conf#", "#key", "/etc/x.conf#k'ey", "/etc/x.conf#[a'b]key", "/etc/x.conf#[sec]$(id)",
+			"/etc/x.conf#[sec", "/etc/x;id#key", "/etc/x.conf#key;id", "/etc/x.conf#[a]b]c", "/etc/x.conf#k`id`", `/etc/x.conf#[\]k`},
 	}
 	for kind, vs := range bad {
 		for _, v := range vs {
@@ -69,6 +72,8 @@ func TestTemplateValuesCannotBecomeCommands(t *testing.T) {
 		ParamPath:    {"/etc/resolv.conf", `C:\Program Files (x86)\App\conf.xml`, "/opt/splunkforwarder/etc/system/local/outputs.conf"},
 		ParamEnvVar:  {"SPLUNK_HOME", "JAVA_HOME", "_X1"},
 		ParamPackage: {"openssl", "python3-libs", "Splunk Universal Forwarder", "bos.rte"},
+		ParamConfig: {"/opt/splunk/etc/system/local/server.conf#[general]serverName", "/etc/app.properties#db.port",
+			`C:\Program Files\SplunkUniversalForwarder\etc\system\local\inputs.conf#[default]host`, "/opt/splunk/etc/system/local/inputs.conf#[monitor:///var/log]index"},
 	}
 	for kind, vs := range good {
 		for _, v := range vs {

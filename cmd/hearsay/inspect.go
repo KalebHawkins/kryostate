@@ -316,9 +316,15 @@ func cmdShow(ctx context.Context, args []string) error {
 }
 
 // factValue prefers the normalised form and falls back to what the source
-// said, so a free-text attribute is shown rather than blanked.
+// said, so a free-text attribute is shown rather than blanked. When the
+// normalised form drops detail, such as a version kept as 9.4 for grouping
+// from 9.4.1, the original follows in brackets.
 func factValue(f model.Fact) string {
 	if f.Norm != "" {
+		raw := strings.TrimSpace(f.Raw)
+		if raw != "" && raw != f.Norm && len(raw) <= 40 && !strings.ContainsAny(raw, "\r\n") {
+			return f.Norm + " (" + raw + ")"
+		}
 		return f.Norm
 	}
 	return oneLine(f.Raw, 60)

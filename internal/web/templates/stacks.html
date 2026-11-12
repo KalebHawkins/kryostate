@@ -39,7 +39,9 @@
 
   <h3>Members</h3>
   <ul class="list">
+    {{$roles := .Roles}}
     {{range .Members}}<li class="mono"><a href="/hosts/{{.CI.ID}}" hx-get="/hosts/{{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.CI.Label}}</a>
+      {{with index $roles .CI.ID}}<span class="chip chip--role">{{.}}</span>{{end}}
       {{if not .HasCollected}}<span class="chip chip--unknown">never collected</span>{{else if not .CollectOK}}<span class="chip chip--bad">last run failed</span>{{end}}
       <form class="inline" method="post" action="/stacks/members/remove">
         <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="ci" value="{{.CI.ID}}"><input type="hidden" name="back" value="/stacks">
@@ -52,6 +54,23 @@
     <label>Host <input type="text" name="host" list="all-hosts" required placeholder="name or fqdn"></label>
     <label>Role <input type="text" name="role" placeholder="app, database…"></label>
     <button class="btn" type="submit">Add host</button>
+  </form>
+
+  <h3>Collected here</h3>
+  <p class="small">
+    {{if or .Collectors $.Everywhere}}
+    {{range $i, $c := .Collectors}}{{if $i}}, {{end}}{{$c.ShortLabel}}{{end}}{{if and .Collectors $.Everywhere}}, {{end}}{{range $i, $c := $.Everywhere}}{{if $i}}, {{end}}{{$c.ShortLabel}}{{end}}
+    {{else}}<span class="muted">Only what is always collected: operating system, kernel, hardware model and serial.</span>{{end}}
+  </p>
+  <form class="form form--inline" method="post" action="/stacks/collectors">
+    <input type="hidden" name="stack" value="{{$name}}">
+    <label>Also collect on {{$name}}
+      <select name="what">
+        <optgroup label="Groups">{{range $.Groups}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</optgroup>
+        <optgroup label="Single collectors">{{range $.Fixed}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</optgroup>
+      </select></label>
+    <button class="btn" type="submit">Switch on</button>
+    <a class="small" href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">Files, packages and more…</a>
   </form>
 
   <details class="disclosure">

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +86,7 @@ func (s *Server) catalogData(ctx context.Context) ([]catalogGroup, []choiceRow, 
 		}
 		on = append(on, r)
 	}
+	sort.SliceStable(on, func(i, j int) bool { return strings.ToLower(on[i].Title) < strings.ToLower(on[j].Title) })
 	return groups, on, stackNames, nil
 }
 
@@ -113,8 +115,16 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	param := field(r, "param")
+	if t.Param != nil && t.Param.Config() {
+		if field(r, "key") == "" {
+			refuse(w, r, back, errors.New("name the key to read, such as serverName"))
+			return
+		}
+		param = collect.ConfigParam(param, field(r, "section"), field(r, "key"))
+	}
 	c, err := s.Store.PutChoice(r.Context(), collect.Choice{
-		Template: t.ID, Param: field(r, "param"), Attr: field(r, "attr"), Stacks: stacks,
+		Template: t.ID, Param: param, Attr: field(r, "attr"), Stacks: stacks,
 	}, actorOf(r))
 	if err != nil {
 		refuse(w, r, back, err)
@@ -154,6 +164,7 @@ type tryData struct {
 	Err     string
 	Value   string
 	Problem string
+	Hint    string
 }
 
 // handleTry runs one collector against one host and shows the result, saving
@@ -166,6 +177,13 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 
 	var specs []collect.Spec
 	title := ""
+	// The host page offers both kinds in one list, as choice:ID or spec:ID.
+	if v := field(r, "collector"); v != "" {
+		kind, id, _ := strings.Cut(v, ":")
+		if kind == "choice" || kind == "spec" {
+			r.Form.Set(kind, id)
+		}
+	}
 	if v := field(r, "choice"); v != "" {
 		id, _ := strconv.ParseInt(v, 10, 64)
 		c, err := s.Store.Choice(ctx, id)
@@ -225,6 +243,7 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 		default:
 			d.Value = res.Reading.Value
 		}
+		d.Hint = collect.Explain(res.Reading)
 	}
 	s.audit(r, "try collector", ciID, title)
 	s.render(w, r, "try.html", "Test a collector", "collectors", d)
@@ -268,4 +287,117 @@ func (s *Server) bulkAdd(r *http.Request, stack string) (string, error) {
 	}
 	res.Problems = append(problems, res.Problems...)
 	return res.Summary(stack), nil
+}
+
+// fixedEntries lists the catalog entries that need no value, which are the
+// ones a single button can switch on.
+func fixedEntries() []collect.Template {
+	var out []collect.Template
+	for _, t := range collect.Catalog {
+		if t.Fixed() {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// enableFor switches on a group, or one fixed catalog entry, for the given
+// stacks (none meaning every host). It only widens where things run. It
+// returns a sentence for the flash message.
+func (s *Server) enableFor(r *http.Request, what string, stacks []string) (string, error) {
+	var ids []string
+	title := ""
+	if g, ok := collect.LookupGroup(what); ok {
+		ids, title = g.Entries, g.Title
+	} else if t, ok := collect.Lookup(what); ok && t.Fixed() {
+		ids, title = []string{t.ID}, t.Title
+	} else {
+		return "", errors.New("choose a group or a collector")
+	}
+	var on, already []string
+	for _, id := range ids {
+		c, changed, err := s.Store.EnableChoice(r.Context(), collect.Choice{Template: id, Stacks: stacks}, actorOf(r))
+		if err != nil {
+			return "", err
+		}
+		if changed {
+			on = append(on, c.Label())
+		} else {
+			already = append(already, c.Label())
+		}
+	}
+	where := "every host"
+	if len(stacks) > 0 {
+		where = strings.Join(stacks, ", ")
+	}
+	msg := title + ": "
+	switch {
+	case len(on) > 0 && len(already) > 0:
+		msg += strings.Join(on, ", ") + " now on for " + where + "; " + strings.Join(already, ", ") + " already covered it."
+	case len(on) > 0:
+		msg += "on for " + where + "."
+	default:
+		msg += "already on for " + where + ", nothing changed."
+	}
+	if len(on) > 0 {
+		msg += " Values arrive with the next collection."
+	}
+	return msg, nil
+}
+
+// handleChooseGroup switches on a group of catalog collectors from the
+// collectors page.
+func (s *Server) handleChooseGroup(w http.ResponseWriter, r *http.Request) {
+	back := "/collectors#groups"
+	if err := r.ParseForm(); err != nil {
+		refuse(w, r, back, err)
+		return
+	}
+	var stacks []string
+	if r.FormValue("where") == "stacks" {
+		stacks = r.Form["stack"]
+		if len(stacks) == 0 {
+			refuse(w, r, back, errors.New("choose at least one stack, or All hosts"))
+			return
+		}
+	}
+	msg, err := s.enableFor(r, field(r, "group"), stacks)
+	if err != nil {
+		refuse(w, r, back, err)
+		return
+	}
+	done(w, r, "/collectors#on", msg)
+}
+
+// handleStackCollectors switches a group or collector on for one stack, from
+// that stack's card.
+func (s *Server) handleStackCollectors(w http.ResponseWriter, r *http.Request) {
+	stack := field(r, "stack")
+	back := "/stacks#stack-" + slug(stack, map[string]int{})
+	if _, err := s.Store.StackID(r.Context(), stack); err != nil {
+		refuse(w, r, "/stacks", errors.New("no such stack"))
+		return
+	}
+	msg, err := s.enableFor(r, field(r, "what"), []string{stack})
+	if err != nil {
+		refuse(w, r, back, err)
+		return
+	}
+	done(w, r, back, msg)
+}
+
+// testOption is one entry in a host page's Test list.
+type testOption struct{ Value, Label, Group string }
+
+// attrTitles names the attributes catalog collectors record: the catalog's
+// own titles, and a short phrase for each switched-on template, such as
+// "serverName in server.conf [general]".
+func (s *Server) attrTitles(ctx context.Context) map[string]string {
+	out := collect.FixedTitles()
+	if choices, err := s.Store.Choices(ctx); err == nil {
+		for _, c := range choices {
+			out[c.Attr] = c.ShortLabel()
+		}
+	}
+	return out
 }

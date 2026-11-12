@@ -788,3 +788,15 @@ label.check { display: inline-flex; align-items: center; gap: var(--s-2); font-s
 td .form--inline { flex-wrap: nowrap; }
 .fact-full summary { cursor: pointer; }
 .fact-full pre { white-space: pre-wrap; margin: var(--s-2) 0 0; max-height: 20rem; overflow: auto; }
+
+/* A member's role in a stack: a label, not a status, so it stays quiet. */
+.chip--role {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--hairline);
+  font-family: inherit;
+  font-weight: 500;
+}
+.form--inline select { min-width: 12rem; }
+td .form--inline select { min-width: 0; max-width: 9rem; }
+.btn--small, .nowrap { white-space: nowrap; }

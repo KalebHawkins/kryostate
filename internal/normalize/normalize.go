@@ -136,7 +136,7 @@ func (n *Normalizer) Normalize(attr, raw string) (Result, bool) {
 			continue
 		}
 		res := Result{
-			Family: r.Family,
+			Family: tidy(string(r.re.ExpandString(nil, r.Family, raw, m))),
 			Major:  tidy(string(r.re.ExpandString(nil, r.Major, raw, m))),
 			Minor:  tidy(string(r.re.ExpandString(nil, r.Minor, raw, m))),
 			Patch:  tidy(string(r.re.ExpandString(nil, r.Patch, raw, m))),

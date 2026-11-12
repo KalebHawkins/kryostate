@@ -155,7 +155,11 @@ func AddHostsToStack(ctx context.Context, st *store.Store, stack string, hosts [
 
 // Summary is one sentence describing a result.
 func (r BulkResult) Summary(stack string) string {
-	s := fmt.Sprintf("%d hosts added to %s", r.Added, stack)
+	noun := "hosts"
+	if r.Added == 1 {
+		noun = "host"
+	}
+	s := fmt.Sprintf("%d %s added to %s", r.Added, noun, stack)
 	var extra []string
 	if r.Created > 0 {
 		extra = append(extra, fmt.Sprintf("%d of them new", r.Created))

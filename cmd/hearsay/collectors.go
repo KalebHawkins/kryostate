@@ -49,7 +49,16 @@ func cmdCollectors(ctx context.Context, args []string) error {
 	host := fs.String("host", "", "with -try: run the command on this host")
 	sample := fs.String("sample", "", "with -try: read command output from this file (- for standard input) instead of a host")
 	collectors := fs.String("collectors", "", "collector spec file, instead of "+defaultCollectorsFile+" next to the database")
+	key := fs.String("key", "", "with config.value: the key to read, such as serverName")
+	section := fs.String("section", "", "with config.value: only read the key inside this [section]")
 	fs.Parse(args)
+
+	// A config.value template takes its file, key and section as one value.
+	for _, ref := range []string{*enable, *disable, *try} {
+		if t, ok := collect.Lookup(ref); ok && t.Param != nil && t.Param.Config() && *key != "" {
+			*param = collect.ConfigParam(*param, *section, *key)
+		}
+	}
 
 	st, err := openStore(*db)
 	if err != nil {
@@ -80,6 +89,9 @@ func cmdCollectors(ctx context.Context, args []string) error {
 		return listCatalog(ctx, st)
 
 	case *enable != "":
+		if g, ok := collect.LookupGroup(*enable); ok {
+			return enableGroup(ctx, st, g, splitIDs(*stacks))
+		}
 		c, err := st.PutChoice(ctx, collect.Choice{Template: *enable, Param: *param, Attr: *attr,
 			Stacks: splitIDs(*stacks)}, actor())
 		if err != nil {
@@ -133,6 +145,34 @@ func paramFlag(p string) string {
 		return ""
 	}
 	return " -param '" + p + "'"
+}
+
+// enableGroup switches on every entry in a group. It only ever widens: an
+// entry already on for every host is left alone, and one limited to other
+// stacks gains these.
+func enableGroup(ctx context.Context, st *store.Store, g collect.Group, stacks []string) error {
+	where := "every host"
+	if len(stacks) > 0 {
+		where = "hosts in " + strings.Join(stacks, ", ")
+	}
+	fmt.Printf("%s, for %s:\n", g.Title, where)
+	for _, id := range g.Entries {
+		c, changed, err := st.EnableChoice(ctx, collect.Choice{Template: id, Stacks: stacks}, actor())
+		if err != nil {
+			return err
+		}
+		state := "on"
+		if !changed {
+			state = "already on"
+		}
+		runs := "every host"
+		if len(c.Stacks) > 0 {
+			runs = strings.Join(c.Stacks, ", ")
+		}
+		fmt.Printf("  %-40s %-11s runs on %s\n", c.Label(), state, runs)
+	}
+	fmt.Println("collect:     hearsay refresh")
+	return nil
 }
 
 // findChoice finds a switched-on catalog collector by its number, or by its
@@ -196,8 +236,13 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 	for _, c := range choices {
 		on[c.Template]++
 	}
-	category := ""
 	tw := newTable(os.Stdout)
+	fmt.Fprintf(tw, "GROUPS\t\t\t\n")
+	for _, g := range collect.Groups {
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", g.ID, g.Title, strings.Join(g.Entries, ", "))
+	}
+	fmt.Fprintln(tw, "\t\t\t")
+	category := ""
 	for _, t := range collect.Catalog {
 		if t.Category != category {
 			if category != "" {
@@ -216,6 +261,9 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 		name := t.ID
 		if !t.Fixed() {
 			name += " -param <" + strings.ToLower(t.Param.Label) + ">"
+			if t.Param.Config() {
+				name += " -key <key> [-section <section>]"
+			}
 		}
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", name, t.Title, strings.Join(t.Systems(), ","), status)
 	}
@@ -223,6 +271,8 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 		return err
 	}
 	fmt.Println("\nswitch one on:   hearsay collectors -enable cpu.cores")
+	fmt.Println("a whole group:   hearsay collectors -enable group.splunk.forwarder -stacks splunk-prod")
+	fmt.Println("a config value:  hearsay collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName")
 	fmt.Println("with a value:    hearsay collectors -enable file.exists -param /etc/resolv.conf")
 	fmt.Println("for some stacks: hearsay collectors -enable splunk.uf.version -stacks splunk-prod")
 	fmt.Println("try first:       hearsay collectors -try memory.total -host <name>")
@@ -382,7 +432,8 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 		output = res.Reading.Output
 		if res.Reading.Err != nil && !res.Reading.Ran {
 			fmt.Printf("\nRESULT     the command failed: %v\n\n", res.Reading.Err)
-			fmt.Println("What to check:")
+			fmt.Println(wrap(collect.Explain(res.Reading), 76))
+			fmt.Println("\nWhat to check:")
 			fmt.Println("  - Log in to the host as the same user and run the command by hand.")
 			fmt.Println("  - A \"not found\" error means the program is not installed or not on the PATH.")
 			fmt.Println("  - A program that prints to stderr needs 2>&1 at the end of the command.")
@@ -454,4 +505,22 @@ func parseKindOf(s collect.Spec) string {
 		return string(collect.ParseFirstLine)
 	}
 	return string(s.Parse.Kind)
+}
+
+// wrap breaks text into lines of at most width characters, at spaces.
+func wrap(text string, width int) string {
+	var b strings.Builder
+	n := 0
+	for _, w := range strings.Fields(text) {
+		if n > 0 && n+1+len(w) > width {
+			b.WriteByte('\n')
+			n = 0
+		} else if n > 0 {
+			b.WriteByte(' ')
+			n++
+		}
+		b.WriteString(w)
+		n += len(w)
+	}
+	return b.String()
 }

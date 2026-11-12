@@ -204,17 +204,26 @@ func withLine(b []byte, err error) error {
 	return fmt.Errorf("line %d, column %d: %w", line, col, err)
 }
 
-func firstWord(s string) string {
-	if i := strings.IndexByte(s, ' '); i > 0 {
-		return s[:i]
-	}
-	return s
-}
-
 func truncate(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if len(s) <= n {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// firstWord names the program a command runs, for error messages. It skips
+// a leading PATH=...; setup and variable assignments, so a failure reads
+// "getenforce exited 127" rather than naming the setup.
+func firstWord(s string) string {
+	if i := strings.LastIndex(s, "; "); i >= 0 && strings.HasPrefix(s, "PATH=") {
+		s = s[i+2:]
+	}
+	for _, w := range strings.Fields(s) {
+		if strings.Contains(w, "=") && !strings.HasPrefix(w, "-") {
+			continue
+		}
+		return w
+	}
+	return s
 }

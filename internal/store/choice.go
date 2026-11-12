@@ -89,6 +89,46 @@ func (s *Store) Choice(ctx context.Context, id int64) (collect.Choice, error) {
 	return collect.Choice{}, sql.ErrNoRows
 }
 
+// EnableChoice switches a catalog collector on for some more hosts without
+// taking it away from any. It differs from PutChoice, which sets where a
+// collector runs: here a collector already on for every host stays on for
+// every host, and one limited to stacks gains the new stacks. No stacks
+// means every host. It reports whether anything changed.
+func (s *Store) EnableChoice(ctx context.Context, c collect.Choice, by string) (collect.Choice, bool, error) {
+	cs, err := s.Choices(ctx)
+	if err != nil {
+		return c, false, err
+	}
+	param := strings.TrimSpace(c.Param)
+	if t, ok := collect.Lookup(c.Template); ok && t.Fixed() {
+		param = ""
+	}
+	for _, have := range cs {
+		if have.Template != c.Template || have.Param != param {
+			continue
+		}
+		if len(have.Stacks) == 0 {
+			return have, false, nil
+		}
+		if len(c.Stacks) == 0 {
+			have.Stacks = nil
+		} else {
+			merged := cleanList(append(append([]string{}, have.Stacks...), c.Stacks...))
+			if len(merged) == len(have.Stacks) {
+				return have, false, nil
+			}
+			have.Stacks = merged
+		}
+		if c.Attr != "" {
+			have.Attr = c.Attr
+		}
+		out, err := s.PutChoice(ctx, have, by)
+		return out, err == nil, err
+	}
+	out, err := s.PutChoice(ctx, c, by)
+	return out, err == nil, err
+}
+
 // DeleteChoice switches a catalog collector off. Values it already collected
 // stay in the history.
 func (s *Store) DeleteChoice(ctx context.Context, id int64, by string) error {

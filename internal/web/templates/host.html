@@ -19,7 +19,7 @@
   {{$free := .FreeText}}
   {{range .Facts}}
     <tr>
-      <th scope="row">{{label .Attr}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</th>
+      <th scope="row" title="{{.Attr}}">{{with index $.Labels .Attr}}{{.}}{{else}}{{label .Attr}}{{end}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</th>
       <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{template "long-value" .Raw}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
         {{if .Contested}}<span class="chip chip--contested">disagrees</span>{{end}}</td>
       <td class="mono muted">{{template "long-value" .Raw}}</td>
@@ -122,6 +122,24 @@
     {{end}}
     {{end}}
   </div>
+
+  {{if and .Profiles .Testable}}
+  <div class="card" id="test">
+    <h2>Test a collector</h2>
+    <p class="muted">Run one collector on this host now and see what it would record. Nothing is saved.</p>
+    <form class="form" method="post" action="/collectors/try">
+      <input type="hidden" name="host" value="{{.CI.ID}}">
+      <label>Collector
+        <select name="collector">
+          {{$group := ""}}
+          {{range .Testable}}{{if ne .Group $group}}{{if $group}}</optgroup>{{end}}<optgroup label="{{.Group}}">{{$group = .Group}}{{end}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+          {{if $group}}</optgroup>{{end}}
+        </select></label>
+      <div class="form__actions"><button class="btn" type="submit">Test</button>
+        <a class="small" href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">Choose more collectors…</a></div>
+    </form>
+  </div>
+  {{end}}
 
   <div class="card" id="stacks">
     <h2>Stacks</h2>

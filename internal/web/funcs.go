@@ -106,10 +106,14 @@ func seg(n, total int) template.CSS {
 	return template.CSS(fmt.Sprintf("flex:%d 0 0", n))
 }
 
-// attrLabel turns a namespaced attribute into something readable without a
+// attrLabel names an attribute for a heading. A catalog entry has its own
+// title; anything else is turned into something readable without a
 // lookup table, so an attribute invented by an operator's own collector gets a
 // sensible heading the first time it appears.
 func attrLabel(attr string) string {
+	if t, ok := fixedTitles[attr]; ok {
+		return t
+	}
 	s := strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(attr)
 	parts := strings.Fields(s)
 	for i, p := range parts {
@@ -164,3 +168,7 @@ func dict(kv ...any) map[string]any {
 	}
 	return m
 }
+
+// fixedTitles are the catalog's own names for the attributes its fixed
+// entries record.
+var fixedTitles = collect.FixedTitles()

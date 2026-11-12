@@ -17,9 +17,11 @@ Start with the catalog.
 ## The catalog
 
 The catalog is a list of ready-made collectors built into hearsay. Each one
-runs a read-only command that has already been written and tested for Linux,
-AIX and Windows. A host that does not have the program is left blank, not
-counted as a failure.
+runs a read-only command that has already been written for you. The Linux
+commands have been run on real Debian and AlmaLinux hosts. The AIX and
+Windows commands are checked against recorded output, so test them on one of
+your hosts before relying on them. A host that does not have the program is
+left blank, not counted as a failure.
 
 | Collector | Records | Systems |
 |---|---|---|
@@ -35,10 +37,28 @@ counted as a failure.
 | Installed package version, for a package you name | `pkg.<name>.version` | Linux, AIX, Windows |
 | File exists, for a path you give | `file.<name>.exists` | Linux, AIX, Windows |
 | File contents, for a path you give | `file.<name>.contents` | Linux, AIX, Windows |
+| Setting in a config file, for a file, key and optional section you give | `conf.<file>.<section>.<key>` | Linux, AIX, Windows |
 | Environment variable, for a name you give | `env.<name>` | Linux, AIX, Windows |
 
 hearsay deliberately has no collectors for CPU or memory **usage**. Those
 change by the second, which is the job of a monitoring system.
+
+### Groups
+
+A group switches on several related collectors in one step.
+
+| Group | Switches on |
+|---|---|
+| Host basics (`group.basics`) | CPU cores, memory total, time zone, DNS servers |
+| Splunk forwarder (`group.splunk.forwarder`) | Universal Forwarder version, Splunk home |
+| Splunk Enterprise (`group.splunk.enterprise`) | Splunk Enterprise version, Splunk home |
+| Language runtimes (`group.runtimes`) | Java, Python and OpenSSL versions |
+| Web servers (`group.web`) | nginx and Apache httpd versions |
+
+A group only adds. If CPU cores already runs on every host, switching on Host
+basics for one stack leaves it running on every host. If the Splunk
+forwarder group already runs on one stack, switching it on for a second stack
+runs it on both.
 
 ### Switching one on in the web interface
 
@@ -51,6 +71,11 @@ change by the second, which is the job of a monitoring system.
 4. Select **Switch on**.
 5. In the **Switched on** list, choose a host and select **Test** to see what
    it reads. Nothing is saved by a test.
+
+Two shortcuts do the same thing from elsewhere. On the **Stacks** page, each
+stack's card has **Also collect on**, which switches a group or a collector on
+for that stack. On a host's page, **Test a collector** runs any switched-on
+collector on that host.
 
 It is collected from the next collection: **Overview**, then **Collect now**.
 The value appears on each host's page, and you can show it as a column on the
@@ -65,6 +90,9 @@ hearsay collectors -enable memory.total                      # switch it on ever
 hearsay collectors -enable splunk.uf.version -stacks splunk-prod
 hearsay collectors -enable file.exists -param /etc/resolv.conf
 hearsay collectors -enable env.var -param SPLUNK_HOME
+hearsay collectors -enable group.splunk.forwarder -stacks splunk-prod
+hearsay collectors -enable config.value \
+    -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName
 hearsay collectors                                           # what is switched on
 hearsay collectors -disable 3                                # by its number in that list
 ```
@@ -73,10 +101,31 @@ For a collector that takes a value, hearsay picks the name it is recorded
 under, such as `file.resolv_conf.exists`. Choose your own with `-attr`, or in
 the **Record as** box on the web page.
 
-### File contents and environment variables
+### A setting in a config file
 
-**File contents** and **Environment variable** show what is inside
-something on the host, which may be a password or a key. They can always be
+**Setting in a config file** reads one `key = value` line from an `.ini`,
+`.conf` or `.properties` file. You give three things:
+
+| Field | Example | Meaning |
+|---|---|---|
+| File | `/opt/splunkforwarder/etc/system/local/server.conf` | The full path |
+| Key | `serverName` | The name to the left of the `=` |
+| Section | `general` | Optional. Only read the key inside `[general]` |
+
+Without a section, the first matching key anywhere in the file is used.
+Spaces around the `=` do not matter. Lines starting with `#` or `;` are
+comments and are never matched. A host without the file, or a file without
+the key, is left blank.
+
+For Splunk, useful ones are `serverName` in `server.conf` under `[general]`,
+`host` in `inputs.conf` under `[default]`, and `server` in `outputs.conf`
+under `[tcpout:default-autolb-group]` (the indexers a forwarder sends to).
+
+### File contents, config settings and environment variables
+
+**File contents**, **Setting in a config file** and **Environment variable**
+show what is inside something on the host, which may be a password or a key.
+A Splunk `server.conf`, for example, also holds `pass4SymmKey`. They can always be
 switched on from the command line. The web page offers them only if hearsay
 was started with:
 

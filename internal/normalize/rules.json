@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "rules": [
     {
       "id": "aix-oslevel-s",
@@ -40,6 +40,24 @@
       "major": "${major}",
       "minor": "${minor}",
       "value": "RHEL ${major}.${minor}"
+    },
+    {
+      "id": "el-rebuild-pretty",
+      "attr": "os.version",
+      "comment": "Rebuilds of Red Hat Enterprise Linux name themselves and keep its numbering: AlmaLinux 9.8 (Olive Jaguar), Rocky Linux 9.4 (Blue Onyx), Oracle Linux Server 8.10.",
+      "pattern": "^(?P<name>AlmaLinux|Rocky Linux|Oracle Linux)(?: Server)?(?: release)? (?P<major>[0-9]+)\\.(?P<minor>[0-9]+).*$",
+      "family": "${name}",
+      "major": "${major}",
+      "minor": "${minor}",
+      "value": "${name} ${major}.${minor}"
+    },
+    {
+      "id": "centos-pretty",
+      "attr": "os.version",
+      "pattern": "^CentOS (?P<kind>Linux|Stream)(?: release)? (?P<major>[0-9]+).*$",
+      "family": "CentOS",
+      "major": "${major}",
+      "value": "CentOS ${kind} ${major}"
     },
     {
       "id": "sles-pretty",

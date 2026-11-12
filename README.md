@@ -152,6 +152,44 @@ The SQLite driver is pure Go, so cgo is not necessary. The HTML templates, the
 CSS and the JavaScript are compiled into the binary. The binary needs no
 network access to serve its own interface.
 
+### 4.1 Podman or Docker
+
+`deploy/Containerfile` builds a small image with no shell, running as an
+unprivileged user. The database, and any `collectors.json`, `rules.json` or
+`externals.json` placed beside it, live in the `/data` volume.
+
+```sh
+podman build -t hearsay -f deploy/Containerfile .
+podman run -d --name hearsay -p 127.0.0.1:8099:8099 -v hearsay-data:/data hearsay
+podman exec hearsay hearsay hosts        # the command line, inside the container
+```
+
+The page has no login, so publish the port to `127.0.0.1` or put it behind a
+proxy that asks people to sign in.
+
+To collect, the container needs an ssh-agent to sign with. ssh-agent answers
+only the user it runs as, and the image runs as uid 65532, so an agent on the
+host is not usable as it stands. The lab below shows one arrangement that
+works: an agent in its own container, running as uid 65532, sharing only its
+socket through a volume (`deploy/lab/agent.Containerfile`).
+
+### 4.2 A lab to try it on
+
+`deploy/lab/lab.sh` starts hearsay with four real Linux hosts to collect from:
+two pretend Splunk forwarders (Debian and AlmaLinux), a pretend indexer and an
+nginx host, plus an ssh-agent holding a key made for the lab. "Pretend" means
+the files and process the catalog reads are there; no Splunk is installed.
+
+```sh
+deploy/lab/lab.sh up      # build and start; hearsay is on http://localhost:8099
+deploy/lab/lab.sh seed    # add the hosts as stacks, import a document, collect
+deploy/lab/lab.sh down    # stop (keeps data); reset also deletes it
+```
+
+The seeded lab has a hand-written inventory (`deploy/lab/inventory.md`) that is
+wrong about two hosts and lists one that was never built, so the overview opens
+on real disagreements. The screens in section 8 are of this lab.
+
 ## 5. Operation
 
 ### 5.1 Quick start
@@ -164,8 +202,9 @@ network access to serve its own interface.
 #    the credential defaults to agent:.
 ./hearsay target -host appnode1 -user svc-ro
 
-# 3. Or import a document you already have.
-./hearsay import -name inventory.md -map ./mapping.json inventory.md
+# 3. Or import a document you already have. Columns named Host, OS, Role,
+#    Stack, Environment, Owner and the like are recognised; -map names others.
+./hearsay import -name inventory.md inventory.md
 
 # 4. Define a health check.
 ./hearsay check -host appnode1 -name https \
@@ -199,9 +238,9 @@ one command.
 | `refresh` | Runs `collect`, then the checks, then `detect` |
 | `set` | Records a value that you state, with `-reason`, as a human claim |
 | `collectors` | Lists collectors and the catalog (`-catalog`), switches catalog collectors on and off (`-enable`, `-disable`), creates a file for your own (`-init`), and tests any collector without saving (`-try`) |
-| `import` | Reads a Markdown or CSV document and records its claims |
+| `import` | Reads a Markdown or CSV document and records its claims. Common column names are recognised; `-map` names the rest |
 | `host` | Adds a host. `-retire` marks one gone and keeps its history |
-| `target` | Adds or lists a connection profile |
+| `target` | Adds or lists a connection profile. `-forget-host-key` clears a pinned key after a host is rebuilt |
 | `stack` | Defines a stack, and adds or removes members, singly or from a list with roles (`-file`, `-create`, `-user`). Lists stacks with no `-name` |
 | `secret` | Manages credential references |
 | `collect` | Connects to each enabled target and records what it reports |
@@ -219,22 +258,32 @@ one command.
 A catalog of ready-made collectors is compiled in: CPU cores, memory size,
 time zone, DNS servers, SELinux mode, Splunk forwarder and Enterprise
 versions and install location, Java, Python, OpenSSL, nginx, httpd and Docker
-versions, and templates for a file's existence, a file's contents, an
-environment variable, and an installed package's version. Switch them on in
-the web interface on the Collectors page, or:
+versions, and templates for a file's existence, a file's contents, one
+setting in a config file, an environment variable, and an installed package's
+version. Groups switch several on together: host basics, Splunk forwarder,
+Splunk Enterprise, language runtimes, web servers. Switch them on in the web
+interface on the Collectors page or from a stack's card, or:
 
 ```sh
 ./hearsay collectors -catalog
 ./hearsay collectors -enable memory.total
-./hearsay collectors -enable splunk.uf.version -stacks splunk-prod
+./hearsay collectors -enable group.splunk.forwarder -stacks splunk-prod
 ./hearsay collectors -enable file.exists -param /etc/resolv.conf
+./hearsay collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
+    -section general -key serverName
 ```
 
-A choice can be limited to some stacks. Choices are stored in the database
-and take effect at the next collection. The web interface offers the
-templates that reveal content (file contents, environment variables) only
-when `serve` is started with `-allow-content-collectors`. A template's value
-is checked against a narrow pattern and single-quoted in the command.
+A choice can be limited to some stacks. A group only widens where its
+collectors run; it never takes one away from hosts it already covers. Choices
+are stored in the database and take effect at the next collection. The web
+interface offers the templates that reveal content (file contents, config
+settings, environment variables) only when `serve` is started with
+`-allow-content-collectors`. A template's values are checked against narrow
+patterns and single-quoted in the command.
+
+Every catalog collector has been run against the lab in section 4.2 on Debian
+12 and AlmaLinux 9. The AIX and Windows variants are checked against recorded
+output only.
 
 ### 5.4 Custom collectors
 
@@ -339,7 +388,7 @@ Go. Each bar links to the hosts that it counts.
 The URL holds the filter state. Two people who open the same URL see the same
 view.
 
-The screens below show invented data.
+The screens below are of the lab in section 4.2, after `lab.sh seed`.
 
 The overview shows coverage counted from probes and collector runs, a button
 that starts a collection, and the open disagreements.
@@ -367,18 +416,32 @@ close to one value per host are listed instead of charted.
 
 ![Charts](docs/images/charts.png)
 
-The stacks page shows one card for each stack, with its collection coverage and
-its open disagreements. A host that serves two stacks appears in both.
+The stacks page shows one card for each stack, with its collection coverage,
+its open disagreements, each member's role, and what is collected there. A
+host that serves two stacks appears in both. A new stack takes a pasted list
+of hosts and roles; a card switches a collector or a group on for that stack.
 
 ![Stacks](docs/images/stacks.png)
 
 The host page shows the value that currently wins for each attribute, with the
 raw string, the source, and the time of observation. Where sources disagree,
-every claim is listed. Reachability, identity evidence, addresses and
-connection details are separate cards. A form records a value that you state,
-with a reason.
+every claim is listed. Reachability, identity evidence and addresses are
+separate cards. Below them, the host's connection, its stacks and its checks
+can be changed, and any collector can be tested on it without saving.
 
 ![Host](docs/images/host.png)
+
+The collectors page lists what is switched on, with a Test button for each,
+then the groups and the catalog. Collectors written by hand are listed from
+their file and can be tested from here, but not written here: the page has no
+login, and a collector is a command that runs on every host.
+
+![Collectors](docs/images/collectors.png)
+
+The user guide and the collector guide are served at `/guide` and
+`/guide/collectors`.
+
+![Guide](docs/images/guide.png)
 
 ## 9. Verification
 

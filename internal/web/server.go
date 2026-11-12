@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KalebHawkins/hearsay/internal/collect"
 	"github.com/KalebHawkins/hearsay/internal/engine"
 	"github.com/KalebHawkins/hearsay/internal/model"
 	"github.com/KalebHawkins/hearsay/internal/store"
@@ -116,6 +117,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /collectors/remove", s.handleUnchoose)
 	mux.HandleFunc("POST /collectors/try", s.handleTry)
 	mux.HandleFunc("POST /stacks/hosts", s.handleBulkHosts)
+	mux.HandleFunc("POST /stacks/collectors", s.handleStackCollectors)
+	mux.HandleFunc("POST /collectors/group", s.handleChooseGroup)
 	mux.HandleFunc("GET /runs", s.handleRuns)
 	mux.HandleFunc("GET /guide", s.handleGuide)
 	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)
@@ -359,6 +362,11 @@ type hostData struct {
 	// FreeText names the attributes no rule was ever written for, so that the
 	// value column shows what the source said instead of calling it unparsed.
 	FreeText map[string]bool
+	// Testable lists the collectors the Test form on this page offers.
+	Testable []testOption
+	// Labels name the attributes recorded by switched-on catalog templates,
+	// such as "openssl package version" for pkg.openssl.version.
+	Labels map[string]string
 }
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
@@ -427,6 +435,21 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 			d.SSHLocked = true
 		}
 	}
+	d.Labels = s.attrTitles(ctx)
+	if choices, err := s.Store.Choices(ctx); err == nil {
+		for _, c := range choices {
+			d.Testable = append(d.Testable, testOption{Value: "choice:" + strconv.FormatInt(c.ID, 10), Label: c.Label(), Group: "Switched on"})
+		}
+	}
+	if s.Engine != nil && s.Engine.Specs != nil {
+		seen := map[string]bool{}
+		for _, sp := range s.Engine.Specs.Specs {
+			if !seen[sp.ID] {
+				seen[sp.ID] = true
+				d.Testable = append(d.Testable, testOption{Value: "spec:" + sp.ID, Label: sp.ID + " (" + sp.Attr + ")", Group: "Always collected and your own"})
+			}
+		}
+	}
 	s.render(w, r, "host.html", ci.Label, "hosts", d)
 }
 
@@ -437,8 +460,21 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type stackWithMembers struct {
-		View    store.StackView
-		Members []store.HostRow
+		View       store.StackView
+		Members    []store.HostRow
+		Roles      map[string]string
+		Collectors []collect.Choice // catalog collectors limited to this stack
+	}
+	choices, err := s.Store.Choices(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	var everywhere []collect.Choice
+	for _, c := range choices {
+		if len(c.Stacks) == 0 {
+			everywhere = append(everywhere, c)
+		}
 	}
 	out := make([]stackWithMembers, 0, len(views))
 	for _, v := range views {
@@ -447,7 +483,20 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
-		out = append(out, stackWithMembers{View: v, Members: m})
+		roles, err := s.Store.StackRoles(r.Context(), v.Stack.Name)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		row := stackWithMembers{View: v, Members: m, Roles: roles}
+		for _, c := range choices {
+			for _, name := range c.Stacks {
+				if name == v.Stack.Name {
+					row.Collectors = append(row.Collectors, c)
+				}
+			}
+		}
+		out = append(out, row)
 	}
 	hosts, err := s.Store.Hosts(r.Context(), store.HostFilter{})
 	if err != nil {
@@ -459,9 +508,12 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 		names = append(names, h.CI.Label)
 	}
 	s.render(w, r, "stacks.html", "Stacks", "stacks", struct {
-		Stacks    []stackWithMembers
-		HostNames []string
-	}{out, names})
+		Stacks     []stackWithMembers
+		HostNames  []string
+		Everywhere []collect.Choice // catalog collectors on for every host
+		Groups     []collect.Group
+		Fixed      []collect.Template // catalog entries that need no value
+	}{out, names, everywhere, collect.Groups, fixedEntries()})
 }
 
 func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
@@ -471,6 +523,7 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	titles := s.attrTitles(ctx)
 	type chartsData struct {
 		Charts  []Chart
 		Skipped []store.AttrInfo
@@ -491,6 +544,9 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		title := a.Label
+		if title == "" {
+			title = titles[a.Attr]
+		}
 		if title == "" {
 			title = a.Attr
 		}

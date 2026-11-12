@@ -199,22 +199,19 @@ func (s *Store) seedPolicy(ctx context.Context) error {
 
 // SourceID returns the id of a source, creating it if new.
 func (s *Store) SourceID(ctx context.Context, kind model.SourceKind, name string) (int64, error) {
+	// INSERT OR IGNORE then SELECT, rather than SELECT then INSERT: hosts are
+	// collected in parallel, and on a new database every worker finds the
+	// source missing at once. Only one insert can win; the others must read
+	// its row rather than fail the host on a UNIQUE constraint.
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO source (kind, name, created_at) VALUES (?,?,?)`,
+		string(kind), name, ts(time.Now())); err != nil {
+		return 0, err
+	}
 	var id int64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id FROM source WHERE kind=? AND name=?`, string(kind), name).Scan(&id)
-	if err == nil {
-		return id, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
-	}
-	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO source (kind, name, created_at) VALUES (?,?,?)`,
-		string(kind), name, ts(time.Now()))
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
+	return id, err
 }
 
 // ErrAmbiguousIdentity is returned when identity evidence matches more than

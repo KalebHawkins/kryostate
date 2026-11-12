@@ -31,6 +31,11 @@ const (
 	ParamPath    ParamKind = "path"
 	ParamEnvVar  ParamKind = "envvar"
 	ParamPackage ParamKind = "package"
+	// ParamConfig is a file, a key, and optionally the [section] the key is
+	// in. It is stored as one value, PATH#KEY or PATH#[SECTION]KEY, which
+	// ConfigParam builds and SplitConfigParam takes apart. # cannot appear in
+	// a path hearsay accepts, so the split is unambiguous.
+	ParamConfig ParamKind = "config"
 )
 
 // Param describes the one value a template needs.
@@ -39,7 +44,13 @@ type Param struct {
 	Label       string
 	Placeholder string
 	Help        string
+	// For ParamConfig, examples for the key and section fields.
+	KeyPlaceholder     string
+	SectionPlaceholder string
 }
+
+// Config reports whether the value is a file, key and section.
+func (p Param) Config() bool { return p.Kind == ParamConfig }
 
 // Variant is how one entry is read on some operating systems. The command may
 // contain {{param}}, which is replaced by the quoted value.
@@ -95,6 +106,27 @@ func kv(k string) Parse { return Parse{Kind: ParseKV, Key: k} }
 func first() Parse      { return Parse{Kind: ParseFirstLine} }
 func everything() Parse { return Parse{Kind: ParseAll} }
 
+// sbin puts the system program folders on the PATH. A login that is not root
+// on Debian and its relatives has neither /usr/sbin nor /sbin, which is where
+// nginx, getenforce and AIX's lsdev live.
+func sbin(cmd string) string { return `PATH="$PATH:/usr/sbin:/sbin"; ` + cmd }
+
+// configAwk prints the value of one key = value line, the first one found,
+// optionally only within a [section]. It exits 1 when the key is not there,
+// so a missing key reads as "nothing found" rather than as an empty value.
+const configAwk = `awk -v s={{section}} -v k={{key}} '` +
+	`/^[ \t]*\[.*\][ \t\r]*$/ { sec = $0; sub(/^[ \t]*\[/, "", sec); sub(/\][ \t\r]*$/, "", sec); next } ` +
+	`{ i = index($0, "="); if (i < 2) next; n = substr($0, 1, i - 1); gsub(/^[ \t]+|[ \t]+$/, "", n); ` +
+	`if (n == k && (s == "" || sec == s)) { v = substr($0, i + 1); gsub(/^[ \t]+|[ \t\r]+$/, "", v); print v; found = 1; exit } } ` +
+	`END { if (!found) exit 1 }' {{path}}`
+
+const configPowerShell = `$s = {{section}}; $k = {{key}}; $sec = ''; $found = $false; ` +
+	`foreach ($l in Get-Content -LiteralPath {{path}}) { ` +
+	`if ($l -match '^\s*\[(.*)\]\s*$') { $sec = $Matches[1]; continue }; ` +
+	`$i = $l.IndexOf('='); if ($i -lt 1) { continue }; ` +
+	`if ($l.Substring(0, $i).Trim() -eq $k -and ($s -eq '' -or $sec -eq $s)) { $l.Substring($i + 1).Trim(); $found = $true; break } }; ` +
+	`if (-not $found) { exit 1 }`
+
 // Catalog is every entry, in the order they are offered.
 var Catalog = []Template{
 	// ---- hardware ----
@@ -103,7 +135,7 @@ var Catalog = []Template{
 		Description: "Logical processors the operating system can use.",
 		Variants: []Variant{
 			{Name: "linux", OS: linux, Command: "getconf _NPROCESSORS_ONLN", Parse: first()},
-			{Name: "aix", OS: []string{"aix"}, Command: "lsdev -Cc processor -S Available | wc -l", Parse: first()},
+			{Name: "aix", OS: []string{"aix"}, Command: sbin("lsdev -Cc processor -S Available | wc -l"), Parse: first()},
 			{Name: "windows", OS: windows, Command: "(Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors", Parse: first()},
 		},
 	},
@@ -112,7 +144,7 @@ var Catalog = []Template{
 		Description: "Installed memory in megabytes. A size, not a usage figure.",
 		Variants: []Variant{
 			{Name: "linux", OS: linux, Command: `awk '/^MemTotal:/ {printf "%d\n", $2/1024}' /proc/meminfo`, Parse: first()},
-			{Name: "aix", OS: []string{"aix"}, Command: "prtconf -m", Parse: rx(`([0-9]+)`)},
+			{Name: "aix", OS: []string{"aix"}, Command: sbin("prtconf -m"), Parse: rx(`([0-9]+)`)},
 			{Name: "windows", OS: windows, Command: "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)", Parse: first()},
 		},
 	},
@@ -137,7 +169,7 @@ var Catalog = []Template{
 	{
 		ID: "selinux", Title: "SELinux mode", Category: "Operating system", Attr: "os.selinux", Type: model.TypeText,
 		Description: "Enforcing, Permissive or Disabled.",
-		Variants:    []Variant{{Name: "linux", OS: linux, Command: "getenforce", Parse: first()}},
+		Variants:    []Variant{{Name: "linux", OS: linux, Command: sbin("getenforce"), Parse: first()}},
 	},
 
 	// ---- applications ----
@@ -188,11 +220,11 @@ var Catalog = []Template{
 	},
 	{
 		ID: "nginx.version", Title: "nginx version", Category: "Applications", Attr: "nginx.version", Type: model.TypeText,
-		Variants: []Variant{{Name: "linux", OS: linux, Command: "nginx -v 2>&1", Parse: rx(`nginx/([0-9][0-9.]*)`)}},
+		Variants: []Variant{{Name: "linux", OS: linux, Command: sbin("nginx -v 2>&1"), Parse: rx(`nginx/([0-9][0-9.]*)`)}},
 	},
 	{
 		ID: "httpd.version", Title: "Apache httpd version", Category: "Applications", Attr: "httpd.version", Type: model.TypeText,
-		Variants: []Variant{{Name: "linux", OS: linux, Command: "httpd -v 2>/dev/null || apache2 -v", Parse: rx(`Apache/([0-9][0-9.]*)`)}},
+		Variants: []Variant{{Name: "linux", OS: linux, Command: sbin("httpd -v 2>/dev/null || apache2 -v"), Parse: rx(`Apache/([0-9][0-9.]*)`)}},
 	},
 	{
 		ID: "docker.version", Title: "Docker version", Category: "Applications", Attr: "docker.version", Type: model.TypeText,
@@ -231,6 +263,16 @@ var Catalog = []Template{
 		},
 	},
 	{
+		ID: "config.value", Title: "Setting in a config file", Category: "Files", Type: model.TypeText, Reveals: true,
+		Description: "One key = value line from an .ini, .conf or .properties file, optionally only inside a [section]. Such as serverName in Splunk's server.conf.",
+		Param: &Param{Kind: ParamConfig, Label: "File", Placeholder: "/opt/splunkforwarder/etc/system/local/server.conf",
+			Help: "A full path to the file.", KeyPlaceholder: "serverName", SectionPlaceholder: "general"},
+		Variants: []Variant{
+			{Name: "unix", OS: unix, Command: configAwk, Parse: first()},
+			{Name: "windows", OS: windows, Command: configPowerShell, Parse: first()},
+		},
+	},
+	{
 		ID: "env.var", Title: "Environment variable", Category: "Environment", Type: model.TypeText, Reveals: true,
 		Description: "A system-wide variable, such as SPLUNK_HOME or JAVA_HOME. On Linux and AIX it is read after /etc/profile; on Windows from the machine environment.",
 		Param:       &Param{Kind: ParamEnvVar, Label: "Variable", Placeholder: "SPLUNK_HOME", Help: "Letters, digits and underscores."},
@@ -259,7 +301,55 @@ var (
 	rePackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._+-]{0,99}$`)
 	reAttr    = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z0-9_-]+)+$`)
 	reSlugAny = regexp.MustCompile(`[^a-z0-9]+`)
+	reConfKey = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`)
+	reSection = regexp.MustCompile(`^[A-Za-z0-9 _.:/=-]{0,100}$`)
 )
+
+// ConfigParam joins a file, section and key into the one value a
+// "Setting in a config file" choice stores.
+func ConfigParam(path, section, key string) string {
+	path, section, key = strings.TrimSpace(path), strings.TrimSpace(section), strings.TrimSpace(key)
+	section = strings.TrimSuffix(strings.TrimPrefix(section, "["), "]")
+	if section != "" {
+		return path + "#[" + section + "]" + key
+	}
+	return path + "#" + key
+}
+
+// SplitConfigParam takes apart a value ConfigParam made.
+func SplitConfigParam(v string) (path, section, key string, err error) {
+	path, rest, ok := strings.Cut(v, "#")
+	if !ok || path == "" || rest == "" {
+		return "", "", "", errors.New("name the file and the key, such as /etc/app.conf#port or /etc/app.conf#[server]port")
+	}
+	if strings.HasPrefix(rest, "[") {
+		end := strings.Index(rest, "]")
+		if end < 0 {
+			return "", "", "", errors.New("a [section] is missing its closing ]")
+		}
+		section, rest = rest[1:end], rest[end+1:]
+	}
+	if rest == "" {
+		return "", "", "", errors.New("name the key to read")
+	}
+	return path, section, rest, nil
+}
+
+// ParamText shows a choice's value the way a person would say it, such as
+// "server.conf [general] serverName".
+func ParamText(t Template, v string) string {
+	if t.Param == nil || !t.Param.Config() {
+		return v
+	}
+	path, section, key, err := SplitConfigParam(v)
+	if err != nil {
+		return v
+	}
+	if section != "" {
+		return path + " [" + section + "] " + key
+	}
+	return path + " " + key
+}
 
 // CheckParam validates a template's value. The patterns are narrow on
 // purpose: they admit what real paths, variable and package names look like
@@ -281,6 +371,21 @@ func CheckParam(kind ParamKind, v string) error {
 		ok, what = reEnvVar.MatchString(v), "letters, digits and underscores, not starting with a digit"
 	case ParamPackage:
 		ok, what = rePackage.MatchString(v), "letters, digits, spaces and . _ + -"
+	case ParamConfig:
+		path, section, key, err := SplitConfigParam(v)
+		if err != nil {
+			return err
+		}
+		if err := CheckParam(ParamPath, path); err != nil {
+			return err
+		}
+		if !reConfKey.MatchString(key) {
+			return fmt.Errorf("key %q is not allowed: use letters, digits and . _ -", key)
+		}
+		if !reSection.MatchString(section) {
+			return fmt.Errorf("section %q is not allowed: use letters, digits, spaces and . _ - : / =", section)
+		}
+		return nil
 	default:
 		return fmt.Errorf("unknown kind of value %q", kind)
 	}
@@ -303,6 +408,23 @@ func CheckAttr(a string) error {
 func DefaultAttr(t Template, param string) string {
 	if t.Fixed() {
 		return t.Attr
+	}
+	slugOf := func(s string) string {
+		return strings.Trim(reSlugAny.ReplaceAllString(strings.ToLower(s), "_"), "_")
+	}
+	if t.Param.Config() {
+		path, section, key, err := SplitConfigParam(param)
+		if err != nil {
+			return "conf.item"
+		}
+		attr := "conf." + slugOf(path[strings.LastIndexAny(path, `/\`)+1:])
+		if s := slugOf(section); s != "" {
+			attr += "." + s
+		}
+		if k := slugOf(key); k != "" {
+			attr += "." + k
+		}
+		return attr
 	}
 	base := param
 	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
@@ -360,6 +482,12 @@ func (c Choice) Specs() ([]Spec, error) {
 	for _, v := range t.Variants {
 		cmd := v.Command
 		if !t.Fixed() {
+			if t.Param.Config() {
+				path, section, key, _ := SplitConfigParam(c.Param)
+				cmd = strings.ReplaceAll(cmd, "{{path}}", quote(path))
+				cmd = strings.ReplaceAll(cmd, "{{section}}", quote(section))
+				cmd = strings.ReplaceAll(cmd, "{{key}}", quote(key))
+			}
 			cmd = strings.ReplaceAll(cmd, "{{param}}", quote(c.Param))
 			cmd = strings.ReplaceAll(cmd, "{{name}}", c.Param)
 		}
@@ -398,5 +526,104 @@ func (c Choice) Label() string {
 	if t.Fixed() {
 		return t.Title
 	}
-	return t.Title + ": " + c.Param
+	return t.Title + ": " + c.ParamText()
+}
+
+// ParamText is the choice's value as a person would say it.
+func (c Choice) ParamText() string {
+	t, ok := Lookup(c.Template)
+	if !ok {
+		return c.Param
+	}
+	return ParamText(t, c.Param)
+}
+
+// Group is a set of fixed catalog entries switched on together, such as
+// everything worth knowing about a Splunk forwarder.
+type Group struct {
+	ID          string
+	Title       string
+	Description string
+	Entries     []string
+}
+
+// Groups are offered above the catalog, in this order.
+var Groups = []Group{
+	{ID: "group.basics", Title: "Host basics", Description: "CPU cores, memory, time zone and DNS servers.",
+		Entries: []string{"cpu.cores", "memory.total", "timezone", "dns.servers"}},
+	{ID: "group.splunk.forwarder", Title: "Splunk forwarder", Description: "The Universal Forwarder's version and where it is installed.",
+		Entries: []string{"splunk.uf.version", "splunk.home"}},
+	{ID: "group.splunk.enterprise", Title: "Splunk Enterprise", Description: "The Splunk Enterprise version and where it is installed.",
+		Entries: []string{"splunk.enterprise.version", "splunk.home"}},
+	{ID: "group.runtimes", Title: "Language runtimes", Description: "Java, Python and OpenSSL versions.",
+		Entries: []string{"java.version", "python.version", "openssl.version"}},
+	{ID: "group.web", Title: "Web servers", Description: "nginx and Apache httpd versions.",
+		Entries: []string{"nginx.version", "httpd.version"}},
+}
+
+// LookupGroup finds a group by id.
+func LookupGroup(id string) (Group, bool) {
+	for _, g := range Groups {
+		if g.ID == id {
+			return g, true
+		}
+	}
+	return Group{}, false
+}
+
+// Titles lists the titles of a group's entries.
+func (g Group) Titles() []string {
+	out := make([]string, 0, len(g.Entries))
+	for _, id := range g.Entries {
+		if t, ok := Lookup(id); ok {
+			out = append(out, t.Title)
+		}
+	}
+	return out
+}
+
+// ShortLabel names what a choice records in a few words, for a column
+// heading: "openssl package version" rather than pkg.openssl.version.
+func (c Choice) ShortLabel() string {
+	t, ok := Lookup(c.Template)
+	if !ok {
+		return c.Attr
+	}
+	if t.Fixed() {
+		return t.Title
+	}
+	switch t.ID {
+	case "file.exists":
+		return c.Param + " exists"
+	case "file.contents":
+		return "Contents of " + c.Param
+	case "env.var":
+		return "Variable " + c.Param
+	case "package.version":
+		return c.Param + " package version"
+	case "config.value":
+		path, section, key, err := SplitConfigParam(c.Param)
+		if err != nil {
+			return c.Param
+		}
+		file := path[strings.LastIndexAny(path, `/\`)+1:]
+		if section != "" {
+			return key + " in " + file + " [" + section + "]"
+		}
+		return key + " in " + file
+	}
+	return c.Label()
+}
+
+// FixedTitles maps the attribute each fixed catalog entry records to the
+// entry's title, so a page can head a column "Memory total (MB)" rather than
+// spelling out hw.memory.total_mb.
+func FixedTitles() map[string]string {
+	out := map[string]string{}
+	for _, t := range Catalog {
+		if t.Fixed() && t.Attr != "" {
+			out[t.Attr] = t.Title
+		}
+	}
+	return out
 }

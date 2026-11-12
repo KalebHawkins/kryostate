@@ -153,14 +153,43 @@ the attribution on every recorded decision is whatever the client typed.
 
 Other properties worth knowing:
 
-- All state-changing operations are `POST`. There is **no CSRF token**; a proxy
-  enforcing `SameSite` cookies or an authenticating gateway is doing that work.
+- All state-changing operations are `POST`, and every `POST` passes Go's
+  `http.CrossOriginProtection`: a request a browser marks as coming from
+  another site is refused, so another page cannot submit forms through a
+  visitor's browser. It is not a token, and it does nothing about a client
+  that is not a browser. Origins a proxy serves the page under are listed with
+  `serve -trusted-origin`.
 - A second collection run cannot start while one is in progress, so clicking
   twice does not open two waves of sessions into the estate.
 - The progress stream drops updates to a slow client rather than blocking a
   collection run.
 - Every asset ships in the binary. The interface makes no request to the
   internet, which matters in an estate that has no route to one.
+
+### What the page can change, and what it cannot
+
+Because anyone who reaches the page can use it, the page is limited to changes
+that cannot turn it into a way to run commands or to take credentials.
+
+- **No command can be typed into it.** Collectors written by hand live in a
+  file on the server. The page can switch on catalog collectors, whose
+  commands are compiled in. A catalog template takes values (a path, a key, a
+  section, a variable or package name) that must match narrow patterns with
+  no quote, `$`, backtick, `;`, `|`, `&`, `>`, newline or `..`, and are placed
+  inside single quotes, where neither `sh` nor PowerShell expands anything.
+  Tests feed each pattern injection attempts.
+- **Templates that read content are off by default on the page.** File
+  contents, a setting from a config file and an environment variable can
+  return secrets (`pass4SymmKey` sits in Splunk's `server.conf`). The page
+  offers them only under `serve -allow-content-collectors`. The command line
+  always can, because whoever runs it already has the database.
+- **Connections it creates or edits use `agent:` only, without a bastion.** A
+  page that could change a password-bearing connection's address could send
+  that password to a machine of the attacker's choosing.
+- **It cannot clear a pinned host key.** `hearsay target -forget-host-key`
+  does that, on the command line, and the old key is written to the audit
+  log. Otherwise a visitor could clear a pin and let an impersonating host
+  answer the next collection.
 
 ## Separation of duties
 
@@ -177,11 +206,14 @@ mean two binaries and a protocol between them, which has not been built.
 
 These are the weaknesses known at the time of writing.
 
-- No authentication, no authorisation, no CSRF token. All three are delegated
-  to a proxy that may not be there.
+- No authentication and no authorisation. Both are delegated to a proxy that
+  may not be there. Cross-site form submission is refused, but only for
+  browsers that send `Sec-Fetch-Site` or `Origin`.
 - The database is not encrypted at rest. File permissions and disk encryption
   are the control.
-- Trust-on-first-use for SSH host keys.
+- Trust-on-first-use for SSH host keys. A changed key stops collection from
+  that host, with the new key's fingerprint in the error, until someone runs
+  `target -forget-host-key`; nothing checks that they compared it first.
 - Audit rows live in the same database as the data they describe, so an
   attacker who can write to it can edit them.
 - `env:` credential references sit in process memory for the process lifetime.

@@ -1,0 +1,10 @@
+.git
+*.db
+*.db-wal
+*.db-shm
+*.hearsay.json
+bin/
+hearsay
+hearsay.exe
+deploy/lab/
+docs/images/

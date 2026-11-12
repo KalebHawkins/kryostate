@@ -32,6 +32,7 @@ type collectorsData struct {
 	Stacks         []string
 	Hosts          []hostOption // hosts that can be tested on: those with a connection
 	AllowRevealing bool
+	Groups         []collect.Group
 }
 
 // handleCollectors lists what runs against hosts. It is read-only on purpose:
@@ -67,6 +68,7 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.AllowRevealing = s.AllowRevealing
+	d.Groups = collect.Groups
 	if targets, err := s.Store.CollectTargets(r.Context(), ""); err == nil {
 		seen := map[string]bool{}
 		for _, p := range targets {

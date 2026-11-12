@@ -323,7 +323,7 @@ func cmdImport(ctx context.Context, args []string) error {
 	fs.Parse(args)
 
 	if *name == "" || fs.NArg() != 1 {
-		return errors.New("usage: hearsay import -name <source> [-map map.json] <file.md|file.csv>")
+		return errors.New("usage: hearsay import -name <source> [-map map.json] <file.md|file.csv>  (without -map, columns such as Host, OS, Role and Stack are recognised by name)")
 	}
 	path := fs.Arg(0)
 
@@ -341,10 +341,7 @@ func cmdImport(ctx context.Context, args []string) error {
 			return fmt.Errorf("parse mapping: %w", err)
 		}
 	}
-	if *section != "" {
-		m.SectionAttr = *section
-	}
-	if m.HostColumn == "" {
+	if *mapPath != "" && m.HostColumn == "" {
 		return errors.New(`the mapping needs "host_column": nothing can be imported without knowing which column names the host`)
 	}
 
@@ -366,6 +363,20 @@ func cmdImport(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
+	}
+	if *mapPath == "" {
+		guessed, notes, err := ingest.GuessMapping(tables)
+		if err != nil {
+			return err
+		}
+		m = guessed
+		fmt.Println("no -map given; read the columns as:")
+		for _, n := range notes {
+			fmt.Println("  " + n)
+		}
+	}
+	if *section != "" {
+		m.SectionAttr = *section
 	}
 
 	st, err := openStore(*db)
@@ -816,6 +827,7 @@ func cmdTarget(ctx context.Context, args []string) error {
 	cred := fs.String("credential", "agent:", "credential reference, for example agent: or keyring:hearsay/ops")
 	bastion := fs.String("bastion", "", "bastion as user@host:port/credential-ref")
 	disable := fs.Bool("disable", false, "record the profile but never collect through it")
+	forget := fs.Bool("forget-host-key", false, "with -host: clear the pinned host key, so the next collection trusts whatever key the host presents. Use it only after checking the host was really rebuilt")
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -848,6 +860,31 @@ func cmdTarget(ctx context.Context, args []string) error {
 	ref := *ci
 	if *ci, err = st.LookupCI(ctx, *ci); err != nil {
 		return err
+	}
+	if *forget {
+		profiles, err := st.ConnProfiles(ctx, *ci)
+		if err != nil {
+			return err
+		}
+		for _, p := range profiles {
+			if p.Transport != *transport {
+				continue
+			}
+			if p.HostKey == "" {
+				fmt.Printf("%s has no pinned %s host key; the next collection will pin one.\n", ref, p.Transport)
+				return nil
+			}
+			if err := st.PinHostKey(ctx, *ci, p.Transport, ""); err != nil {
+				return err
+			}
+			if err := st.Audit(ctx, actor(), "forget host key", *ci, p.Transport+" "+p.HostKey); err != nil {
+				return err
+			}
+			fmt.Printf("forgot the %s host key of %s. The next collection pins the key it presents then.\n", p.Transport, ref)
+			fmt.Printf("collect now: hearsay refresh -only %s\n", ref)
+			return nil
+		}
+		return fmt.Errorf("%s has no %s connection", ref, *transport)
 	}
 	if *address == "" {
 		*address = defaultAddress(ctx, st, *ci)
@@ -893,7 +930,7 @@ func cmdStack(ctx context.Context, args []string) error {
 	owner := fs.String("owner", "", "who is responsible for it")
 	env := fs.String("environment", "", "environment label")
 	add := fs.String("add", "", "comma-separated hosts to add, each as name or name:role")
-	file := fs.String("file", "", "file listing hosts to add, one per line: name, then role, optionally an fqdn")
+	file := fs.String("file", "", "file listing hosts to add, one per line: name, then role, optionally an fqdn; - reads standard input")
 	create := fs.Bool("create", false, "with -add or -file: record hosts that are not known yet")
 	user := fs.String("user", "", "with -add or -file: give hosts with no connection one that logs in as this user through ssh-agent")
 	remove := fs.String("remove", "", "comma-separated hosts (names or ids) to take out")
@@ -946,7 +983,13 @@ func cmdStack(ctx context.Context, args []string) error {
 		lines, problems = append(lines, ls...), append(problems, ps...)
 	}
 	if *file != "" {
-		b, err := os.ReadFile(*file)
+		var b []byte
+		var err error
+		if *file == "-" {
+			b, err = io.ReadAll(os.Stdin)
+		} else {
+			b, err = os.ReadFile(*file)
+		}
 		if err != nil {
 			return err
 		}
