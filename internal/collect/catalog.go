@@ -224,7 +224,7 @@ var Catalog = []Template{
 		Description: "Records true or false.",
 		Param:       &Param{Kind: ParamPath, Label: "Path", Placeholder: "/etc/resolv.conf", Help: "A full path. On Windows, such as C:\\app\\config.xml."},
 		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "if [ -e {{param}} ]; then echo true; else echo false; fi", Parse: first()},
+			{Name: "unix", OS: unix, Command: "if [ -e {{param}} ]; then echo true; elif [ -x \"$(dirname {{param}})\" ]; then echo false; else echo \"cannot look inside $(dirname {{param}}) as this user\" >&2; exit 1; fi", Parse: first()},
 			{Name: "windows", OS: windows, Command: "if (Test-Path -LiteralPath {{param}}) { 'true' } else { 'false' }", Parse: first()},
 		},
 	},
