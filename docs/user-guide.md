@@ -269,7 +269,7 @@ connection that logs in as that user with your ssh-agent. Fill in
 **Application** to record the application every listed host runs. Select
 **Create stack**.
 
-To add more hosts later, use **Add several hosts** in the stack's card.
+To add more hosts later, open the stack from the **Stacks** list and use **Add several hosts by name**.
 
 **On the command line:** put the same lines in a file, then:
 
@@ -286,7 +286,7 @@ reported and skipped. A short list can go straight on the command line:
 
 **In the web interface:**
 
-- On the **Stacks** page, in the stack's card, type a host name in **Host**,
+- On the stack's page (open it from the **Stacks** list), type part of a host name in **Host** and pick it,
   optionally a **Role**, and select **Add host**.
 - On a host's page, use **Stacks**. Typing the name of a stack that does not
   exist yet creates it.
@@ -295,6 +295,21 @@ reported and skipped. A short list can go straight on the command line:
 
 ```sh
 kryostate stack -name payments-prod -add web01 -role app
+```
+
+### Every host a query matches
+
+**In the web interface:** on the stack's page, open **Add hosts by query** and
+write a query, as in the inventory's search box. As you type it shows how many
+hosts it would add and the first few names, or where the query stops making
+sense. Give a **Role** if they should have one and select the button, which
+says how many it adds. Hosts already in the stack keep their role. It is a
+one-off: hosts that match the query later are not added by themselves.
+
+**On the command line:**
+
+```sh
+kryostate stack -name payments-prod -q 'os.family == "Linux" && name in ("web01", "web02")' -role app
 ```
 
 ### Look at it

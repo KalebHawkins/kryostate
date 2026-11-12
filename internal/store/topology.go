@@ -404,3 +404,19 @@ func (s *Store) StackRoles(ctx context.Context, name string) (map[string]string,
 	}
 	return out, rows.Err()
 }
+
+// Stack returns one stack with its membership counts, or an error naming it.
+func (s *Store) Stack(ctx context.Context, name string) (StackView, error) {
+	var v StackView
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, name, description, owner, environment FROM stack WHERE name=?`, name).
+		Scan(&v.Stack.ID, &v.Stack.Name, &v.Stack.Description, &v.Stack.Owner, &v.Stack.Environment)
+	if errors.Is(err, sql.ErrNoRows) {
+		return v, errors.New("no stack named " + name)
+	}
+	if err != nil {
+		return v, err
+	}
+	v.Health, err = s.stackHealth(ctx, v.Stack.ID)
+	return v, err
+}

@@ -1,0 +1,142 @@
+{{define "stack.html"}}
+{{$name := .View.Stack.Name}}
+{{$h := .View.Health}}
+<p><a href="/stacks" hx-get="/stacks" hx-target="#main" hx-push-url="true">← Stacks</a></p>
+<div class="chead">
+  <h1>{{$name}}</h1>
+  <div class="chead__chips">
+    {{with .View.Stack.Environment}}<span class="chip chip--quiet">{{.}}</span>{{end}}
+    {{with .View.Stack.Owner}}<span class="chip chip--quiet">{{.}}</span>{{end}}
+  </div>
+</div>
+{{with .View.Stack.Description}}<p class="chead__desc">{{.}}</p>{{end}}
+
+<div class="shealth">
+  {{if $h.Members}}{{template "stack-health" $h}}{{end}}
+  <p class="small">{{$h.Members}} member{{if ne $h.Members 1}}s{{end}}{{if $h.Members}}: {{$h.Collected}} collected · {{$h.Failed}} failed · {{$h.NeverSeen}} never collected{{end}}
+    · <a href="{{.Inventory}}" hx-get="{{.Inventory}}" hx-target="#main" hx-push-url="true">Open in inventory</a></p>
+</div>
+
+<section class="card sdetail" aria-labelledby="h-members">
+  <h2 id="h-members">Members</h2>
+  {{if .Members}}
+  <div class="table-wrap table-wrap--full">
+  <table class="smembers">
+    <caption class="visually-hidden">Members of {{$name}}</caption>
+    <thead><tr><th scope="col">Host</th><th scope="col">Role</th><th scope="col">Last collected</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+    <tbody>
+    {{range .Members}}
+      <tr>
+        <td class="host"><a href="/hosts/{{.Host.CI.ID}}" hx-get="/hosts/{{.Host.CI.ID}}" hx-target="#main" hx-push-url="true">{{.Host.CI.Label}}</a></td>
+        <td>{{if .Role}}<span class="chip chip--role">{{.Role}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td class="mono">{{if .Host.HasCollected}}{{ago .Host.LastCollect}}{{if not .Host.CollectOK}} <span class="chip chip--stale">failed</span>{{end}}{{else}}<span class="chip chip--unknown">never</span>{{end}}</td>
+        <td class="num">
+          <form class="inline" method="post" action="/stacks/members/remove">
+            <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="ci" value="{{.Host.CI.ID}}"><input type="hidden" name="back" value="{{$.Href}}">
+            <button class="btn btn--ghost btn--small" type="submit" aria-label="Remove {{.Host.CI.Label}} from {{$name}}">Remove</button>
+          </form></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{if .MoreMembers}}<p class="muted small">and {{.MoreMembers}} more — <a href="{{.Inventory}}" hx-get="{{.Inventory}}" hx-target="#main" hx-push-url="true">open in inventory</a>.</p>{{end}}
+  {{else}}<p class="muted">No members yet. Add a host below.</p>{{end}}
+
+  <h3>Add a host</h3>
+  <form class="form form--inline hostpick" method="post" action="/stacks/members">
+    <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="{{.Href}}">
+    <label for="stack-host">Host</label>
+    <input type="search" id="stack-host" name="host" required autocomplete="off" placeholder="Type part of a name" class="hostpick__input"
+      hx-get="{{.Href}}/hosts" hx-trigger="input changed delay:250ms" hx-target="#stack-host-picks" hx-sync="this:replace">
+    <label>Role <input type="text" name="role" placeholder="app, database…"></label>
+    <button class="btn" type="submit">Add host</button>
+    <div class="hostpick__list" id="stack-host-picks" data-picklist aria-live="polite"></div>
+  </form>
+  <p class="muted small">A host already in {{$name}} keeps its place and takes the new role.</p>
+
+  <details class="disclosure">
+    <summary>Add hosts by query</summary>
+    <form class="form" method="post" action="/stacks/query">
+      <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="{{.Href}}">
+      <label for="stack-query">Hosts matching <span class="hint">A query, as in the inventory's search box (<a href="/guide/queries" hx-get="/guide/queries" hx-target="#main" hx-push-url="true">query syntax</a>). Every host it matches now is added once; the stack does not follow the query afterwards.</span></label>
+      <textarea id="stack-query" name="query" rows="2" class="mono target__expr" required spellcheck="false" autocomplete="off"
+        placeholder='os.family == "Linux" &amp;&amp; name in ("web01", "web02")'
+        hx-get="{{.Href}}/query" hx-trigger="input changed delay:300ms" hx-target="#stack-query-preview" hx-sync="this:replace"></textarea>
+      <div class="target__preview" id="stack-query-preview" aria-live="polite">{{template "stack-query-preview" dict}}</div>
+      <label>Role <span class="hint">Given to every host added. Hosts already in {{$name}} keep theirs.</span>
+        <input type="text" name="role" placeholder="app, database…"></label>
+      <div class="form__actions"><button class="btn" type="submit" id="stack-query-submit">Add matching hosts</button></div>
+    </form>
+  </details>
+
+  <details class="disclosure">
+    <summary>Add several hosts by name</summary>
+    <form class="form" method="post" action="/stacks/hosts">
+      <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="{{.Href}}">
+      {{template "host-list-fields" $}}
+      <div class="form__actions"><button class="btn" type="submit">Add hosts</button></div>
+    </form>
+  </details>
+</section>
+
+<section class="card sdetail" aria-labelledby="h-collected">
+  <h2 id="h-collected">Collected here</h2>
+  <p class="small">
+    {{if or .Collectors .Everywhere}}
+    {{range $i, $c := .Collectors}}{{if $i}}, {{end}}{{$c.ShortLabel}}{{end}}{{if and .Collectors .Everywhere}}, {{end}}{{range $i, $c := .Everywhere}}{{if $i}}, {{end}}{{$c.ShortLabel}}{{end}}
+    {{else}}<span class="muted">Only what is always collected: operating system, kernel, hardware model and serial.</span>{{end}}
+  </p>
+  <form class="form form--inline" method="post" action="/stacks/collectors">
+    <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="{{.Href}}">
+    <label>Also collect on {{$name}}
+      <select name="what">
+        <optgroup label="Groups">{{range .Groups}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</optgroup>
+        <optgroup label="Single collectors">{{range .Fixed}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</optgroup>
+      </select></label>
+    <button class="btn" type="submit">Switch on</button>
+    <a class="small" href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">Files, packages and more…</a>
+  </form>
+</section>
+
+<section class="card sdetail" aria-labelledby="h-details">
+  <h2 id="h-details">Details</h2>
+  <details class="disclosure">
+    <summary>Edit details</summary>
+    <form class="form" method="post" action="/stacks/edit">
+      <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="{{.Href}}">
+      <div class="form__row">
+        <label>Environment <input type="text" name="environment" value="{{.View.Stack.Environment}}"></label>
+        <label>Owner <input type="text" name="owner" value="{{.View.Stack.Owner}}"></label>
+      </div>
+      <label>Description <input type="text" name="description" value="{{.View.Stack.Description}}"></label>
+      <div class="form__actions"><button class="btn" type="submit">Save</button></div>
+    </form>
+  </details>
+  <details class="disclosure">
+    <summary>Delete stack</summary>
+    <p class="small muted">Its hosts, and everything recorded about them, are not changed.</p>
+    <form method="post" action="/stacks/delete" onsubmit="return confirm('Delete the stack {{$name}}? Its hosts are not changed.')">
+      <input type="hidden" name="stack" value="{{$name}}">
+      <button class="btn btn--danger" type="submit">Delete {{$name}}</button>
+    </form>
+  </details>
+</section>
+
+{{$n := sh $name}}
+<p class="muted small">The same from the command line: <span class="mono">kryostate hosts -stack {{$n}}</span> lists the members, <span class="mono">kryostate stack -name {{$n}} -add web01:app</span> adds one, <span class="mono">kryostate stack -name {{$n}} -q 'os.family == "Linux"' -role app</span> adds every host a query matches, <span class="mono">kryostate stack -name {{$n}} -remove web01</span> takes one out, and <span class="mono">kryostate collectors -enable cpu.cores -stacks {{$n}}</span> collects more here.</p>
+{{end}}
+
+{{/* stack-query-preview is the live answer of the add-by-query box. The
+     submit button is swapped out of band so it says how many it adds. */}}
+{{define "stack-query-preview"}}
+{{if .Err}}
+<p class="target__err" role="alert">Column {{.Col}}: {{.Err}}</p>
+<pre class="target__caret">{{.Expr}}
+{{.Caret}}</pre>
+{{else if .Expr}}
+<p class="small"><strong><a href="{{.Href}}">adds {{.Count}} host{{if ne .Count 1}}s{{end}}</a></strong>{{if .Already}}; {{.Already}} more {{if eq .Already 1}}is{{else}}are{{end}} already in the stack and keep their role{{end}}.</p>
+{{if .Sample}}<ul class="target__sample">{{range .Sample}}<li>{{.}}</li>{{end}}{{if .SampleMore}}<li class="muted">and {{.SampleMore}} more</li>{{end}}</ul>{{end}}
+{{else}}<p class="small muted">Type a query to see which hosts it adds.</p>{{end}}
+{{if .OOB}}<button class="btn" type="submit" id="stack-query-submit" hx-swap-oob="true"{{if or .Err (and .Expr (not .Count))}} disabled{{end}}>{{if .Count}}Add {{.Count}} host{{if ne .Count 1}}s{{end}}{{else}}Add matching hosts{{end}}</button>{{end}}
+{{end}}

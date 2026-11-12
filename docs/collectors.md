@@ -121,8 +121,8 @@ If a query stored by an older version, or written by hand, does not parse,
 the collector runs on no host at all rather than on every host, and its page
 says why.
 
-Two shortcuts do the same thing from elsewhere. On the **Stacks** page, each
-stack's card has **Also collect on**, which switches a group or a collector on
+Two shortcuts do the same thing from elsewhere. On a stack's page, under
+**Collected here**, **Also collect on** switches a group or a collector on
 for that stack. On a host's page, **Test a collector** runs any switched-on
 collector on that host.
 

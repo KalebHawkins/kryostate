@@ -56,10 +56,10 @@ func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 		t.Errorf("unknown stack gave %q", msg)
 	}
 
-	page := get(t, h, "/stacks", nil).Body.String()
+	page := get(t, h, "/stacks/edge", nil).Body.String()
 	for _, want := range []string{"Collected here", "CPU cores", "Python version", "Language runtimes"} {
 		if !strings.Contains(page, want) {
-			t.Errorf("stacks page lacks %q", want)
+			t.Errorf("stack page lacks %q", want)
 		}
 	}
 }
@@ -93,11 +93,11 @@ func TestConfigValueFromTheWeb(t *testing.T) {
 	}
 }
 
-func TestStackCardShowsRoles(t *testing.T) {
+func TestStackPageShowsRoles(t *testing.T) {
 	_, h, _ := testServer(t)
 	post(t, h, "/stacks", url.Values{"name": {"payments"}, "hosts": {"web01 app\ndb01 database"}})
-	page := get(t, h, "/stacks", nil).Body.String()
+	page := get(t, h, "/stacks/payments", nil).Body.String()
 	if !strings.Contains(page, `chip--role">database<`) || !strings.Contains(page, `chip--role">app<`) {
-		t.Error("roles are not shown on the stack card")
+		t.Error("roles are not shown on the stack page")
 	}
 }

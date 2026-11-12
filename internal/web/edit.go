@@ -307,16 +307,16 @@ func (s *Server) handleCreateStack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "create stack", st.Name, st.Description)
-	msg := "Stack " + st.Name + " created. Add hosts to it below."
+	msg := "Stack " + st.Name + " created. Add hosts to it here."
 	if strings.TrimSpace(r.FormValue("hosts")) != "" {
 		added, err := s.bulkAdd(r, st.Name)
 		if err != nil {
-			refuse(w, r, "/stacks#"+stackAnchor(st.Name), errors.New("the stack was created, but its hosts were not added: "+err.Error()))
+			refuse(w, r, stackURL(st.Name), errors.New("the stack was created, but its hosts were not added: "+err.Error()))
 			return
 		}
 		msg = "Stack " + st.Name + " created. " + added
 	}
-	done(w, r, "/stacks#"+stackAnchor(st.Name), msg)
+	done(w, r, stackURL(st.Name), msg)
 }
 
 func (s *Server) handleEditStack(w http.ResponseWriter, r *http.Request) {
@@ -331,7 +331,7 @@ func (s *Server) handleEditStack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "edit stack", st.Name, st.Owner+" "+st.Environment)
-	done(w, r, "/stacks#"+stackAnchor(st.Name), "Stack "+st.Name+" saved.")
+	done(w, r, stackBack(field(r, "back"), stackURL(st.Name)), "Stack "+st.Name+" saved.")
 }
 
 func (s *Server) handleDeleteStack(w http.ResponseWriter, r *http.Request) {
@@ -344,20 +344,17 @@ func (s *Server) handleDeleteStack(w http.ResponseWriter, r *http.Request) {
 	done(w, r, "/stacks", "Stack "+name+" deleted. Its hosts are unchanged.")
 }
 
-// handleAddMember adds a host to a stack. It is used from both the stacks
+// handleAddMember adds a host to a stack. It is used from both a stack's
 // page, which names the host, and the host page, which names the stack; a
 // stack named on the host page that does not exist yet is created.
 func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	back := field(r, "back")
-	if back != "/stacks" && !strings.HasPrefix(back, "/hosts/") {
-		back = "/stacks"
-	}
 	stack := field(r, "stack")
 	if stack == "" {
-		refuse(w, r, back, errors.New("name the stack"))
+		refuse(w, r, stackBack(field(r, "back"), "/stacks"), errors.New("name the stack"))
 		return
 	}
+	back := stackBack(field(r, "back"), stackURL(stack))
 	ciID, err := s.Store.LookupCI(ctx, field(r, "host"))
 	if err != nil {
 		refuse(w, r, back, err)
@@ -374,33 +371,22 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	}
 	ci, _ := s.Store.CI(ctx, ciID)
 	s.audit(r, "add to stack", ciID, stack)
-	if back == "/stacks" {
-		back += "#" + stackAnchor(stack)
-	}
 	done(w, r, back, ci.Label+" added to "+stack+".")
 }
 
 func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	back := field(r, "back")
-	if back != "/stacks" && !strings.HasPrefix(back, "/hosts/") {
-		back = "/stacks"
-	}
 	stack, ciID := field(r, "stack"), field(r, "ci")
 	id, err := s.Store.StackID(ctx, stack)
 	if err != nil {
-		refuse(w, r, back, err)
+		refuse(w, r, stackBack(field(r, "back"), "/stacks"), err)
 		return
 	}
+	back := stackBack(field(r, "back"), stackURL(stack))
 	if _, err := s.Store.RemoveFromStack(ctx, id, ciID); err != nil {
 		refuse(w, r, back, err)
 		return
 	}
 	s.audit(r, "remove from stack", ciID, stack)
 	done(w, r, back, "Removed from "+stack+".")
-}
-
-// stackAnchor is the fragment id of a stack's card.
-func stackAnchor(name string) string {
-	return "stack-" + slug(name, map[string]int{})
 }

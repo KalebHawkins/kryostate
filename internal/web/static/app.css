@@ -853,9 +853,6 @@ form.inline { display: inline; margin-left: var(--s-2); }
 
 .disclosure { margin-bottom: var(--s-4); }
 .disclosure > summary { cursor: pointer; }
-.stack .disclosure { margin: var(--s-3) 0; }
-.stack h3 { font-size: 0.9375rem; margin-top: var(--s-4); }
-.stack { margin-bottom: var(--s-4); scroll-margin-top: calc(var(--nav-h) + var(--s-4)); }
 .card[id] { scroll-margin-top: calc(var(--nav-h) + var(--s-4)); }
 
 /* one-time messages after a form is submitted */
@@ -1329,3 +1326,22 @@ a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
 /* The test box inside the where-it-runs table stays narrow so the row fits. */
 td .hostpick { flex-wrap: wrap; }
 td .hostpick__input { width: 11rem; min-width: 0; }
+
+/* Stacks: a dense table of one row per stack, and a page for each stack. */
+.sfilter input[type="search"] { flex: 1 1 16rem; min-width: 12rem; }
+.slist td { vertical-align: top; }
+.slist__name a { font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.slist__name a:hover { text-decoration: underline; }
+.slist__health { min-width: 10rem; }
+.slist__health .segbar { height: 0.375rem; max-width: 9rem; margin: 0.3rem 0 0.2rem; }
+.slist__bad { color: var(--bad); }
+@media (max-width: 40rem) {
+  .slist th:nth-child(4), .slist td:nth-child(4), .slist th:nth-child(5), .slist td:nth-child(5) { display: none; }
+}
+.shealth { max-width: 32rem; margin: var(--s-2) 0 var(--s-4); }
+.shealth p { margin: var(--s-1) 0 0; }
+.sdetail { margin-bottom: var(--s-4); }
+.sdetail h3 { font-size: 0.9375rem; margin-top: var(--s-4); }
+.sdetail .disclosure { margin: var(--s-3) 0; }
+.smembers td { vertical-align: middle; }
+.smembers td.host { overflow-wrap: anywhere; }
