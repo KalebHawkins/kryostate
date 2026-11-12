@@ -790,7 +790,6 @@ td .form--inline select { min-width: 0; max-width: 9rem; }
 .cvariant p { margin: 0; }
 .cswitch { margin: var(--s-4) 0 0; }
 .ctry { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-.cschedule { border-style: dashed; }
 .cschedule p { margin: 0; }
 .cdef > summary { cursor: pointer; }
 .cdef > summary h2 { display: inline; margin: 0; }
@@ -1021,3 +1020,4 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
   }
   .qhelp, .qerr { display: none; }
 }
+.csched + .csched { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--hairline); }

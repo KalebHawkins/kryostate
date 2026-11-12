@@ -123,7 +123,11 @@ func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
 // handleSetSchedule changes one collector's schedule. The collector must be
 // one that exists; the form cannot name a command, only pick a collector.
 func (s *Server) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
-	const back = "/schedules"
+	back := "/schedules"
+	if b := field(r, "back"); strings.HasPrefix(b, "/collectors/") && !strings.ContainsAny(b, `\?#`) && !strings.Contains(b, "//") {
+		// The collector page sends its own address so the change returns there.
+		back = b
+	}
 	if s.Scheduler == nil {
 		refuse(w, r, back, errors.New("scheduling needs a collection engine"))
 		return
@@ -159,7 +163,7 @@ func (s *Server) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, back, err)
 		return
 	}
-	done(w, r, back+"#"+anchorFor(c.Key), c.Title+" now runs "+msg+".")
+	done(w, r, backAnchor(back, c.Key), c.Title+" now runs "+msg+".")
 }
 
 // anchorFor turns a collector key into an element id.
@@ -356,4 +360,47 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		d.LastRun = &runs[0]
 	}
 	s.render(w, r, "home.html", "Overview", "home", d)
+}
+
+// backAnchor is where a schedule change returns to: the row on the schedules
+// page, or the schedule card on a collector's own page.
+func backAnchor(back, key string) string {
+	if back == "/schedules" {
+		return back + "#" + anchorFor(key)
+	}
+	return back + "#schedule"
+}
+
+// schedulesFor picks the schedules that belong to one collector on the
+// collectors page. Its ids and the scheduler's keys differ: a catalog entry
+// switched on twice with different values has two schedules, and the built-in
+// commands are scheduled by fact group rather than one attribute at a time.
+func schedulesFor(rows []scheduleRow, id, source string) []scheduleRow {
+	var want func(key string) bool
+	switch {
+	case source == srcCatalog:
+		want = func(k string) bool {
+			rest, ok := strings.CutPrefix(k, "catalog."+id)
+			if !ok {
+				return false
+			}
+			if rest == "" {
+				return true
+			}
+			n, ok := strings.CutPrefix(rest, ".")
+			return ok && n != "" && strings.Trim(n, "0123456789") == ""
+		}
+	case strings.HasPrefix(id, "builtin."):
+		group, _, _ := strings.Cut(strings.TrimPrefix(id, "builtin."), ".")
+		want = func(k string) bool { return k == "builtin."+group }
+	default:
+		want = func(k string) bool { return k == id }
+	}
+	var out []scheduleRow
+	for _, r := range rows {
+		if want(r.Key) {
+			out = append(out, r)
+		}
+	}
+	return out
 }

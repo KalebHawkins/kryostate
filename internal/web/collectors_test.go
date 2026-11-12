@@ -70,7 +70,7 @@ func TestEveryCollectorHasAPage(t *testing.T) {
 			continue
 		}
 		body := rec.Body.String()
-		for _, want := range []string{"What it records", "View definition", `href="/schedules#` + id + `"`, `data-copy="#def-json"`} {
+		for _, want := range []string{"What it records", "View definition", `id="schedule"`, `data-copy="#def-json"`} {
 			if !strings.Contains(body, want) {
 				t.Errorf("%s: the page lacks %q", id, want)
 			}
@@ -194,5 +194,56 @@ func TestABrokenCollectorsFileIsShown(t *testing.T) {
 	body = get(t, h, "/collectors/spec.acme.agent.version", nil).Body.String()
 	if !strings.Contains(body, "was not loaded when the server started") || !strings.Contains(body, "line 3, column 40") {
 		t.Error("a collectors.json that failed at start-up is not reported")
+	}
+}
+
+// TestCollectorPageShowsItsSchedule: the schedule card on a collector's page
+// edits the scheduler's own key for it, which is not always the page's id.
+func TestCollectorPageShowsItsSchedule(t *testing.T) {
+	s, h, _ := testServer(t)
+	withOwnCollectors(t, s)
+	for id, key := range map[string]string{
+		"builtin.os.version":      "builtin.os",
+		"spec.acme.agent.version": "spec.acme.agent.version",
+		"external.vcenter":        "external.vcenter",
+	} {
+		body := get(t, h, "/collectors/"+id, nil).Body.String()
+		if !strings.Contains(body, `name="collector" value="`+key+`"`) {
+			t.Errorf("%s: no schedule form for %s", id, key)
+		}
+		if !strings.Contains(body, `name="back" value="/collectors/`+id+`"`) {
+			t.Errorf("%s: the form does not return to the page", id)
+		}
+	}
+}
+
+func TestSchedulesFor(t *testing.T) {
+	rows := []scheduleRow{{Key: "catalog.file.exists.3"}, {Key: "catalog.file.exists.12"}, {Key: "catalog.file.existsx"}, {Key: "catalog.cpu.cores"}, {Key: "builtin.hw"}}
+	if got := schedulesFor(rows, "file.exists", srcCatalog); len(got) != 2 {
+		t.Errorf("file.exists matched %v", got)
+	}
+	if got := schedulesFor(rows, "cpu.cores", srcCatalog); len(got) != 1 {
+		t.Errorf("cpu.cores matched %v", got)
+	}
+	if got := schedulesFor(rows, "builtin.hw.cpu.cores", "builtin"); len(got) != 1 {
+		t.Errorf("builtin matched %v", got)
+	}
+}
+
+// TestScheduleFormReturnsOnlyToACollectorPage: the "back" field picks where a
+// schedule change lands, so it may only name a collector page here.
+func TestScheduleFormReturnsOnlyToACollectorPage(t *testing.T) {
+	_, h, _ := testServer(t)
+	for back, want := range map[string]string{
+		"/collectors/builtin.os.version": "/collectors/builtin.os.version#schedule",
+		"//evil.example/collectors/":     "/schedules#",
+		"/collectors/x?y=1":              "/schedules#",
+		"https://evil.example/":          "/schedules#",
+	} {
+		rec := post(t, h, "/schedules", url.Values{"collector": {"builtin.os"}, "mode": {"every"}, "every": {"1d"}, "back": {back}})
+		loc := rec.Header().Get("Location") + rec.Header().Get("HX-Location") + rec.Header().Get("HX-Redirect")
+		if !strings.HasPrefix(loc, want) {
+			t.Errorf("back=%q went to %q, want %s…", back, loc, want)
+		}
 	}
 }

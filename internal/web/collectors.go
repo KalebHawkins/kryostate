@@ -320,6 +320,9 @@ type collectorDetail struct {
 	DefErr   string
 	// ShowCmd is the command line that prints the same definition.
 	ShowCmd     string
+	// Schedules are this collector's rows from the schedules page.
+	Schedules  []scheduleRow
+	Scheduling bool
 	FileProblem string
 }
 
@@ -347,6 +350,10 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Stacks = stacks
 	d.Hosts = s.testHosts(ctx)
+	if all, err := s.scheduleRows(ctx); err == nil {
+		d.Schedules = schedulesFor(all, id, d.Row.Source)
+	}
+	d.Scheduling = s.Scheduler != nil && s.Scheduler.Running()
 
 	switch d.Row.Source {
 	case srcCatalog:
