@@ -73,12 +73,6 @@ td.num {
   font-size: 0.8125rem;
 }
 
-/* numeric cells align right and use tabular digits for scanability */
-td.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
 a { color: var(--accent); }
 a:hover { color: var(--accent-strong); }
 
@@ -213,6 +207,154 @@ p.muted, .muted { color: var(--text-dim); }
 }
 .colpick__menu label { white-space: nowrap; cursor: pointer; }
 
+/* ---------- overview (home.html) ----------
+   Read top to bottom: a status banner, what needs attention, recent changes
+   beside the next runs, then the estate at a glance. Colours come from the
+   status tokens, so a light theme that redefines them needs nothing here. */
+
+.ov-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  margin-bottom: var(--s-5);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--ov-tone, var(--text-faint));
+  border-radius: var(--r-md);
+}
+.ov-banner--ok   { --ov-tone: var(--ok); }
+.ov-banner--warn { --ov-tone: var(--warn); }
+.ov-banner--bad  { --ov-tone: var(--bad); }
+.ov-banner__mark {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ov-tone, var(--text-dim));
+  background: color-mix(in srgb, var(--ov-tone, var(--text-faint)) 16%, transparent);
+}
+.ov-banner__text { min-width: 0; }
+.ov-banner__headline { margin: 0; font-size: 1.375rem; font-weight: 600; line-height: 1.25; }
+.ov-banner__detail { margin: var(--s-1) 0 0; color: var(--text-dim); }
+
+.ov-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+  margin-bottom: var(--s-5);
+}
+.ov-main, .ov-side { display: grid; gap: var(--s-4); min-width: 0; }
+.ov-card { min-width: 0; }
+.ov-card h2 { margin-bottom: var(--s-3); }
+.ov-card h3 { margin-bottom: var(--s-3); color: var(--text); }
+.ov-sub { font-size: 0.8125rem; font-weight: 400; color: var(--text-dim); margin-left: var(--s-2); }
+.ov-empty { margin: 0; color: var(--text-dim); }
+.ov-foot { margin: var(--s-3) 0 0; }
+.ov-more { margin: var(--s-1) 0 0; }
+
+/* needs attention: one row per non-empty bucket, the whole row a link */
+.ov-attn { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.ov-attn__item { --ov-tone: var(--warn); }
+.ov-attn__item--bad { --ov-tone: var(--bad); }
+.ov-attn__link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  color: var(--text);
+  text-decoration: none;
+  background: var(--bg-inset);
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--ov-tone);
+  border-radius: var(--r-sm);
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.ov-attn__link:hover { color: var(--text); border-color: var(--border); border-left-color: var(--ov-tone); background: var(--bg-raised); }
+.ov-attn__count {
+  flex: 0 0 3.5rem;
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ov-tone);
+}
+.ov-attn__what { flex: 1; min-width: 0; display: grid; }
+.ov-attn__title { font-weight: 600; }
+.ov-attn__note { color: var(--text-dim); font-size: 0.8125rem; }
+.ov-attn__go { color: var(--text-faint); font-size: 1.25rem; }
+.ov-failing { list-style: none; margin: var(--s-2) 0 0 calc(3.5rem + var(--s-4)); padding: 0; }
+.ov-failing li { padding: var(--s-1) 0; border-bottom: 1px solid var(--hairline); }
+.ov-failing li:last-child { border-bottom: 0; }
+.ov-failing__why { overflow-wrap: anywhere; }
+
+.ov-changes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-2); }
+.ov-changes li > div { flex-basis: 100%; }
+.ov-changes__when { margin-left: auto; }
+
+/* next runs: the clock time leads, in a column of its own */
+.ov-next { list-style: none; margin: 0; padding: 0; }
+.ov-next li {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.ov-next li:last-child { border-bottom: 0; }
+.ov-next__when { font-family: var(--font-mono); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+
+/* estate at a glance: three equal columns of proportional bars */
+.ov-glance > h2 { margin-bottom: var(--s-3); }
+.ov-glance__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-4); }
+.ov-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.ov-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.2rem var(--s-2);
+  align-items: baseline;
+}
+.ov-bar__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.ov-bar__label { text-decoration: none; }
+a.ov-bar__label:hover { text-decoration: underline; }
+.ov-bar__count { font-family: var(--font-mono); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.ov-bar__track {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-inset);
+  border: 1px solid var(--hairline);
+  overflow: hidden;
+}
+.ov-bar__fill { display: block; height: 100%; min-width: 2px; background: var(--accent); border-radius: inherit; }
+.ov-bar--none .ov-bar__label { color: var(--text-dim); font-style: italic; }
+.ov-bar--none .ov-bar__fill {
+  /* hatched, so "no value" never rests on colour alone */
+  background: repeating-linear-gradient(45deg, var(--text-faint) 0 3px, transparent 3px 6px);
+}
+
+@media (max-width: 64rem) {
+  .ov-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 40rem) {
+  .ov-glance__grid { grid-template-columns: minmax(0, 1fr); }
+  .ov-banner { padding: var(--s-3) var(--s-4); gap: var(--s-3); }
+  .ov-banner__headline { font-size: 1.125rem; }
+  .ov-attn__count { flex-basis: 2.5rem; font-size: 1.25rem; }
+  .ov-failing { margin-left: 0; }
+  .ov-next li { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+@media print {
+  .ov-banner, .ov-attn__link { background: #fff; }
+}
+
 /* ---------- user guide ---------- */
 
 .guide {
@@ -299,6 +441,21 @@ table {
   border-spacing: 0;
 }
 
+/* Every cell, header or body, row header or not, has the same padding and
+   alignment, so a column's text starts at the same x in every row. Text is
+   left aligned; a column marked .num is right aligned with tabular digits.
+   Body cells sit on a shared baseline, so a mono value, a chip and a row
+   header in proportional type line up across the row. */
+th, td {
+  padding: var(--s-2) var(--s-3);
+  text-align: left;
+  vertical-align: baseline;
+}
+th.num, td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 thead th {
   position: sticky;
   top: 0;
@@ -311,8 +468,7 @@ thead th {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  text-align: left;
-  padding: var(--s-2) var(--s-3);
+  vertical-align: bottom;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -320,11 +476,18 @@ thead th {
 th a { color: inherit; text-decoration: none; }
 th a:hover { color: var(--text); }
 
-tbody td {
-  padding: calc(var(--s-1) + 2px) var(--s-3);
-  border-bottom: 1px solid rgb(255 255 255 / 0.04);
-  vertical-align: baseline;
+tbody td,
+tbody th {
+  border-bottom: 1px solid var(--hairline);
 }
+/* A row header names its row: body weight and colour, not the column
+   headers' small capitals. */
+tbody th {
+  font-weight: 500;
+  color: var(--text);
+}
+tbody tr:last-child > td,
+tbody tr:last-child > th { border-bottom: 0; }
 
 tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.025); }
 tbody tr:hover { background: rgb(255 255 255 / 0.06); }
@@ -799,27 +962,7 @@ td .form--inline select { min-width: 0; max-width: 9rem; }
   .facts { grid-template-columns: minmax(0, 1fr); }
   .facts dd { margin-bottom: var(--s-2); }
 }
-/* ---------- overview, schedules and changes ---------- */
-
-.overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: var(--s-4);
-  align-items: start;
-}
-.overview .card h2 { margin-bottom: var(--s-2); }
-.overview .list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-2); }
-.overview .list li > div { flex-basis: 100%; }
-.overview .list .num { margin-left: auto; font-family: var(--font-mono); }
-.overview p.small { margin: var(--s-2) 0 0; }
-
-/* A tile only takes a colour when its number is one to act on. */
-.stat--ok .stat__value { color: var(--ok); }
-.stat--bad { border-color: rgb(210 90 90 / 0.5); }
-.stat--bad .stat__value { color: var(--bad); }
-.stat--warn { border-color: rgb(216 161 63 / 0.45); }
-.stat--warn .stat__value { color: var(--warn); }
-
+/* ---------- schedules and changes ---------- */
 /* A value that moved recently. Informational, so it sits below "disagrees"
    and "failed" in loudness: an upgrade is usually somebody's intent. */
 .chip--changed {
@@ -1021,6 +1164,5 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
   .qhelp, .qerr { display: none; }
 }
 .csched + .csched { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--hairline); }
-tbody th[scope="row"] { text-align: left; }
 .csched .sched-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-2) 0; }
 .csched .sched-form label { display: inline-flex; align-items: center; gap: var(--s-1); margin: 0; }

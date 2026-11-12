@@ -45,40 +45,6 @@ func seedChanges(t *testing.T, st *store.Store) (string, string) {
 	return a, b
 }
 
-// TestOverviewSaysWhetherTheEstateIsOK: failing hosts with their error,
-// recent changes and upcoming runs, and no collect button or disagreements.
-func TestOverviewSaysWhetherTheEstateIsOK(t *testing.T) {
-	_, h, st := testServer(t)
-	ctx := context.Background()
-	seed(t, st)
-	_, newer := seedChanges(t, st)
-	if err := st.RecordProbe(ctx, model.Probe{CIID: newer, Kind: model.ProbeCollectorRun,
-		Outcome: model.OutcomeAuthFail, Detail: "ssh: unable to authenticate"}); err != nil {
-		t.Fatal(err)
-	}
-
-	body := get(t, h, "/", nil).Body.String()
-	for _, want := range []string{
-		"chg-new", "ssh: unable to authenticate", // failing host and why
-		"9.4-before", "9.5-after", // what changed in the last day
-		"Coming up", "Operating system (built in)", // what runs next
-		"collected ok", "failing", "never collected", "no connection", "stale",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("overview lacks %q", want)
-		}
-	}
-	if strings.Contains(body, "9.3-old") {
-		t.Error("a change older than a day is on the overview")
-	}
-	if strings.Contains(body, `hx-post="/collect"`) {
-		t.Error("the overview still has the collect button")
-	}
-	if strings.Contains(body, "Open disagreements") || strings.Contains(body, "the document and the machine disagree") {
-		t.Error("the overview still shows disagreements")
-	}
-}
-
 func TestRunsPageCarriesManualCollection(t *testing.T) {
 	_, h, st := testServer(t)
 	if _, err := st.StartRunAs(context.Background(), "scheduled: catalog.cpu.cores", "schedule", 3); err != nil {

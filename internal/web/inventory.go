@@ -39,6 +39,8 @@ type hostsData struct {
 	Expr     string
 	QErr     *query.Error
 	Examples []queryExample
+	// HealthLabel describes the health filter, if one is set.
+	HealthLabel string
 }
 
 type queryExample struct {
@@ -71,12 +73,31 @@ func hostFilterFrom(q url.Values) store.HostFilter {
 		Unknown:  q.Get("unknown"),
 		Because:  q.Get("because"),
 		Unparsed: q.Get("unparsed"),
+		Health:   q.Get("health"),
 		Retired:  q.Get("retired") == "1",
 	}
 	if s := strings.TrimSpace(q.Get("q")); s != "" && !query.LooksLikeQuery(s) {
 		f.Search = s
 	}
 	return f
+}
+
+// hostFilter is hostFilterFrom with the stale cutoff the overview counts
+// with, so its "out of date" link lists the hosts it counted.
+func (s *Server) hostFilter(ctx context.Context, q url.Values) store.HostFilter {
+	f := hostFilterFrom(q)
+	if f.Health == store.HealthStale {
+		f.StaleBefore = time.Now().Add(-s.staleAfter(ctx))
+	}
+	return f
+}
+
+// healthLabels describe the health filter's buckets for the inventory's chip.
+var healthLabels = map[string]string{
+	store.HealthFailing: "latest collection failed",
+	store.HealthStale:   "out of date",
+	store.HealthNever:   "never collected",
+	store.HealthNoConn:  "no connection set up",
 }
 
 // QueryResolver names the attribute a parameterised collector records,
@@ -158,8 +179,9 @@ func (s *Server) inventoryColumns(ctx context.Context, q url.Values) ([]string, 
 func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
-	f := hostFilterFrom(q)
+	f := s.hostFilter(ctx, q)
 	d := hostsData{Filter: f, Expr: q.Get("q"), Query: template.URL(r.URL.RawQuery), Examples: examples}
+	d.HealthLabel = healthLabels[f.Health]
 	var err error
 	if d.Columns, d.Attrs, err = s.inventoryColumns(ctx, q); err != nil {
 		s.fail(w, err)
@@ -186,7 +208,7 @@ func (s *Server) exportRows(w http.ResponseWriter, r *http.Request) ([]store.Hos
 		s.fail(w, err)
 		return nil, nil, nil, false
 	}
-	rows, members, err := FilterHosts(ctx, s.Store, hostFilterFrom(q), q.Get("q"))
+	rows, members, err := FilterHosts(ctx, s.Store, s.hostFilter(ctx, q), q.Get("q"))
 	var qe *query.Error
 	if errors.As(err, &qe) {
 		http.Error(w, "query: "+qe.Error(), http.StatusBadRequest)

@@ -63,8 +63,8 @@ other sources the default ranks are:
 A lower rank wins. A derived source is barred from `env` and `site`.
 
 A person or a document may state only a host's application, and its stacks
-with its role in each. Use `kryostate set <host> application=ledger -reason
-"..."`, the form on the host page, or an imported inventory. Every other
+with its role in each. Use `kryostate set <host> application=ledger`,
+the form on the host page, or an imported inventory. Every other
 attribute comes from the host.
 
 When two sources of equal rank give different values, the source that
@@ -243,7 +243,7 @@ one command.
 | `hosts` | Lists hosts, with chosen attributes as columns (`-cols`). `-q` filters with a query; `-json` prints the shape `/hosts.json` uses |
 | `show` | Shows the facts, probes and connections for one host |
 | `refresh` | Runs `collect`, then the checks |
-| `set` | Records a host's application, or its stack and role, with `-reason`. Nothing else can be set by hand |
+| `set` | Records a host's application, or its stack and role, with an optional `-reason` note for the audit log. Nothing else can be set by hand |
 | `collectors` | Lists collectors and the catalog (`-catalog`), switches catalog collectors on and off (`-enable`, `-disable`), creates a file for your own (`-init`), prints any collector as it would be written in that file (`-show`), tests any collector without saving (`-try`), and lists or changes schedules (`-schedules`, `-schedule`) |
 | `import` | Reads hosts, addresses, stacks, roles and applications from a Markdown or CSV document. Common column names are recognised; `-map` names them otherwise. Other columns are reported as not imported |
 | `host` | Adds a host. `-retire` marks one gone and keeps its history |
@@ -439,11 +439,15 @@ view.
 
 The screens below are of the lab in section 4.2, after `lab.sh seed`.
 
-The overview answers two questions: did every host collect, and what changed.
-It counts hosts collected, failing, stale, never collected and without a
-connection, lists failing hosts with the reason, shows the last day's
-changes, and lists the collectors that run next. Collections are started from
-the Runs page, not here.
+The overview opens with one line saying whether every host collected, such
+as "All 4 hosts collected successfully · last run 38m ago" or "3 of 120 hosts
+failing". Below it, **Needs attention** lists only the problems that exist:
+hosts failing (with the error), with no connection, out of date, or never
+collected. Each links to the inventory filtered to those hosts
+(`/hosts?health=failing`, `noconn`, `stale` or `never`). Then come the last
+day's changes, the next runs by clock time, and the estate at a glance: hosts
+by operating system, stack and application. Collections are started from the
+Runs page, not here.
 
 ![Overview](docs/images/overview.png)
 

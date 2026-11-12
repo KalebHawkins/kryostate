@@ -766,6 +766,11 @@ type HostFilter struct {
 	// collection_failed, or unparsed.
 	Because  string
 	Unparsed string // attribute whose value no rule understood
+	// Health narrows to one of the overview's problem buckets: failing,
+	// stale, never or noconn. StaleBefore is the cutoff for stale; zero uses
+	// fourteen days.
+	Health      string
+	StaleBefore time.Time
 	// Retired lists retired hosts instead of live ones, so one retired by
 	// mistake can be found again and restored.
 	Retired bool
@@ -814,6 +819,11 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 		case model.UnknownCollectionFailed:
 			where = append(where, lastCollectorRunFailed)
 		}
+	}
+	if f.Health != "" {
+		w, a := healthWhere(f.Health, f.StaleBefore)
+		where = append(where, w)
+		args = append(args, a...)
 	}
 	if f.Stack != "" {
 		where = append(where, `EXISTS (SELECT 1 FROM stack_member m JOIN stack s ON s.id=m.stack_id

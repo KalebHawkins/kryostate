@@ -176,11 +176,10 @@
 
   <div class="card" id="application">
     <h2>Application</h2>
-    <p class="muted">What this host runs, recorded under your name with your reason. Its stack and role are set under Stacks; everything else is what the host reports.</p>
+    <p class="muted">What this host runs, recorded under your name. Its stack and role are set under Stacks; everything else is what the host reports.</p>
     <form class="form" method="post" action="/hosts/{{.CI.ID}}/application">
       <label>Application <input type="text" name="application" required class="mono" placeholder="ledger"
         value="{{range .Facts}}{{if and (eq .Attr "application") (not .Scope)}}{{.Raw}}{{end}}{{end}}"></label>
-      <label>Reason <input type="text" name="reason" required placeholder="why you know this, such as a ticket number"></label>
       <div class="form__actions"><button class="btn" type="submit">Record</button></div>
     </form>
   </div>

@@ -1,75 +1,109 @@
 {{define "home.html"}}
-<h1>Overview</h1>
-<p class="muted">Counted from what happened the last time each host was collected, not from rows in a table.{{with .LastRun}} Last run {{ago .Started}}{{if .Trigger}} ({{.Trigger}}){{end}}: {{.Succeeded}} ok, {{.Failed}} failed. <a href="/runs" hx-get="/runs" hx-target="#main" hx-push-url="true">Runs</a>{{end}}</p>
+<h1 class="visually-hidden">Overview</h1>
 
-<div class="stats">
-  <div class="stat"><span class="stat__value">{{.Health.Hosts}}</span><span class="stat__label">hosts</span></div>
-  <div class="stat stat--ok"><span class="stat__value">{{.Health.OK}}</span><span class="stat__label">collected ok</span></div>
-  <div class="stat{{if .Health.Failing}} stat--bad{{end}}"><span class="stat__value">{{.Health.Failing}}</span><span class="stat__label">failing</span></div>
-  <div class="stat{{if .Health.Stale}} stat--warn{{end}}" title="Last good collection older than twice the built-in collectors' schedule"><span class="stat__value">{{.Health.Stale}}</span><span class="stat__label">stale, over {{.StaleAfter}}</span></div>
-  <div class="stat"><span class="stat__value">{{.Health.Never}}</span><span class="stat__label">never collected</span></div>
-  <div class="stat"><span class="stat__value">{{.Health.NoConnection}}</span><span class="stat__label">no connection</span></div>
+<section class="ov-banner ov-banner--{{.Banner.Tone}}" aria-label="Estate status">
+  <span class="ov-banner__mark" aria-hidden="true">{{if eq .Banner.Tone "ok"}}&#10003;{{else if eq .Banner.Tone "bad"}}&#215;{{else if eq .Banner.Tone "warn"}}!{{else}}&#8211;{{end}}</span>
+  <div class="ov-banner__text">
+    <p class="ov-banner__headline">{{.Banner.Headline}}</p>
+    <p class="ov-banner__detail">{{.Banner.Detail}}
+      · <a href="/runs" hx-get="/runs" hx-target="#main" hx-push-url="true">Runs</a>
+      · <a href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Inventory</a></p>
+  </div>
+</section>
+
+<div class="ov-grid">
+  <div class="ov-main">
+    <section class="card ov-card" aria-labelledby="ov-attn">
+      <h2 id="ov-attn">Needs attention</h2>
+      {{if .Attention}}
+      <ul class="ov-attn">
+        {{range .Attention}}
+        <li class="ov-attn__item ov-attn__item--{{.Tone}}">
+          <a class="ov-attn__link" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">
+            <span class="ov-attn__count">{{.Count}}</span>
+            <span class="ov-attn__what"><span class="ov-attn__title">{{if eq .Count 1}}host{{else}}hosts{{end}} {{.Title}}</span>
+              <span class="ov-attn__note">{{.Note}}</span></span>
+            <span class="ov-attn__go" aria-hidden="true">&#8250;</span>
+          </a>
+          {{if eq .Key "failing"}}{{if $.Failing}}
+          <ul class="ov-failing">
+            {{range $.Failing}}
+            <li><a class="mono" href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Label}}</a>
+              <span class="chip chip--bad">{{.Outcome}}</span> <span class="muted small">{{ago .At}}</span>
+              {{if .Detail}}<div class="muted small mono ov-failing__why" title="{{.Detail}}">{{short .Detail 140}}</div>{{end}}</li>
+            {{end}}
+          </ul>
+          {{if $.MoreFailing}}<p class="muted small ov-more">The {{len $.Failing}} most recent failures are shown.</p>{{end}}
+          {{end}}{{end}}
+        </li>
+        {{end}}
+      </ul>
+      {{else if .Health.Hosts}}
+      <p class="ov-empty">Nothing. Every host was collected successfully and recently.</p>
+      {{else}}
+      <p class="ov-empty">Add a host from the <a href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Inventory</a>, give it a connection, and its collection results show here.</p>
+      {{end}}
+    </section>
+
+    <section class="card ov-card" aria-labelledby="ov-changes">
+      <h2 id="ov-changes">Recent changes <span class="ov-sub">last 24 hours{{if .TotalChanges}} · {{.TotalChanges}}{{end}}</span></h2>
+      {{if .Changes}}
+      <ul class="list ov-changes">
+        {{range .Changes}}
+        <li><a class="mono" href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Host}}</a>
+          <span title="{{.Attr}}">{{label .Attr}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</span>
+          <span class="muted small ov-changes__when">{{ago .At}}</span>
+          <div class="change small"><span class="change__old mono" title="{{.Old}}">{{short .Old 40}}</span> <span class="change__arrow" aria-label="changed to">&#8594;</span> <span class="change__new mono" title="{{.New}}">{{short .New 40}}</span></div></li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="ov-empty">No collected value changed in the last day.</p>
+      {{end}}
+      <p class="small ov-foot"><a href="/changes" hx-get="/changes" hx-target="#main" hx-push-url="true">All changes</a> · <a href="/changes?window=7d" hx-get="/changes?window=7d" hx-target="#main" hx-push-url="true">last 7 days</a></p>
+    </section>
+  </div>
+
+  <aside class="ov-side">
+    <section class="card ov-card" aria-labelledby="ov-next">
+      <h2 id="ov-next">Next runs</h2>
+      {{if not .Scheduling}}<p class="notice small">Scheduled runs are off in this server (it was started with <span class="mono">-no-schedule</span>), so collection only happens when someone starts it.</p>{{end}}
+      {{if .Upcoming}}
+      <ol class="ov-next">
+        {{range .Upcoming}}
+        <li><span class="ov-next__when nowrap{{if .Due}} sched--due{{end}}"{{if .In}} title="{{.In}}"{{end}}>{{.When}}</span>
+          <span class="ov-next__what">{{.Title}} <span class="muted small">{{.Sched}}</span></span></li>
+        {{end}}
+      </ol>
+      {{else}}
+      <p class="ov-empty">Nothing is scheduled; every collector runs only when asked.</p>
+      {{end}}
+      <p class="small ov-foot"><a href="/schedules" hx-get="/schedules" hx-target="#main" hx-push-url="true">Schedules</a></p>
+    </section>
+  </aside>
 </div>
 
-<div class="overview">
-  <section class="card">
-    <h2>Failing hosts{{if .Failing}} ({{.Health.Failing}}){{end}}</h2>
-    {{if .Failing}}
-    <ul class="list">
-      {{range .Failing}}
-      <li><a class="mono" href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Label}}</a>
-        <span class="chip chip--bad">{{.Outcome}}</span> <span class="muted">{{ago .At}}</span>
-        {{if .Detail}}<div class="muted small mono" title="{{.Detail}}">{{short .Detail 140}}</div>{{end}}</li>
+<section class="ov-glance" aria-labelledby="ov-glance">
+  <h2 id="ov-glance">Estate at a glance <span class="ov-sub">{{.Health.Hosts}} {{if eq .Health.Hosts 1}}host{{else}}hosts{{end}}</span></h2>
+  <div class="ov-glance__grid">
+    {{range .Glance}}
+    <section class="card ov-card">
+      <h3>By {{lower .Title}}</h3>
+      {{if .Rows}}
+      <ul class="ov-bars">
+        {{range .Rows}}
+        <li class="ov-bar{{if .Unknown}} ov-bar--none{{end}}">
+          {{if .Href}}<a class="ov-bar__label" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Label}}</a>{{else}}<span class="ov-bar__label">{{.Label}}</span>{{end}}
+          <span class="ov-bar__count">{{.Count}}</span>
+          <span class="ov-bar__track" aria-hidden="true"><span class="ov-bar__fill" style="width: {{.Pct}}%"></span></span>
+        </li>
+        {{end}}
+      </ul>
+      {{if .More}}<p class="small ov-foot"><a href="{{.MoreHref}}" hx-get="{{.MoreHref}}" hx-target="#main" hx-push-url="true">and {{.More}} more</a></p>{{end}}
+      {{else}}
+      <p class="ov-empty">{{.Empty}}</p>
       {{end}}
-    </ul>
-    {{if .MoreFailing}}<p class="muted small">Showing the {{len .Failing}} most recent.</p>{{end}}
-    {{else if .Health.OK}}
-    <p class="muted">None. Every host's latest collection succeeded.</p>
-    {{else}}
-    <p class="muted">None failing, but nothing has been collected either. Add a connection to a host, then collect from the <a href="/runs" hx-get="/runs" hx-target="#main" hx-push-url="true">Runs</a> page.</p>
+    </section>
     {{end}}
-  </section>
-
-  <section class="card">
-    <h2>Changed in the last 24 hours{{if .TotalChanges}} ({{.TotalChanges}}){{end}}</h2>
-    {{if .Changes}}
-    <ul class="list">
-      {{range .Changes}}
-      <li><a class="mono" href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Host}}</a>
-        <span title="{{.Attr}}">{{label .Attr}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</span>
-        <div class="change small"><span class="change__old mono" title="{{.Old}}">{{short .Old 40}}</span> <span class="change__arrow" aria-label="changed to">→</span> <span class="change__new mono" title="{{.New}}">{{short .New 40}}</span> <span class="muted">{{ago .At}}</span></div></li>
-      {{end}}
-    </ul>
-    {{else}}
-    <p class="muted">No collected value changed in the last day.</p>
-    {{end}}
-    <p class="small"><a href="/changes" hx-get="/changes" hx-target="#main" hx-push-url="true">All changes</a> · <a href="/changes?window=7d" hx-get="/changes?window=7d" hx-target="#main" hx-push-url="true">last 7 days</a></p>
-  </section>
-
-  <section class="card">
-    <h2>Coming up</h2>
-    {{if not .Scheduling}}<p class="notice small">Scheduling is off in this server (started with <span class="mono">-no-schedule</span>), so these only run when someone collects.</p>{{end}}
-    {{if .Upcoming}}
-    <ul class="list">
-      {{range .Upcoming}}
-      <li><span>{{.Title}}</span> <span class="muted small">{{.Sched}}</span> <span class="nowrap">{{.When}}</span></li>
-      {{end}}
-    </ul>
-    {{else}}
-    <p class="muted">Every collector is manual only.</p>
-    {{end}}
-    <p class="small"><a href="/schedules" hx-get="/schedules" hx-target="#main" hx-push-url="true">Schedules</a></p>
-  </section>
-
-  {{if .Families}}
-  <section class="card">
-    <h2>Operating systems</h2>
-    <ul class="list">
-      {{range .Families}}
-      <li>{{if .Unknown}}<span class="muted">{{.Label}}</span>{{else}}<span class="mono">{{.Label}}</span>{{end}} <span class="num">{{.Count}}</span></li>
-      {{end}}
-    </ul>
-  </section>
-  {{end}}
-</div>
+  </div>
+</section>
 {{end}}

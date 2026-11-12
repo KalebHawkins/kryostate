@@ -25,6 +25,7 @@
     {{if .Filter.Unknown}}<input type="hidden" name="unknown" value="{{.Filter.Unknown}}">{{end}}
     {{if .Filter.Because}}<input type="hidden" name="because" value="{{.Filter.Because}}">{{end}}
     {{if .Filter.Unparsed}}<input type="hidden" name="unparsed" value="{{.Filter.Unparsed}}">{{end}}
+    {{if .Filter.Health}}<input type="hidden" name="health" value="{{.Filter.Health}}">{{end}}
     <details class="colpick">
       <summary class="btn btn--ghost">Columns</summary>
       <div class="colpick__menu">
@@ -43,6 +44,7 @@
   {{if .Filter.Attr}}<span class="chip chip--document">{{label .Filter.Attr}} = {{.Filter.Value}}</span>{{end}}
   {{if .Filter.Unknown}}<span class="chip chip--unknown">no {{label .Filter.Unknown}}{{if .Filter.Because}} · {{label .Filter.Because}}{{end}}</span>{{end}}
   {{if .Filter.Unparsed}}<span class="chip chip--unknown">{{label .Filter.Unparsed}} not understood</span>{{end}}
+  {{if .Filter.Health}}<span class="chip {{if eq .Filter.Health "failing"}}chip--bad{{else}}chip--stale{{end}}">{{with .HealthLabel}}{{.}}{{else}}unrecognised health filter{{end}}</span>{{end}}
 </div>
 {{with .QErr}}
 <div id="q-err" class="qerr" role="alert">
