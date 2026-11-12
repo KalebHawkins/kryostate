@@ -21,7 +21,9 @@ import (
 
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/web"
 )
 
 // parseInterspersed lets flags follow positional arguments, so that
@@ -70,44 +72,35 @@ func writeJSON(v any) error {
 func cmdHosts(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("hosts", flag.ExitOnError)
 	db := dbFlag(fs)
-	q := fs.String("q", "", "only hosts whose name or identity contains this")
+	q := fs.String("q", "", `a query, such as 'os.family == "Linux" && stack == "web"', or part of a name (see the user guide)`)
 	stack := fs.String("stack", "", "only members of this stack")
-	cols := fs.String("cols", "os.version,application", "comma-separated attributes to show as columns")
-	asJSON := fs.Bool("json", false, "print JSON instead of a table")
+	cols := fs.String("cols", "os.version,application", "comma-separated attributes to show as columns; with -json, the values to include (default all)")
+	asJSON := fs.Bool("json", false, "print JSON instead of a table, in the shape /hosts.json uses")
 	if pos := parseInterspersed(fs, args); len(pos) > 0 && *q == "" {
 		*q = strings.Join(pos, " ")
 	}
+	colsSet := false
+	fs.Visit(func(f *flag.Flag) { colsSet = colsSet || f.Name == "cols" })
 
 	st, err := openStore(*db)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
-	rows, err := st.Hosts(ctx, store.HostFilter{Search: *q, Stack: *stack})
-	if err != nil {
+	rows, members, err := web.FilterHosts(ctx, st, store.HostFilter{Stack: *stack}, *q)
+	var qe *query.Error
+	if errors.As(err, &qe) {
+		return fmt.Errorf("query: %s\n  %s\n  %s", qe.Msg, *q, qe.Caret())
+	} else if err != nil {
 		return err
 	}
 
 	if *asJSON {
-		type hostJSON struct {
-			ID          string            `json:"id"`
-			Name        string            `json:"name"`
-			Values      map[string]string `json:"values"`
-			Stacks      []string          `json:"stacks,omitempty"`
-			LastCollect *time.Time        `json:"last_collect,omitempty"`
-			CollectOK   bool              `json:"collect_ok"`
+		var jc []string
+		if colsSet {
+			jc = splitIDs(*cols)
 		}
-		out := make([]hostJSON, 0, len(rows))
-		for _, r := range rows {
-			h := hostJSON{ID: r.CI.ID, Name: r.CI.Label, Values: r.Values, Stacks: r.Stacks,
-				CollectOK: r.CollectOK}
-			if r.HasCollected {
-				t := r.LastCollect
-				h.LastCollect = &t
-			}
-			out = append(out, h)
-		}
-		return writeJSON(out)
+		return writeJSON(web.HostsJSON(rows, members, jc))
 	}
 
 	if len(rows) == 0 {

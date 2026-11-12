@@ -216,7 +216,7 @@ func TestChartBarsLinkToTheHostsTheyCount(t *testing.T) {
 	}
 
 	wantLinks := []string{
-		"/hosts?attr=os.version&amp;value=RHEL+8.6",
+		"/hosts?q=os.version+%3D%3D+%22RHEL+8.6%22",
 		"/hosts?unknown=os.version",
 	}
 	for _, want := range wantLinks {
@@ -227,7 +227,7 @@ func TestChartBarsLinkToTheHostsTheyCount(t *testing.T) {
 
 	// Follow one of the links the page actually produced and check it lands
 	// on the hosts it claimed to count.
-	target := strings.ReplaceAll("/hosts?attr=os.version&amp;value=RHEL+8.6", "&amp;", "&")
+	target := "/hosts?q=os.version+%3D%3D+%22RHEL+8.6%22"
 	if _, err := url.Parse(target); err != nil {
 		t.Fatal(err)
 	}

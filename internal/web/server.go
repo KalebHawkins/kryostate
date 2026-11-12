@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"html/template"
@@ -97,6 +96,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleHome)
 	mux.HandleFunc("GET /hosts", s.handleHosts)
 	mux.HandleFunc("GET /hosts.csv", s.handleHostsCSV)
+	mux.HandleFunc("GET /hosts.json", s.handleHostsJSON)
 	mux.HandleFunc("GET /hosts/{id}", s.handleHost)
 	mux.HandleFunc("GET /stacks", s.handleStacks)
 	mux.HandleFunc("GET /charts", s.handleCharts)
@@ -184,14 +184,6 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	http.Error(w, "something went wrong rendering this page", http.StatusInternalServerError)
 }
 
-type hostsData struct {
-	Rows    []store.HostRow
-	Attrs   []store.AttrInfo
-	Columns []string
-	Filter  store.HostFilter
-	Query   template.URL
-}
-
 // defaultColumns are the attributes shown in the table. They are the ones most
 // inventories are kept for; anything else lives on the host page, where high
 // cardinality costs nothing.
@@ -213,70 +205,6 @@ func columnsFrom(q url.Values) []string {
 		return defaultColumns
 	}
 	return cols
-}
-
-func hostFilterFrom(q url.Values) store.HostFilter {
-	return store.HostFilter{
-		Attr:     q.Get("attr"),
-		Value:    q.Get("value"),
-		Stack:    q.Get("stack"),
-		Search:   q.Get("q"),
-		Unknown:  q.Get("unknown"),
-		Because:  q.Get("because"),
-		Unparsed: q.Get("unparsed"),
-		Retired:  q.Get("retired") == "1",
-	}
-}
-
-func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := hostFilterFrom(q)
-	rows, err := s.Store.Hosts(r.Context(), f)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	attrs, err := s.Store.Attrs(r.Context())
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	s.render(w, r, "hosts.html", "Inventory", "hosts", hostsData{
-		Rows: rows, Attrs: attrs, Columns: columnsFrom(q), Filter: f,
-		Query: template.URL(r.URL.RawQuery),
-	})
-}
-
-// handleHostsCSV writes the inventory view that the same query string shows
-// on screen, for the spreadsheet somebody will inevitably want.
-func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	rows, err := s.Store.Hosts(r.Context(), hostFilterFrom(q))
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	cols := columnsFrom(q)
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="kryostate-inventory.csv"`)
-	cw := csv.NewWriter(w)
-	header := append([]string{"host", "id"}, cols...)
-	header = append(header, "stacks", "last_collected", "collect_ok")
-	_ = cw.Write(header)
-	for _, h := range rows {
-		rec := []string{csvSafe(h.CI.Label), h.CI.ID}
-		for _, c := range cols {
-			rec = append(rec, csvSafe(h.Values[c]))
-		}
-		last := ""
-		if h.HasCollected {
-			last = h.LastCollect.UTC().Format(time.RFC3339)
-		}
-		rec = append(rec, csvSafe(strings.Join(h.Stacks, ";")), last,
-			strconv.FormatBool(h.CollectOK))
-		_ = cw.Write(rec)
-	}
-	cw.Flush()
 }
 
 // csvSafe defuses a value that a spreadsheet would run as a formula. Values
@@ -450,45 +378,6 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 		Groups     []collect.Group
 		Fixed      []collect.Template // catalog entries that need no value
 	}{out, names, everywhere, collect.Groups, fixedEntries()})
-}
-
-func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	attrs, err := s.Store.Attrs(ctx)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	titles := s.attrTitles(ctx)
-	type chartsData struct {
-		Charts  []Chart
-		Skipped []store.AttrInfo
-	}
-	var d chartsData
-	requested := r.URL.Query()["attr"]
-	for _, a := range attrs {
-		if len(requested) > 0 && !contains(requested, a.Attr) {
-			continue
-		}
-		if !a.Chartable && len(requested) == 0 {
-			d.Skipped = append(d.Skipped, a)
-			continue
-		}
-		buckets, err := s.Store.Distribution(ctx, a.Attr)
-		if err != nil {
-			s.fail(w, err)
-			return
-		}
-		title := a.Label
-		if title == "" {
-			title = titles[a.Attr]
-		}
-		if title == "" {
-			title = a.Attr
-		}
-		d.Charts = append(d.Charts, NewChart(a.Attr, title, buckets))
-	}
-	s.render(w, r, "charts.html", "Charts", "charts", d)
 }
 
 func (s *Server) handleSelectAddress(w http.ResponseWriter, r *http.Request) {

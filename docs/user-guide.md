@@ -481,15 +481,84 @@ the last week with **changed** (hover for the old value).
 
 ### Finding hosts
 
-On the **Inventory** page, type in the search box, filter by stack, choose
-columns, and download the view as CSV. On the command line:
+On the **Inventory** page, type part of a name or a query into the box,
+choose columns, and download the view as CSV or JSON. The query is kept in
+the address (`/hosts?q=...`), so a filtered view can be bookmarked or pasted
+to someone else. On the command line:
 
 ```sh
 kryostate hosts                          # every host
 kryostate hosts pay                      # names that contain "pay"
+kryostate hosts -q 'os.family == "Linux" && stack == "web"'
 kryostate hosts -cols os.version,application
 kryostate hosts -json                    # for scripts
 ```
+
+#### Queries
+
+A query is a condition on each host's current values, in the style of a
+Prometheus label matcher:
+
+```text
+os.version == "Red Hat 7.9 (Ootpa)"
+os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"
+stack == "splunk-prod" && role == "indexer"
+name =~ "^web" || application == "nginx"
+hw.cpu.cores >= 8 && kernel.version < "4"
+!has(os.version)
+```
+
+| Write | Means |
+|---|---|
+| `==` `!=` | equal, not equal. Text is exact and case sensitive. |
+| `=~` `!~` | matches, does not match a Go regular expression. Patterns are **not anchored**: `"web"` matches anywhere in the value, `"^web"` only at the start. `(?i)` ignores case. |
+| `<` `<=` `>` `>=` | numbers compare as numbers (`8 < 16`), versions in version order (`"7.9" < "7.10"`). A value that is neither does not match. |
+| `&&` `\|\|` `!` `( )` | and, or, not, grouping. `&&` binds tighter than `\|\|`; `!` applies to the whole comparison after it. |
+| `"text"` `'text'` | a string; `\"`, `\\`, `\n` and `\t` are escapes. A pattern full of backslashes is easier as a raw string in backquotes, which has no escapes. |
+| `true` `false` `8` `-1.5` | literals. `true` matches a value of true or yes, `false` one of false or no. |
+| `has(x)` | the host has a value for x. So does `x != ""`; `x == ""` finds hosts without one. |
+| `x` alone | the same as `x == true`, for yes/no attributes. |
+
+Names are attribute names such as `os.version`, plus a few that are not
+attributes: `name` (the host's name), `id`, `stack` (any stack it is in),
+`role` (its role in any stack, or its `role` attribute) and `application`
+(its `app.name`). `stack != "x"` means "not in stack x".
+
+A collector that takes a path or a name records an attribute named after it,
+such as `file.splunk.exists` for `/opt/splunkforwarder/bin/splunk`. You can use
+that name, or name the collector and its parameter:
+`file.exists["/opt/splunkforwarder/bin/splunk"] == true`. The shorter
+`file.exists == "/opt/splunkforwarder/bin/splunk"` means the same, and
+`package.version == "openssl"` means the openssl version collector has a
+value. Text with none of the query symbols in it is a name search, as before.
+
+A query that does not parse is shown with the column where the problem is.
+Queries are evaluated in KryoState over the loaded values; none of it is
+passed to the database.
+
+#### JSON export
+
+`/hosts.json` takes the same `q` and `col` parameters as the Inventory page,
+and `kryostate hosts -json` prints the same shape:
+
+```json
+[
+  {
+    "id": "01J9...",
+    "name": "web01",
+    "stacks": [{"stack": "splunk-prod", "role": "indexer"}],
+    "application": "splunk",
+    "values": {"os.version": "RHEL 8.6", "env": null},
+    "last_collected": "2026-11-12T08:00:00Z",
+    "collect_ok": true
+  }
+]
+```
+
+`values` holds the chosen columns, `null` where the host has no value; `col=*`
+chooses every attribute, and the command line includes every value unless
+`-cols` is given. `application` and `last_collected` are left out when there
+is none.
 
 ### Retiring a host
 
@@ -520,10 +589,10 @@ kryostate restore -db new.db -in backup.json
 | Page | What it shows | What you can change |
 |---|---|---|
 | Overview | Whether hosts collected, failing hosts and why, the last day's changes, what runs next | |
-| Inventory | One row for each host | Add a host; choose columns; download CSV |
+| Inventory | One row for each host, filtered by a query | Add a host; choose columns; download CSV or JSON |
 | Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, application, retire and restore, chosen address; test any collector on it |
 | Stacks | One card for each stack, with roles and what is collected there | Create, edit and delete stacks; add and remove members; switch collectors on for one stack |
-| Charts | One chart for each attribute; each bar links to its hosts | |
+| Charts | One chart for each attribute: a donut for a few values, ranked bars for more, a histogram for numbers. Attributes that identify a host are listed, not charted. Open a chart for a larger view and a table; each value links to its hosts | |
 | Changes | Collected values that changed, by time window | |
 | Runs | The collection history, manual and scheduled | Start a collection |
 | Schedules | Each collector's schedule, last run and next due time | Change how often each collector runs |
