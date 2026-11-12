@@ -1,26 +1,60 @@
-# kryostate as a container image.
+# kryostate as a container image, built from source.
 #
 #   podman build -t kryostate -f deploy/Containerfile .
-#   podman run -d --name kryostate -p 8099:8099 -v kryostate-data:/data kryostate
+#   podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data kryostate
+#
+# For several architectures at once (the Go compiler cross-compiles, so no
+# emulation is needed for the build stage):
+#
+#   podman build --platform linux/amd64,linux/arm64 --manifest kryostate -f deploy/Containerfile .
+#
+# Released images are built by GoReleaser from the release binaries instead
+# (deploy/Containerfile.release) and published to ghcr.io/kalebhawkins/kryostate.
 #
 # The database, and any collectors.json, rules.json or externals.json beside
 # it, live in the /data volume. The image has no shell and runs as a user with
 # no privileges; kryostate itself needs neither.
 
-FROM docker.io/library/golang:1.27 AS build
+ARG GO_IMAGE=docker.io/library/golang:1.27
+ARG BASE_IMAGE=gcr.io/distroless/static-debian12:nonroot
+
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS build
+ARG TARGETOS
+ARG TARGETARCH
+# Left empty, the version is read from the Go build information instead.
+ARG VERSION=""
+ARG COMMIT=""
+ARG DATE=""
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/kryostate ./cmd/kryostate
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
+      -ldflags="-s -w \
+        -X github.com/KalebHawkins/kryostate/internal/version.Version=${VERSION} \
+        -X github.com/KalebHawkins/kryostate/internal/version.Commit=${COMMIT} \
+        -X github.com/KalebHawkins/kryostate/internal/version.Date=${DATE}" \
+      -o /out/kryostate ./cmd/kryostate
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM ${BASE_IMAGE}
+ARG VERSION=""
+ARG COMMIT=""
+LABEL org.opencontainers.image.title="kryostate" \
+      org.opencontainers.image.description="An inventory of servers, read from the servers themselves" \
+      org.opencontainers.image.source="https://github.com/KalebHawkins/kryostate" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}"
 COPY --from=build /out/kryostate /usr/local/bin/kryostate
 # Hold /data as the unprivileged user, so a fresh named volume is writable.
 COPY --from=build --chown=65532:65532 /tmp /data
 ENV KRYOSTATE_DB=/data/kryostate.db
+USER 65532:65532
 VOLUME /data
 EXPOSE 8099
+# No HEALTHCHECK: the image has no shell or HTTP client to run one with, and
+# OCI images (podman's default format) do not carry the instruction anyway.
+# Point an orchestrator's HTTP probe at GET / instead.
 ENTRYPOINT ["/usr/local/bin/kryostate"]
 # Listen on every address inside the container; publish the port to choose
 # who can reach it. The page has no login, so publish it only to localhost or

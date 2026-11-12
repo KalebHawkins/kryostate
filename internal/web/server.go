@@ -280,6 +280,10 @@ type hostData struct {
 	// Collectors are what runs on this host and why, and what is on but
 	// skips it.
 	Collectors hostCollectors
+	// AsOf is set when the Facts table shows a past moment; Facts then
+	// holds the values of that moment and CurrentFacts today's.
+	AsOf         *asOf
+	CurrentFacts []model.Fact
 }
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
@@ -294,6 +298,23 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	// ?at= shows the Facts table as it stood then; the rest of the page,
+	// which is for acting on the host, stays as it is now.
+	var then *asOf
+	var pastFacts []model.Fact
+	if q := r.URL.Query().Get("at"); q != "" {
+		at, err := ParseAt(q)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if pastFacts, err = s.Store.FactsAt(ctx, id, at); err != nil {
+			s.fail(w, err)
+			return
+		}
+		a := asOfFrom(q, at)
+		then = &a
 	}
 	ids, _ := s.Store.Identities(ctx, id)
 	addrs, _ := s.Store.Addresses(ctx, id)
@@ -336,6 +357,11 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	d.Labels = s.attrTitles(ctx)
 	d.Changed = s.hostChanges(ctx, id)
 	d.Collectors = s.hostCollectorsFor(ctx, id, facts, d.Changed)
+	if then != nil {
+		// The application box below still edits today's value, so it reads
+		// from CurrentFacts; the table shows the past.
+		d.AsOf, d.CurrentFacts, d.Facts, d.Changed = then, facts, pastFacts, nil
+	}
 	if choices, err := s.Store.Choices(ctx); err == nil {
 		for _, c := range choices {
 			if !c.InCatalog() {

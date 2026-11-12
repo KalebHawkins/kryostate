@@ -1,0 +1,16 @@
+# The released image. GoReleaser builds it from the binaries it has already
+# compiled, one per platform, placed in the build context as
+# <os>/<arch>/kryostate. To build from source instead, use deploy/Containerfile.
+
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/kryostate /usr/local/bin/kryostate
+# Hold /data as the unprivileged user, so a fresh named volume is writable.
+# The base image's home directory is empty and already owned by that user.
+COPY --chown=65532:65532 --from=gcr.io/distroless/static-debian12:nonroot /home/nonroot /data
+ENV KRYOSTATE_DB=/data/kryostate.db
+USER 65532:65532
+VOLUME /data
+EXPOSE 8099
+ENTRYPOINT ["/usr/local/bin/kryostate"]
+CMD ["serve", "-addr", "0.0.0.0:8099"]

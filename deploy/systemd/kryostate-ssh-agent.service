@@ -1,0 +1,44 @@
+# An ssh-agent for the KryoState service, running as the same user.
+#
+# Optional. kryostate prefers "agent:" credentials, so that no private key is
+# ever read by the process holding the inventory; a system service has no
+# login session and so no agent of its own. This unit provides one at
+# /run/kryostate-agent/agent.sock, which kryostate.env points SSH_AUTH_SOCK
+# at.
+#
+#   systemctl enable --now kryostate-ssh-agent
+#   sudo -u kryostate SSH_AUTH_SOCK=/run/kryostate-agent/agent.sock ssh-add /etc/kryostate/ssh/id_ed25519
+#
+# The agent holds keys in memory only: after it restarts, or the machine
+# reboots, add them again. See docs/operations.md.
+
+[Unit]
+Description=ssh-agent for KryoState
+Documentation=https://github.com/KalebHawkins/kryostate/blob/main/docs/operations.md
+Before=kryostate.service
+
+[Service]
+Type=simple
+User=kryostate
+Group=kryostate
+RuntimeDirectory=kryostate-agent
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/ssh-agent -D -a /run/kryostate-agent/agent.sock
+Restart=on-failure
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

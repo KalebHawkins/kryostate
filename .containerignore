@@ -8,3 +8,4 @@ kryostate
 kryostate.exe
 deploy/lab/
 docs/images/
+dist/

@@ -1,0 +1,163 @@
+# GoReleaser configuration for kryostate.
+#
+#   goreleaser check
+#   goreleaser release --snapshot --clean     # everything, nothing published
+#
+# A tag v* pushed to GitHub runs .github/workflows/release.yml, which runs
+# this for real: archives, .deb and .rpm packages, checksums and SBOMs on the
+# GitHub release, and the image on ghcr.io/kalebhawkins/kryostate.
+#
+# AIX is not built: modernc.org/libc, under the pure Go SQLite driver, has no
+# aix port, so "GOOS=aix GOARCH=ppc64 go build" fails. KryoState still
+# collects from AIX hosts over SSH; it only cannot run on one.
+version: 2
+
+project_name: kryostate
+
+before:
+  hooks:
+    - go mod tidy -diff
+
+builds:
+  - id: kryostate
+    main: ./cmd/kryostate
+    binary: kryostate
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/KalebHawkins/kryostate/internal/version.Version={{ .Version }}
+      - -X github.com/KalebHawkins/kryostate/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/KalebHawkins/kryostate/internal/version.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: kryostate
+    ids: [kryostate]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - docs/*.md
+      - docs/adr/*
+      - docs/images/*
+      - deploy/systemd/*
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+nfpms:
+  - id: packages
+    ids: [kryostate]
+    package_name: kryostate
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Kaleb Hawkins
+    maintainer: KalebHawkins <KalebHawkins@users.noreply.github.com>
+    homepage: https://github.com/KalebHawkins/kryostate
+    description: |-
+      An inventory of servers, read from the servers themselves.
+      Runs a web interface on 127.0.0.1:8099 as the kryostate system user,
+      with its database in /var/lib/kryostate.
+    license: MIT
+    section: admin
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    recommends:
+      - openssh-client
+    contents:
+      - src: deploy/systemd/kryostate.service
+        dst: /usr/lib/systemd/system/kryostate.service
+        file_info:
+          mode: 0644
+      - src: deploy/systemd/kryostate-ssh-agent.service
+        dst: /usr/lib/systemd/system/kryostate-ssh-agent.service
+        file_info:
+          mode: 0644
+      - src: deploy/systemd/kryostate.env
+        dst: /etc/kryostate/kryostate.env
+        type: config|noreplace
+        file_info:
+          mode: 0640
+      - dst: /etc/kryostate
+        type: dir
+        file_info:
+          mode: 0750
+      - dst: /var/lib/kryostate
+        type: dir
+        file_info:
+          mode: 0750
+      - src: README.md
+        dst: /usr/share/doc/kryostate/README.md
+        file_info:
+          mode: 0644
+      - src: LICENSE
+        dst: /usr/share/doc/kryostate/LICENSE
+        file_info:
+          mode: 0644
+      - src: docs/*.md
+        dst: /usr/share/doc/kryostate/
+        file_info:
+          mode: 0644
+    scripts:
+      postinstall: deploy/packaging/postinstall.sh
+      preremove: deploy/packaging/preremove.sh
+      postremove: deploy/packaging/postremove.sh
+    overrides:
+      rpm:
+        recommends:
+          - openssh-clients
+
+dockers_v2:
+  - id: image
+    ids: [kryostate]
+    dockerfile: deploy/Containerfile.release
+    images:
+      - ghcr.io/kalebhawkins/kryostate
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: kryostate
+      org.opencontainers.image.description: An inventory of servers, read from the servers themselves
+      org.opencontainers.image.source: https://github.com/KalebHawkins/kryostate
+      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge"
+      - "^Retake screenshots"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+release:
+  github:
+    owner: KalebHawkins
+    name: kryostate
+  prerelease: auto
+  footer: |
+    Install: see the README's Installation section, or docs/operations.md for
+    running it as a service. Images: `ghcr.io/kalebhawkins/kryostate:{{ .Version }}`.

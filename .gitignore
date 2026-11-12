@@ -30,3 +30,6 @@ testdata/fuzz/
 .DS_Store
 Thumbs.db
 .claude/
+
+# GoReleaser output.
+/dist/
