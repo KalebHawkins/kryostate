@@ -18,10 +18,10 @@ func TestSwitchCatalogCollectorsOnAndOff(t *testing.T) {
 		t.Fatalf("message %q", msg)
 	}
 	// Limiting it to a stack that exists.
-	post(t, h, "/stacks", url.Values{"name": {"splunk"}})
-	post(t, h, "/collectors/choose", url.Values{"template": {"cpu.cores"}, "where": {"stacks"}, "stack": {"splunk"}})
+	post(t, h, "/stacks", url.Values{"name": {"web"}})
+	post(t, h, "/collectors/choose", url.Values{"template": {"cpu.cores"}, "where": {"stacks"}, "stack": {"web"}})
 	cs, _ := st.Choices(ctx)
-	if len(cs) != 1 || len(cs[0].Stacks) != 1 || cs[0].Stacks[0] != "splunk" {
+	if len(cs) != 1 || len(cs[0].Stacks) != 1 || cs[0].Stacks[0] != "web" {
 		t.Fatalf("choices %+v", cs)
 	}
 	if _, msg := followFlash(t, h, post(t, h, "/collectors/choose", url.Values{"template": {"cpu.cores"}, "where": {"stacks"}, "stack": {"nope"}})); !strings.Contains(msg, "no stack named nope") {

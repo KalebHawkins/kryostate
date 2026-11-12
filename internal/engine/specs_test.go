@@ -29,12 +29,12 @@ func TestCatalogCollectorsFollowTheirStacks(t *testing.T) {
 		}
 		return id
 	}
-	fwd, plain := host("fwd01"), host("app01")
-	sid, _ := st.EnsureStack(ctx, "splunk")
-	if err := st.AddToStack(ctx, sid, fwd, "forwarder"); err != nil {
+	member, plain := host("app01"), host("db01")
+	sid, _ := st.EnsureStack(ctx, "app")
+	if err := st.AddToStack(ctx, sid, member, "app"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.PutChoice(ctx, collect.Choice{Template: "splunk.uf.version", Stacks: []string{"splunk"}}, "op"); err != nil {
+	if _, err := st.PutChoice(ctx, collect.Choice{Template: "java.version", Stacks: []string{"app"}}, "op"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.PutChoice(ctx, collect.Choice{Template: "cpu.cores"}, "op"); err != nil {
@@ -52,14 +52,14 @@ func TestCatalogCollectorsFollowTheirStacks(t *testing.T) {
 		}
 		return strings.Join(out, " ")
 	}
-	if got := ids(fwd); !strings.Contains(got, "catalog.splunk.uf.version.unix") || !strings.Contains(got, "catalog.cpu.cores.linux") {
-		t.Errorf("the forwarder runs: %s", got)
+	if got := ids(member); !strings.Contains(got, "catalog.java.version.unix") || !strings.Contains(got, "catalog.cpu.cores.linux") {
+		t.Errorf("the stack member runs: %s", got)
 	}
-	if got := ids(plain); strings.Contains(got, "splunk") || !strings.Contains(got, "catalog.cpu.cores.linux") {
+	if got := ids(plain); strings.Contains(got, "java") || !strings.Contains(got, "catalog.cpu.cores.linux") {
 		t.Errorf("a host outside the stack runs: %s", got)
 	}
 	// Windows hosts get the Windows variant, never the Linux command.
-	win, err := e.specsForHost(ctx, fwd, "windows")
+	win, err := e.specsForHost(ctx, member, "windows")
 	if err != nil {
 		t.Fatal(err)
 	}

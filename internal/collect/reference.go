@@ -41,8 +41,8 @@ var examples = map[string]string{
 	"package.version":           "3.0.7-27.el9",
 	"file.exists":               "true",
 	"file.contents":             "nameserver 10.0.0.2",
-	"config.value":              "splunk-uf-01",
-	"env.var":                   "/opt/splunkforwarder",
+	"config.value":              "db01",
+	"env.var":                   "/usr/lib/jvm/java-17",
 }
 
 // attrExamples are plausible values for what the always-on specs record.

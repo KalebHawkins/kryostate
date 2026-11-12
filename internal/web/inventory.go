@@ -48,8 +48,8 @@ type queryExample struct {
 }
 
 var examples = []queryExample{
-	{Q: `os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"`, Note: "Linux hosts without the Splunk forwarder"},
-	{Q: `stack == "splunk-prod" && role == "indexer"`, Note: "members of a stack in one role"},
+	{Q: `os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"`, Note: "Linux hosts without the SSH hardening drop-in"},
+	{Q: `stack == "data" && role == "database"`, Note: "members of a stack in one role"},
 	{Q: `name =~ "^web"`, Note: "names starting with web (patterns are unanchored)"},
 	{Q: `os.version =~ "^Red Hat 7" || os.version == "CentOS 7"`, Note: "either of two"},
 	{Q: `hw.cpu.cores >= 8 && hw.memory.total_mb < 16000`, Note: "numbers compare as numbers"},
@@ -233,8 +233,8 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 //	{
 //	  "id": "01J…",
 //	  "name": "web01",
-//	  "stacks": [{"stack": "splunk-prod", "role": "indexer"}],
-//	  "application": "splunk",
+//	  "stacks": [{"stack": "web", "role": "web"}],
+//	  "application": "nginx",
 //	  "values": {"os.version": "RHEL 8.6", "env": null},
 //	  "last_collected": "2026-11-12T08:00:00Z",
 //	  "collect_ok": true

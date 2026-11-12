@@ -10,14 +10,14 @@ import (
 func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 	_, h, st := testServer(t)
 	ctx := context.Background()
-	post(t, h, "/stacks", url.Values{"name": {"splunk"}})
+	post(t, h, "/stacks", url.Values{"name": {"data"}})
 	post(t, h, "/stacks", url.Values{"name": {"edge"}})
 
 	// Python on for every host, then the runtimes group for one stack:
 	// Python must stay on everywhere.
 	post(t, h, "/collectors/choose", url.Values{"template": {"python.version"}, "where": {"all"}})
 	_, msg := followFlash(t, h, post(t, h, "/collectors/group",
-		url.Values{"group": {"group.runtimes"}, "where": {"stacks"}, "stack": {"splunk"}}))
+		url.Values{"group": {"group.runtimes"}, "where": {"stacks"}, "stack": {"data"}}))
 	if !strings.Contains(msg, "already covered") {
 		t.Errorf("message %q", msg)
 	}
@@ -26,18 +26,18 @@ func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 	for _, c := range cs {
 		runs[c.Template] = c.Stacks
 	}
-	if len(runs) != 3 || len(runs["python.version"]) != 0 || strings.Join(runs["java.version"], ",") != "splunk" {
+	if len(runs) != 3 || len(runs["python.version"]) != 0 || strings.Join(runs["java.version"], ",") != "data" {
 		t.Fatalf("after the group: %v", runs)
 	}
 
-	// From the edge stack's card, the same group adds edge beside splunk.
+	// From the edge stack's card, the same group adds edge beside data.
 	_, msg = followFlash(t, h, post(t, h, "/stacks/collectors", url.Values{"stack": {"edge"}, "what": {"group.runtimes"}}))
 	if !strings.Contains(msg, "Language runtimes") {
 		t.Errorf("message %q", msg)
 	}
 	cs, _ = st.Choices(ctx)
 	for _, c := range cs {
-		if c.Template == "java.version" && strings.Join(c.Stacks, ",") != "splunk,edge" {
+		if c.Template == "java.version" && strings.Join(c.Stacks, ",") != "data,edge" {
 			t.Errorf("java runs on %v", c.Stacks)
 		}
 	}
@@ -67,10 +67,10 @@ func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 func TestConfigValueFromTheWeb(t *testing.T) {
 	s, h, st := testServer(t)
 	s.AllowRevealing = true
-	form := url.Values{"template": {"config.value"}, "param": {"/opt/splunk/etc/system/local/server.conf"},
-		"section": {"general"}, "key": {"serverName"}, "where": {"all"}}
+	form := url.Values{"template": {"config.value"}, "param": {"/etc/app/app.conf"},
+		"section": {"database"}, "key": {"host"}, "where": {"all"}}
 	_, msg := followFlash(t, h, post(t, h, "/collectors/choose", form))
-	if !strings.Contains(msg, "server.conf [general] serverName") || !strings.Contains(msg, "conf.server_conf.general.servername") {
+	if !strings.Contains(msg, "app.conf [database] host") || !strings.Contains(msg, "conf.app_conf.database.host") {
 		t.Errorf("message %q", msg)
 	}
 	form.Set("key", "")
@@ -88,7 +88,7 @@ func TestConfigValueFromTheWeb(t *testing.T) {
 		t.Error("the collectors page lacks the groups")
 	}
 	page := get(t, h, "/collectors/config.value", nil).Body.String()
-	if !strings.Contains(page, `name="section"`) || !strings.Contains(page, "server.conf [general] serverName") {
+	if !strings.Contains(page, `name="section"`) || !strings.Contains(page, "app.conf [database] host") {
 		t.Error("the config value page lacks the config fields or the switched-on setting")
 	}
 }

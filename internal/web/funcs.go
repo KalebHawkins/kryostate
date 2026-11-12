@@ -164,7 +164,7 @@ var fixedTitles = collect.FixedTitles()
 
 // funcs is the template functions with "label" bound to this server, so a
 // heading uses the title of the collector choice that records the attribute
-// ("serverName in server.conf [general]") rather than one made from its name.
+// ("host in app.conf [database]") rather than one made from its name.
 func (s *Server) funcs() template.FuncMap {
 	fm := funcs()
 	fm["label"] = s.label

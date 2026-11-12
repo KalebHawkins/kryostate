@@ -2,8 +2,8 @@
 
 KryoState always reads the operating system, its version, the kernel, the
 hardware model and the serial number of every host. A **collector** makes it
-read something else: the memory size, the version of the Splunk forwarder,
-whether a file exists, the value of `SPLUNK_HOME`, and so on.
+read something else: the memory size, the version of nginx or OpenSSL,
+whether a file exists, the value of `JAVA_HOME`, and so on.
 
 There are two ways to add one:
 
@@ -30,15 +30,15 @@ left blank, not counted as a failure.
 | Time zone | `os.timezone` | Linux, AIX, Windows |
 | DNS servers | `net.dns.servers` | Linux, AIX, Windows |
 | SELinux mode | `os.selinux` | Linux |
-| Splunk Universal Forwarder version | `splunk.uf.version` | Linux, AIX, Windows |
-| Splunk Enterprise version | `splunk.enterprise.version` | Linux, AIX, Windows |
-| Splunk home, from the running splunkd | `splunk.home` | Linux, AIX, Windows |
 | Java, Python, OpenSSL, nginx, Apache httpd and Docker versions | `java.version` and so on | varies |
 | Installed package version, for a package you name | `pkg.<name>.version` | Linux, AIX, Windows |
 | File exists, for a path you give; records `true` or `false` | `file.<name>.exists` | Linux, AIX, Windows |
 | File contents, for a path you give | `file.<name>.contents` | Linux, AIX, Windows |
 | Setting in a config file, for a file, key and optional section you give | `conf.<file>.<section>.<key>` | Linux, AIX, Windows |
 | Environment variable, for a name you give | `env.<name>` | Linux, AIX, Windows |
+| Splunk Universal Forwarder version | `splunk.uf.version` | Linux, AIX, Windows |
+| Splunk Enterprise version | `splunk.enterprise.version` | Linux, AIX, Windows |
+| Splunk home, from the running splunkd | `splunk.home` | Linux, AIX, Windows |
 
 KryoState deliberately has no collectors for CPU or memory **usage**. Those
 change by the second, which is the job of a monitoring system.
@@ -67,7 +67,7 @@ both.
 2. Select the collector to open its page. Under **Where it runs**, open
    **Switch on** (or **Add another** for the ones that take a path or a name).
 3. Under **Run on**, keep **All hosts**, or choose **Only hosts in these
-   stacks**. For example, run the Splunk forwarder version only on your Splunk
+   stacks**. For example, run the nginx version only on your web
    stacks.
 4. Select **Switch on**.
 5. Back under **Where it runs**, choose a host and select **Test** to see what
@@ -94,12 +94,12 @@ host's page, and you can show it as a column on the **Inventory** page with
 kryostate collectors -catalog                                  # see the list
 kryostate collectors -try memory.total -host web01             # try it, saves nothing
 kryostate collectors -enable memory.total                      # switch it on everywhere
-kryostate collectors -enable splunk.uf.version -stacks splunk-prod
+kryostate collectors -enable package.version -param openssl
 kryostate collectors -enable file.exists -param /etc/resolv.conf
-kryostate collectors -enable env.var -param SPLUNK_HOME
+kryostate collectors -enable env.var -param JAVA_HOME
 kryostate collectors -enable group.web -stacks web-prod
 kryostate collectors -enable config.value \
-    -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName
+    -param /etc/app/app.conf -section database -key host
 kryostate collectors                                           # what is switched on
 kryostate collectors -disable 3                                # by its number in that list
 ```
@@ -115,24 +115,25 @@ the **Record as** box on the web page.
 
 | Field | Example | Meaning |
 |---|---|---|
-| File | `/opt/splunkforwarder/etc/system/local/server.conf` | The full path |
-| Key | `serverName` | The name to the left of the `=` |
-| Section | `general` | Optional. Only read the key inside `[general]` |
+| File | `/etc/app/app.conf` | The full path |
+| Key | `host` | The name to the left of the `=` |
+| Section | `database` | Optional. Only read the key inside `[database]` |
 
 Without a section, the first matching key anywhere in the file is used.
 Spaces around the `=` do not matter. Lines starting with `#` or `;` are
 comments and are never matched. A host without the file, or a file without
 the key, is left blank.
 
-For Splunk, useful ones are `serverName` in `server.conf` under `[general]`,
-`host` in `inputs.conf` under `[default]`, and `server` in `outputs.conf`
-under `[tcpout:default-autolb-group]` (the indexers a forwarder sends to).
+Useful ones are `max_connections` in PostgreSQL's `postgresql.conf`,
+`bind-address` in MySQL's `my.cnf` under `[mysqld]`, and `memory_limit` in
+PHP's `php.ini` under `[PHP]`. Files written as `Key value` without an `=`,
+such as `sshd_config`, are not read this way.
 
 ### File contents, config settings and environment variables
 
 **File contents**, **Setting in a config file** and **Environment variable**
 show what is inside something on the host, which may be a password or a key.
-A Splunk `server.conf`, for example, also holds `pass4SymmKey`. They can always be
+An app's config file, for example, often holds a database password. They can always be
 switched on from the command line. The web page offers them only if KryoState
 was started with:
 
@@ -266,7 +267,7 @@ Each line means:
 | `command` | The command from step 1 | Copy it exactly |
 | `parse` | Which part of the output to keep | See step 4 |
 | `type` | What kind of value it is | Use `"text"`. For a yes-or-no answer use `"bool"` (see "Yes-or-no answers" below) |
-| `stacks` | Optional. Only run on hosts in these stacks | A list of stack names, such as `["splunk-prod"]`. Leave it out to run on every host |
+| `stacks` | Optional. Only run on hosts in these stacks | A list of stack names, such as `["web-prod"]`. Leave it out to run on every host |
 
 Here is the nginx collector, complete:
 

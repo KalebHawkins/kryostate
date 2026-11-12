@@ -224,7 +224,7 @@ func TestRetireAndRestoreFromTheBrowser(t *testing.T) {
 func TestCollectorsPageOffersOnlyTheCatalog(t *testing.T) {
 	_, h, _ := testServer(t)
 	body := get(t, h, "/collectors", nil).Body.String()
-	for _, want := range []string{"builtin.os.version", "kryostate collectors -init", "CPU cores", "Splunk Universal Forwarder version", `href="/collectors/file.exists"`} {
+	for _, want := range []string{"builtin.os.version", "kryostate collectors -init", "CPU cores", "Apache httpd version", `href="/collectors/file.exists"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the collectors page is missing %q", want)
 		}

@@ -171,31 +171,6 @@ var Catalog = []Template{
 		Variants:    []Variant{{Name: "linux", OS: linux, Command: sbin("getenforce"), Parse: first()}},
 	},
 
-	// ---- splunk ----
-	{
-		ID: "splunk.uf.version", Title: "Splunk Universal Forwarder version", Category: "Splunk", Attr: "splunk.uf.version", Type: model.TypeText,
-		Description: "Read from the forwarder's splunk.version file in its default location.",
-		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "cat /opt/splunkforwarder/etc/splunk.version", Parse: kv("VERSION")},
-			{Name: "windows", OS: windows, Command: `Get-Content 'C:\Program Files\SplunkUniversalForwarder\etc\splunk.version'`, Parse: kv("VERSION")},
-		},
-	},
-	{
-		ID: "splunk.enterprise.version", Title: "Splunk Enterprise version", Category: "Splunk", Attr: "splunk.enterprise.version", Type: model.TypeText,
-		Description: "Read from Splunk Enterprise's splunk.version file in its default location.",
-		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "cat /opt/splunk/etc/splunk.version", Parse: kv("VERSION")},
-			{Name: "windows", OS: windows, Command: `Get-Content 'C:\Program Files\Splunk\etc\splunk.version'`, Parse: kv("VERSION")},
-		},
-	},
-	{
-		ID: "splunk.home", Title: "Splunk home (from the running splunkd)", Category: "Splunk", Attr: "splunk.home", Type: model.TypePath,
-		Description: "Where Splunk is installed, read from the running splunkd process, so it is right even outside the default location.",
-		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "ps -eo args | grep '[s]plunkd'", Parse: rx(`(/[^ ]+)/bin/splunkd`)},
-			{Name: "windows", OS: windows, Command: `(Get-CimInstance Win32_Service | Where-Object { $_.Name -like 'Splunk*' } | Select-Object -First 1).PathName`, Parse: rx(`^"?(.+?)\\bin\\splunkd`)},
-		},
-	},
 	// ---- runtimes and packages ----
 	{
 		ID: "java.version", Title: "Java version", Category: "Runtimes & packages", Attr: "java.version", Type: model.TypeText,
@@ -226,7 +201,7 @@ var Catalog = []Template{
 	{
 		ID: "package.version", Title: "Installed package version", Category: "Runtimes & packages", Type: model.TypeText,
 		Description: "Any package by name: rpm or dpkg on Linux, lslpp on AIX, the installed programs list on Windows.",
-		Param:       &Param{Kind: ParamPackage, Label: "Package", Placeholder: "openssl", Help: "The package name. On Windows, the start of the program's name, such as 'Splunk'."},
+		Param:       &Param{Kind: ParamPackage, Label: "Package", Placeholder: "openssl", Help: "The package name. On Windows, the start of the program's name, such as 'Microsoft SQL Server'."},
 		Variants: []Variant{
 			{Name: "linux", OS: linux, Command: `rpm -q --qf '%{VERSION}-%{RELEASE}\n' {{param}} 2>/dev/null || dpkg-query -W -f='${Version}\n' {{param}}`, Parse: first()},
 			{Name: "aix", OS: []string{"aix"}, Command: "lslpp -Lqc {{param}}", Parse: rx(`^[^:]*:[^:]*:([^:]+)`)},
@@ -265,9 +240,9 @@ var Catalog = []Template{
 	},
 	{
 		ID: "config.value", Title: "Setting in a config file", Category: "Files & config", Type: model.TypeText, Reveals: true,
-		Description: "One key = value line from an .ini, .conf or .properties file, optionally only inside a [section]. Such as serverName in Splunk's server.conf.",
-		Param: &Param{Kind: ParamConfig, Label: "File", Placeholder: "/opt/splunkforwarder/etc/system/local/server.conf",
-			Help: "A full path to the file.", KeyPlaceholder: "serverName", SectionPlaceholder: "general"},
+		Description: "One key = value line from an .ini, .conf or .properties file, optionally only inside a [section]. Such as max_connections in PostgreSQL's postgresql.conf.",
+		Param: &Param{Kind: ParamConfig, Label: "File", Placeholder: "/etc/app/app.conf",
+			Help: "A full path to the file.", KeyPlaceholder: "host", SectionPlaceholder: "database"},
 		Variants: []Variant{
 			{Name: "unix", OS: unix, Command: configAwk, Parse: first()},
 			{Name: "windows", OS: windows, Command: configPowerShell, Parse: first()},
@@ -275,13 +250,39 @@ var Catalog = []Template{
 	},
 	{
 		ID: "env.var", Title: "Environment variable", Category: "Files & config", Type: model.TypeText, Reveals: true,
-		Description: "A system-wide variable, such as SPLUNK_HOME or JAVA_HOME. On Linux and AIX it is read after /etc/profile; on Windows from the machine environment.",
-		Param:       &Param{Kind: ParamEnvVar, Label: "Variable", Placeholder: "SPLUNK_HOME", Help: "Letters, digits and underscores."},
+		Description: "A system-wide variable, such as JAVA_HOME or PGDATA. On Linux and AIX it is read after /etc/profile; on Windows from the machine environment.",
+		Param:       &Param{Kind: ParamEnvVar, Label: "Variable", Placeholder: "JAVA_HOME", Help: "Letters, digits and underscores."},
 		Variants: []Variant{
 			// The name is not quoted: it has been checked to be an identifier,
 			// and quoting it would stop the shell expanding it.
 			{Name: "unix", OS: unix, Command: `. /etc/profile >/dev/null 2>&1; echo "${{{name}}}"`, Parse: first()},
 			{Name: "windows", OS: windows, Command: "[Environment]::GetEnvironmentVariable({{param}}, 'Machine')", Parse: first()},
+		},
+	},
+
+	// ---- vendor products, offered last ----
+	{
+		ID: "splunk.uf.version", Title: "Splunk Universal Forwarder version", Category: "Splunk", Attr: "splunk.uf.version", Type: model.TypeText,
+		Description: "Read from the forwarder's splunk.version file in its default location.",
+		Variants: []Variant{
+			{Name: "unix", OS: unix, Command: "cat /opt/splunkforwarder/etc/splunk.version", Parse: kv("VERSION")},
+			{Name: "windows", OS: windows, Command: `Get-Content 'C:\Program Files\SplunkUniversalForwarder\etc\splunk.version'`, Parse: kv("VERSION")},
+		},
+	},
+	{
+		ID: "splunk.enterprise.version", Title: "Splunk Enterprise version", Category: "Splunk", Attr: "splunk.enterprise.version", Type: model.TypeText,
+		Description: "Read from Splunk Enterprise's splunk.version file in its default location.",
+		Variants: []Variant{
+			{Name: "unix", OS: unix, Command: "cat /opt/splunk/etc/splunk.version", Parse: kv("VERSION")},
+			{Name: "windows", OS: windows, Command: `Get-Content 'C:\Program Files\Splunk\etc\splunk.version'`, Parse: kv("VERSION")},
+		},
+	},
+	{
+		ID: "splunk.home", Title: "Splunk home (from the running splunkd)", Category: "Splunk", Attr: "splunk.home", Type: model.TypePath,
+		Description: "Where Splunk is installed, read from the running splunkd process, so it is right even outside the default location.",
+		Variants: []Variant{
+			{Name: "unix", OS: unix, Command: "ps -eo args | grep '[s]plunkd'", Parse: rx(`(/[^ ]+)/bin/splunkd`)},
+			{Name: "windows", OS: windows, Command: `(Get-CimInstance Win32_Service | Where-Object { $_.Name -like 'Splunk*' } | Select-Object -First 1).PathName`, Parse: rx(`^"?(.+?)\\bin\\splunkd`)},
 		},
 	},
 }
@@ -337,7 +338,7 @@ func SplitConfigParam(v string) (path, section, key string, err error) {
 }
 
 // ParamText shows a choice's value the way a person would say it, such as
-// "server.conf [general] serverName".
+// "app.conf [database] host".
 func ParamText(t Template, v string) string {
 	if t.Param == nil || !t.Param.Config() {
 		return v

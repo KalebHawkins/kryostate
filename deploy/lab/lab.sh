@@ -2,21 +2,21 @@
 # A small lab for trying kryostate against real Linux hosts, in Podman.
 #
 #   deploy/lab/lab.sh up      build the images and start everything
-#   deploy/lab/lab.sh seed    add the lab hosts as a stack and collect once
+#   deploy/lab/lab.sh seed    import the lab inventory and collect once
 #   deploy/lab/lab.sh down    stop and remove the containers (keeps data)
 #   deploy/lab/lab.sh reset   down, and delete the data and the lab key
 #
 # It starts kryostate on http://localhost:8099, an ssh-agent holding a key made
 # for the lab, and four hosts that trust that key:
 #
-#   uf01   Debian      a pretend Splunk Universal Forwarder
-#   uf02   AlmaLinux   a pretend Splunk Universal Forwarder
-#   idx01  AlmaLinux   a pretend Splunk Enterprise indexer
-#   web01  Debian      nginx
+#   web01  Debian      nginx; has the SSH hardening drop-in
+#   web02  AlmaLinux   nginx
+#   db01   AlmaLinux   a PostgreSQL stand-in: its postgresql.conf, no server
+#   app01  Debian      a small app's /etc/app/app.conf; has the SSH hardening drop-in
 #
-# "Pretend" means the files and process the catalog reads are there; no
-# Splunk is installed. Run from the repository root, or anywhere: paths are
-# worked out from this file.
+# nginx is really installed and running; the database and the app are only the
+# files the collectors read. Run from the repository root, or anywhere: paths
+# are worked out from this file.
 set -euo pipefail
 
 # On Git Bash, pwd -W gives the Windows form of the path, which is what a
@@ -29,12 +29,17 @@ port="${KRYOSTATE_PORT:-8099}"
 # written.
 export MSYS_NO_PATHCONV=1
 
+# Each host: its name, its image, what it plays (the entrypoint sets that up)
+# and whether it carries the SSH hardening drop-in.
 hosts=(
-	"uf01 debian uf"
-	"uf02 alma uf"
-	"idx01 alma enterprise"
-	"web01 debian -"
+	"web01 debian web yes"
+	"web02 alma web no"
+	"db01 alma database no"
+	"app01 debian app yes"
 )
+# Hosts an earlier version of the lab ran; their containers and volumes are
+# cleared too, so an old lab does not linger beside the new one.
+retired=(uf01 uf02 idx01)
 
 up() {
 	podman build -q -t kryostate:latest -f "$root/deploy/Containerfile" "$root"
@@ -42,16 +47,19 @@ up() {
 	podman build -q -t kryostate-lab-debian -f "$here/target-debian.Containerfile" "$here"
 	podman build -q -t kryostate-lab-alma -f "$here/target-alma.Containerfile" "$here"
 
+	for name in "${retired[@]}"; do
+		podman rm -f "kryostate-lab-$name" >/dev/null 2>&1 || true
+	done
+
 	podman network exists "$net" || podman network create "$net" >/dev/null
 	start kryostate-lab-agent --network "$net" \
 		-v kryostate-lab-keys:/keys -v kryostate-lab-agent:/agent kryostate-lab-agent
 
 	for h in "${hosts[@]}"; do
-		read -r name distro splunk <<<"$h"
-		local env=()
-		[ "$splunk" != - ] && env=(-e "FAKE_SPLUNK=$splunk")
+		read -r name distro role hardened <<<"$h"
 		start "kryostate-lab-$name" --network "$net" --network-alias "$name" \
-			--hostname "$name" -v kryostate-lab-keys:/keys:ro "${env[@]}" \
+			--hostname "$name" -v kryostate-lab-keys:/keys:ro \
+			-e "LAB_ROLE=$role" -e "LAB_HARDENED=$hardened" \
 			-v "kryostate-lab-$name-ssh:/etc/ssh" \
 			"kryostate-lab-$distro"
 	done
@@ -90,16 +98,15 @@ seed() {
 
 	# What to collect beyond the operating system.
 	hs collectors -enable group.basics
-	hs collectors -enable splunk.uf.version -stacks splunk-lab
-	hs collectors -enable splunk.enterprise.version -stacks splunk-lab
-	hs collectors -enable splunk.home -stacks splunk-lab
 	hs collectors -enable group.web -stacks web
-	hs collectors -enable config.value -stacks splunk-lab \
-		-param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName
 	hs collectors -enable package.version -param openssl
-	# true on the forwarders, false elsewhere; try the inventory query
-	#   os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"
-	hs collectors -enable file.exists -param /opt/splunkforwarder/bin/splunk
+	hs collectors -enable config.value -stacks data \
+		-param /var/lib/pgsql/data/postgresql.conf -key max_connections
+	hs collectors -enable config.value -stacks app \
+		-param /etc/app/app.conf -section database -key host
+	# true on web01 and app01, false on the others; try the inventory query
+	#   os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"
+	hs collectors -enable file.exists -param /etc/ssh/sshd_config.d/hardening.conf
 
 	hs refresh
 }
@@ -107,7 +114,7 @@ seed() {
 down() {
 	local ids
 	ids="$(podman ps -aq --filter label=kryostate-lab=1)"
-	[ -n "$ids" ] && podman rm -f $ids >/dev/null
+	if [ -n "$ids" ]; then podman rm -f $ids >/dev/null; fi
 	echo "lab stopped; the database, key and host keys are kept in volumes"
 }
 
@@ -116,6 +123,9 @@ reset() {
 	podman volume rm -f kryostate-lab-data kryostate-lab-keys kryostate-lab-agent >/dev/null 2>&1 || true
 	for h in "${hosts[@]}"; do
 		podman volume rm -f "kryostate-lab-${h%% *}-ssh" >/dev/null 2>&1 || true
+	done
+	for name in "${retired[@]}"; do
+		podman volume rm -f "kryostate-lab-$name-ssh" >/dev/null 2>&1 || true
 	done
 	podman network rm -f "$net" >/dev/null 2>&1 || true
 	echo "lab data, key and network removed"

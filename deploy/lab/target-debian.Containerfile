@@ -1,5 +1,6 @@
 # A Debian host for the lab: sshd, a user called kryostate, and the programs
-# the catalog asks about.
+# the catalog asks about. nginx is installed for the web hosts; the entrypoint
+# starts it only there.
 FROM docker.io/library/debian:12-slim
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

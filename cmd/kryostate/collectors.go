@@ -49,7 +49,7 @@ func cmdCollectors(ctx context.Context, args []string) error {
 	host := fs.String("host", "", "with -try: run the command on this host")
 	sample := fs.String("sample", "", "with -try: read command output from this file (- for standard input) instead of a host")
 	collectors := fs.String("collectors", "", "collector spec file, instead of "+defaultCollectorsFile+" next to the database")
-	key := fs.String("key", "", "with config.value: the key to read, such as serverName")
+	key := fs.String("key", "", "with config.value: the key to read, such as max_connections")
 	section := fs.String("section", "", "with config.value: only read the key inside this [section]")
 	show := fs.String("show", "", "print a collector written out as in "+defaultCollectorsFile+": a catalog name (with -param, or its example value), builtin.<attribute>, spec.<id>, external.<name>, or any spec id")
 	schedules := fs.Bool("schedules", false, "list every collector with its schedule, last run and next due time")
@@ -303,9 +303,9 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 	}
 	fmt.Println("\nswitch one on:   kryostate collectors -enable cpu.cores")
 	fmt.Println("a whole group:   kryostate collectors -enable group.web -stacks web-prod")
-	fmt.Println("a config value:  kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName")
+	fmt.Println("a config value:  kryostate collectors -enable config.value -param /etc/app/app.conf -section database -key host")
 	fmt.Println("with a value:    kryostate collectors -enable file.exists -param /etc/resolv.conf")
-	fmt.Println("for some stacks: kryostate collectors -enable splunk.uf.version -stacks splunk-prod")
+	fmt.Println("for some stacks: kryostate collectors -enable package.version -param nginx -stacks web-prod")
 	fmt.Println("try first:       kryostate collectors -try memory.total -host <name>")
 	fmt.Println("written out:     kryostate collectors -show file.exists -param /etc/hosts  (as you would write it in " + defaultCollectorsFile + ")")
 	return nil

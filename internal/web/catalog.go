@@ -44,7 +44,7 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 	param := field(r, "param")
 	if t.Param != nil && t.Param.Config() {
 		if field(r, "key") == "" {
-			refuse(w, r, back, errors.New("name the key to read, such as serverName"))
+			refuse(w, r, back, errors.New("name the key to read, such as max_connections"))
 			return
 		}
 		param = collect.ConfigParam(param, field(r, "section"), field(r, "key"))
@@ -342,7 +342,7 @@ type testOption struct{ Value, Label, Group string }
 
 // attrTitles names the attributes catalog collectors record: the catalog's
 // own titles, and a short phrase for each switched-on template, such as
-// "serverName in server.conf [general]".
+// "host in app.conf [database]".
 func (s *Server) attrTitles(ctx context.Context) map[string]string {
 	out := collect.FixedTitles()
 	if choices, err := s.Store.Choices(ctx); err == nil {

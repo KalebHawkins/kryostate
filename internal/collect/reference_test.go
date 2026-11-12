@@ -53,7 +53,7 @@ func TestDefinitionUsesTheGivenValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if specs[0].Attr != "conf.server_conf.general.servername" || !strings.Contains(specs[0].Command, "'serverName'") {
+	if specs[0].Attr != "conf.app_conf.database.host" || !strings.Contains(specs[0].Command, "'host'") {
 		t.Errorf("example definition %+v", specs[0])
 	}
 	tmpl, _ = Lookup("file.exists")

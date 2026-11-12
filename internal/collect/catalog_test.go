@@ -12,8 +12,8 @@ import (
 // than on someone's estate.
 func TestCatalogEntriesAreWellFormed(t *testing.T) {
 	seen := map[string]bool{}
-	params := map[ParamKind]string{ParamPath: "/etc/resolv.conf", ParamEnvVar: "SPLUNK_HOME", ParamPackage: "openssl",
-		ParamConfig: "/opt/splunk/etc/system/local/server.conf#[general]serverName"}
+	params := map[ParamKind]string{ParamPath: "/etc/resolv.conf", ParamEnvVar: "JAVA_HOME", ParamPackage: "openssl",
+		ParamConfig: "/etc/app/app.conf#[database]host"}
 	for _, tpl := range Catalog {
 		if seen[tpl.ID] {
 			t.Errorf("duplicate catalog id %s", tpl.ID)
@@ -69,11 +69,11 @@ func TestTemplateValuesCannotBecomeCommands(t *testing.T) {
 		}
 	}
 	good := map[ParamKind][]string{
-		ParamPath:    {"/etc/resolv.conf", `C:\Program Files (x86)\App\conf.xml`, "/opt/splunkforwarder/etc/system/local/outputs.conf"},
-		ParamEnvVar:  {"SPLUNK_HOME", "JAVA_HOME", "_X1"},
-		ParamPackage: {"openssl", "python3-libs", "Splunk Universal Forwarder", "bos.rte"},
-		ParamConfig: {"/opt/splunk/etc/system/local/server.conf#[general]serverName", "/etc/app.properties#db.port",
-			`C:\Program Files\SplunkUniversalForwarder\etc\system\local\inputs.conf#[default]host`, "/opt/splunk/etc/system/local/inputs.conf#[monitor:///var/log]index"},
+		ParamPath:    {"/etc/resolv.conf", `C:\Program Files (x86)\App\conf.xml`, "/etc/nginx/conf.d/default.conf"},
+		ParamEnvVar:  {"JAVA_HOME", "PGDATA", "_X1"},
+		ParamPackage: {"openssl", "python3-libs", "Microsoft SQL Server", "bos.rte"},
+		ParamConfig: {"/etc/app/app.conf#[database]host", "/etc/app.properties#db.port",
+			`C:\Program Files\App\conf\app.ini#[default]host`, "/etc/app/app.conf#[file:///var/log/app.log]level"},
 	}
 	for kind, vs := range good {
 		for _, v := range vs {
@@ -99,8 +99,8 @@ func TestDefaultAttrIsUsable(t *testing.T) {
 	for _, tc := range []struct{ tpl, param, want string }{
 		{"file.exists", "/etc/resolv.conf", "file.resolv_conf.exists"},
 		{"file.contents", `C:\App\Config.XML`, "file.config_xml.contents"},
-		{"env.var", "SPLUNK_HOME", "env.splunk_home"},
-		{"package.version", "Splunk Universal Forwarder", "pkg.splunk_universal_forwarder.version"},
+		{"env.var", "JAVA_HOME", "env.java_home"},
+		{"package.version", "Microsoft SQL Server", "pkg.microsoft_sql_server.version"},
 		{"cpu.cores", "", "hw.cpu.cores"},
 	} {
 		tpl, _ := Lookup(tc.tpl)

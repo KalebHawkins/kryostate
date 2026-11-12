@@ -11,9 +11,9 @@ import (
 
 func TestConfigParamRoundTrip(t *testing.T) {
 	cases := []struct{ path, section, key, joined, text, attr string }{
-		{"/opt/splunk/etc/system/local/server.conf", "general", "serverName",
-			"/opt/splunk/etc/system/local/server.conf#[general]serverName",
-			"/opt/splunk/etc/system/local/server.conf [general] serverName", "conf.server_conf.general.servername"},
+		{"/etc/app/app.conf", "database", "host",
+			"/etc/app/app.conf#[database]host",
+			"/etc/app/app.conf [database] host", "conf.app_conf.database.host"},
 		{"/etc/app.properties", "", "db.port", "/etc/app.properties#db.port",
 			"/etc/app.properties db.port", "conf.app_properties.db_port"},
 		// Brackets typed around the section are tolerated.
@@ -42,18 +42,18 @@ func TestConfigParamRoundTrip(t *testing.T) {
 
 func TestConfigValueCommandQuotesEveryPart(t *testing.T) {
 	specs, err := Choice{ID: 3, Template: "config.value",
-		Param: "/opt/splunk/etc/system/local/server.conf#[general]serverName"}.Specs()
+		Param: "/etc/app/app.conf#[database]host"}.Specs()
 	if err != nil {
 		t.Fatal(err)
 	}
 	unix := specs[0].Command
-	for _, want := range []string{"-v s='general'", "-v k='serverName'", "' '/opt/splunk/etc/system/local/server.conf'"} {
+	for _, want := range []string{"-v s='database'", "-v k='host'", "' '/etc/app/app.conf'"} {
 		if !strings.Contains(unix, want) {
 			t.Errorf("unix command lacks %q:\n%s", want, unix)
 		}
 	}
 	win := specs[1].Command
-	for _, want := range []string{"$s = 'general'", "$k = 'serverName'", "-LiteralPath '/opt/splunk/etc/system/local/server.conf'"} {
+	for _, want := range []string{"$s = 'database'", "$k = 'host'", "-LiteralPath '/etc/app/app.conf'"} {
 		if !strings.Contains(win, want) {
 			t.Errorf("windows command lacks %q:\n%s", want, win)
 		}
@@ -110,7 +110,7 @@ func TestExplain(t *testing.T) {
 		want string
 	}{
 		{Reading{Err: errors.New("nginx exited 127: bash: nginx: command not found")}, "not installed"},
-		{Reading{Err: errors.New("cat exited 1: cat: /opt/splunk/etc/splunk.version: No such file or directory")}, "not there"},
+		{Reading{Err: errors.New("cat exited 1: cat: /etc/app/app.conf: No such file or directory")}, "not there"},
 		{Reading{Err: errors.New("cat exited 1: cat: /etc/shadow: Permission denied")}, "not allowed"},
 		{Reading{Err: errors.New("ps exited 1: ")}, "found nothing"},
 		{Reading{Ran: true, Output: "hello", Err: errors.New("no match")}, "rule found nothing"},
@@ -130,7 +130,7 @@ func TestFirstWordSkipsSetup(t *testing.T) {
 		`PATH="$PATH:/usr/sbin:/sbin"; getenforce`:    "getenforce",
 		`PATH="$PATH:/usr/sbin:/sbin"; nginx -v 2>&1`: "nginx",
 		"LANG=C rpm -q openssl":                       "rpm",
-		"cat /opt/splunkforwarder/etc/splunk.version": "cat",
+		"cat /etc/os-release":                         "cat",
 	} {
 		if got := firstWord(in); got != want {
 			t.Errorf("firstWord(%q) = %q, want %q", in, got, want)
@@ -145,9 +145,9 @@ func TestShortLabels(t *testing.T) {
 	}{
 		{Choice{Template: "cpu.cores"}, "CPU cores"},
 		{Choice{Template: "file.exists", Param: "/etc/resolv.conf"}, "/etc/resolv.conf exists"},
-		{Choice{Template: "env.var", Param: "SPLUNK_HOME"}, "Variable SPLUNK_HOME"},
+		{Choice{Template: "env.var", Param: "JAVA_HOME"}, "Variable JAVA_HOME"},
 		{Choice{Template: "package.version", Param: "openssl"}, "openssl package version"},
-		{Choice{Template: "config.value", Param: "/a/server.conf#[general]serverName"}, "serverName in server.conf [general]"},
+		{Choice{Template: "config.value", Param: "/a/app.conf#[database]host"}, "host in app.conf [database]"},
 		{Choice{Template: "config.value", Param: "/a/app.properties#port"}, "port in app.properties"},
 	}
 	for _, c := range cases {

@@ -143,8 +143,8 @@ func TestCollectorListFilters(t *testing.T) {
 	if got := visible("source=catalog&status=on"); strings.Join(got, ",") != "cpu.cores" {
 		t.Errorf("catalog entries switched on: %v", got)
 	}
-	if got := visible("q=splunk+forwarder"); len(got) != 1 || got[0] != "splunk.uf.version" {
-		t.Errorf("searching for splunk forwarder shows %v", got)
+	if got := visible("q=apache+httpd"); len(got) != 1 || got[0] != "httpd.version" {
+		t.Errorf("searching for apache httpd shows %v", got)
 	}
 	if got := visible("cat=web"); len(got) != 2 {
 		t.Errorf("web servers: %v", got)
@@ -255,7 +255,7 @@ func TestScheduleFormReturnsOnlyToACollectorPage(t *testing.T) {
 // dotted name.
 func TestHeadingsUseTheChoiceTitle(t *testing.T) {
 	_, h, st := testServer(t)
-	c := collect.Choice{Template: "file.exists", Param: "/opt/splunkforwarder/bin/splunk"}
+	c := collect.Choice{Template: "file.exists", Param: "/etc/ssh/sshd_config.d/hardening.conf"}
 	tpl, _ := collect.Lookup(c.Template)
 	c.Attr = collect.DefaultAttr(tpl, c.Param)
 	if _, _, err := st.EnableChoice(context.Background(), c, "test"); err != nil {

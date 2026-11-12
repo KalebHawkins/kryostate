@@ -179,9 +179,10 @@ socket through a volume (`deploy/lab/agent.Containerfile`).
 ### 4.2 A lab to try it on
 
 `deploy/lab/lab.sh` starts KryoState with four real Linux hosts to collect from:
-two pretend Splunk forwarders (Debian and AlmaLinux), a pretend indexer and an
-nginx host, plus an ssh-agent holding a key made for the lab. "Pretend" means
-the files and process the catalog reads are there; no Splunk is installed.
+two nginx web servers (Debian and AlmaLinux), a database host and an app host
+in stacks `web`, `data` and `app`, plus an ssh-agent holding a key made for the
+lab. nginx is really installed; the database and the app are only the config
+files the collectors read.
 
 ```sh
 deploy/lab/lab.sh up      # build and start; kryostate is on http://localhost:8099
@@ -261,21 +262,21 @@ one command.
 ### 5.3 Choosing what to collect
 
 A catalog of ready-made collectors is compiled in: CPU cores, memory size,
-time zone, DNS servers, SELinux mode, Splunk forwarder and Enterprise
-versions and install location, Java, Python, OpenSSL, nginx, httpd and Docker
-versions, and templates for a file's existence, a file's contents, one
+time zone, DNS servers, SELinux mode, Java, Python, OpenSSL, nginx, httpd and
+Docker versions, and templates for a file's existence, a file's contents, one
 setting in a config file, an environment variable, and an installed package's
-version. Groups switch several on together: host basics, language runtimes, web
-servers. The Splunk collectors are switched on one by one. Switch them on in the web
-interface on the Collectors page or from a stack's card, or:
+version. A few vendor-specific entries (Splunk versions and install location)
+come last. Groups switch several on together: host basics, language runtimes,
+web servers. Switch them on in the web interface on the Collectors page or from
+a stack's card, or:
 
 ```sh
 ./kryostate collectors -catalog
 ./kryostate collectors -enable memory.total
-./kryostate collectors -enable splunk.uf.version -stacks splunk-prod
-./kryostate collectors -enable file.exists -param /etc/resolv.conf
-./kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
-    -section general -key serverName
+./kryostate collectors -enable group.web -stacks web
+./kryostate collectors -enable file.exists -param /etc/ssh/sshd_config.d/hardening.conf
+./kryostate collectors -enable config.value -param /var/lib/pgsql/data/postgresql.conf \
+    -key max_connections
 ```
 
 A choice can be limited to some stacks. A group only widens where its
@@ -370,8 +371,8 @@ shows the last day's.
 The inventory takes a query, in the style of a Prometheus label matcher:
 
 ```sh
-./kryostate hosts -q 'os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"'
-./kryostate hosts -q 'stack == "splunk-prod" && role == "indexer"' -json
+./kryostate hosts -q 'os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"'
+./kryostate hosts -q 'stack == "data" && role == "database"' -json
 ```
 
 In the web interface the same query goes in the Inventory page's box, and

@@ -51,10 +51,10 @@ type collectorCategory struct{ Key, Title string }
 
 var collectorCategories = []collectorCategory{
 	{"os", "OS & hardware"},
-	{"splunk", "Splunk"},
 	{"runtimes", "Runtimes & packages"},
 	{"web", "Web servers"},
 	{"files", "Files & config"},
+	{"splunk", "Splunk"},
 	{"custom", "Custom"},
 }
 

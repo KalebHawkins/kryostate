@@ -3,7 +3,7 @@
 // A query is a boolean expression over one host's current values, in the
 // spirit of a PromQL label matcher:
 //
-//	os.family == "Linux" && !file.exists["/opt/splunkforwarder/bin/splunk"]
+//	os.family == "Linux" && !file.exists["/etc/ssh/sshd_config.d/hardening.conf"]
 //
 // The grammar, in EBNF:
 //

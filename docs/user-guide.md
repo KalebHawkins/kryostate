@@ -104,8 +104,8 @@ has a lab: KryoState, an ssh-agent, and four small Linux hosts to collect from.
 deploy/lab/lab.sh up      # kryostate is then on http://localhost:8099
 ```
 
-Follow the tutorials below against it. Add the hosts `uf01`, `uf02`, `idx01`
-and `web01`, and use `kryostate` as the user. Or run `deploy/lab/lab.sh seed` to
+Follow the tutorials below against it. Add the hosts `web01`, `web02`, `db01`
+and `app01`, and use `kryostate` as the user. Or run `deploy/lab/lab.sh seed` to
 have everything set up for you, and look around. Run commands inside the
 container with `podman exec -i kryostate-lab kryostate <command>`.
 
@@ -304,7 +304,7 @@ here** lists what is read from the stack's hosts. **Open in inventory** lists
 the members with their values.
 
 To collect something more from just this stack, pick it under **Also collect
-on**, for example **Splunk Universal Forwarder version** on your Splunk
+on**, for example **Web servers** on your web
 stack, and select **Switch on**. That only ever adds the stack: anything already
 collected on other hosts keeps running there.
 
@@ -376,16 +376,15 @@ hardware model and the serial number. Anything else, you switch on. A
 ### Step 1: pick from the catalog
 
 The catalog has ready-made collectors for CPU cores, memory size, time zone,
-DNS servers, SELinux mode, the Splunk forwarder and Splunk Enterprise
-versions, Splunk's install location, and the versions of Java, Python,
-OpenSSL, nginx, Apache httpd and Docker. It also has fill-in-the-blank ones:
-**file exists**, **file contents**, **a setting in a config file** such as
-`serverName` in Splunk's `server.conf`, **an environment variable** such as
-`SPLUNK_HOME`, and **an installed package's version**.
+DNS servers, SELinux mode, and the versions of Java, Python, OpenSSL, nginx,
+Apache httpd and Docker. It also has fill-in-the-blank ones: **file exists**,
+**file contents**, **a setting in a config file** such as `max_connections`
+in PostgreSQL's `postgresql.conf`, **an environment variable** such as
+`JAVA_HOME`, and **an installed package's version**. A few vendor-specific
+entries (Splunk versions and install location) come last.
 
 **Groups** switch on several at once: **Host basics** (CPU, memory, time zone,
-DNS), **Language runtimes** and **Web servers**. The Splunk collectors are
-switched on one by one.
+DNS), **Language runtimes** and **Web servers**.
 
 **In the web interface:** open **Collectors**. Search or filter the list,
 select a collector, and under **Where it runs** open **Switch on**, choose
@@ -401,16 +400,15 @@ stack from its card on the **Stacks** page.
 kryostate collectors -catalog
 kryostate collectors -try memory.total -host web01
 kryostate collectors -enable memory.total
-kryostate collectors -enable splunk.uf.version -stacks splunk-prod
-kryostate collectors -enable file.exists -param /etc/resolv.conf
-kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
-    -section general -key serverName
+kryostate collectors -enable group.web -stacks web
+kryostate collectors -enable file.exists -param /etc/ssh/sshd_config.d/hardening.conf
+kryostate collectors -enable config.value -param /etc/app/app.conf \
+    -section database -key host
 ```
 
 The values come back on each host's page with readable names, such as
-**Splunk Universal Forwarder version** or **serverName in server.conf
-[general]**. A version is grouped by its first two numbers, so the charts put
-9.4.1 and 9.4.3 together. The full version is in the **Raw** column, and
+**nginx version** or **host in app.conf [database]**. A version is grouped by
+its first two numbers, so the charts put 1.22.1 and 1.22.4 together. The full version is in the **Raw** column, and
 `kryostate show` prints it in brackets.
 
 ### Step 2: collect
@@ -534,16 +532,16 @@ Prometheus label matcher. The inventory shows the hosts for which it is true.
 
 ```text
 os.version == "Red Hat 7.9 (Ootpa)"
-os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"
-stack == "splunk-prod" && role == "indexer"
+os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"
+stack == "data" && role == "database"
 name =~ "^web" || application == "nginx"
 hw.cpu.cores >= 8 && os.kernel < "4"
 !has(os.version)
 ```
 
 Read the second one as: the host runs Linux, and the file
-`/opt/splunkforwarder/bin/splunk` is not there. That is, Linux hosts with no
-Splunk forwarder installed. It needs the **File exists** collector switched
+`/etc/ssh/sshd_config.d/hardening.conf` is not there. That is, Linux hosts
+missing the SSH hardening drop-in. It needs the **File exists** collector switched
 on for that path (section 6), so that every host has recorded `true` or
 `false` for it.
 
@@ -576,10 +574,11 @@ attributes: `name` (the host's name), `id`, `stack` (any stack it is in),
 recorded for it). `stack != "x"` means "not in stack x".
 
 A collector that takes a path or a name records an attribute named after it,
-such as `file.splunk.exists` for `/opt/splunkforwarder/bin/splunk`. You can use
-that name, or name the collector and its parameter:
-`file.exists["/opt/splunkforwarder/bin/splunk"] == true`. The shorter
-`file.exists == "/opt/splunkforwarder/bin/splunk"` means the same, and
+such as `file.hardening_conf.exists` for
+`/etc/ssh/sshd_config.d/hardening.conf`. You can use that name, or name the
+collector and its parameter:
+`file.exists["/etc/ssh/sshd_config.d/hardening.conf"] == true`. The shorter
+`file.exists == "/etc/ssh/sshd_config.d/hardening.conf"` means the same, and
 `package.version == "openssl"` means the openssl version collector has a
 value. Text with none of the query symbols in it, such as `web`, searches
 host names.
@@ -598,8 +597,8 @@ and `kryostate hosts -json` prints the same shape:
   {
     "id": "01J9...",
     "name": "web01",
-    "stacks": [{"stack": "splunk-prod", "role": "indexer"}],
-    "application": "splunk",
+    "stacks": [{"stack": "web", "role": "web"}],
+    "application": "nginx",
     "values": {"os.version": "RHEL 8.6", "env": null},
     "last_collected": "2026-11-12T08:00:00Z",
     "collect_ok": true

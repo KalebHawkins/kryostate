@@ -39,19 +39,19 @@ func seedQuery(t *testing.T, st *store.Store) {
 			t.Fatal(err)
 		}
 	}
-	set("appnode1", "file.splunk.exists", "true")
-	set("appnode2", "file.splunk.exists", "false")
+	set("appnode1", "file.nginx.exists", "true")
+	set("appnode2", "file.nginx.exists", "false")
 	set("appnode1", "hw.cpu.cores", "16")
 	set("appnode2", "hw.cpu.cores", "4")
-	set("appnode1", "application", "splunk")
-	sid, err := st.EnsureStack(ctx, "splunk-prod")
+	set("appnode1", "application", "nginx")
+	sid, err := st.EnsureStack(ctx, "orders-prod")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AddToStack(ctx, sid, ids["appnode1"], "indexer"); err != nil {
+	if err := st.AddToStack(ctx, sid, ids["appnode1"], "backend"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.AddToStack(ctx, sid, ids["appnode2"], "search-head"); err != nil {
+	if err := st.AddToStack(ctx, sid, ids["appnode2"], "api-gateway"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -64,11 +64,11 @@ func TestInventoryQuery(t *testing.T) {
 		has, not []string
 	}{
 		{`os.version == "RHEL 8.6"`, []string{"appnode1"}, []string{"appnode2", "appnode3"}},
-		{`!file.exists == "/opt/splunkforwarder/bin/splunk"`, []string{"appnode2", "appnode3"}, []string{"appnode1"}},
-		{`file.exists["/opt/splunkforwarder/bin/splunk"] == true`, []string{"appnode1"}, []string{"appnode2", "appnode3"}},
-		{`stack == "splunk-prod" && role == "search-head"`, []string{"appnode2"}, []string{"appnode1", "appnode3"}},
+		{`!file.exists == "/usr/sbin/nginx"`, []string{"appnode2", "appnode3"}, []string{"appnode1"}},
+		{`file.exists["/usr/sbin/nginx"] == true`, []string{"appnode1"}, []string{"appnode2", "appnode3"}},
+		{`stack == "orders-prod" && role == "api-gateway"`, []string{"appnode2"}, []string{"appnode1", "appnode3"}},
 		{`hw.cpu.cores >= 8 || name =~ "3$"`, []string{"appnode1", "appnode3"}, []string{"appnode2"}},
-		{`application == "splunk"`, []string{"appnode1"}, []string{"appnode2", "appnode3"}},
+		{`application == "nginx"`, []string{"appnode1"}, []string{"appnode2", "appnode3"}},
 		{`node2`, []string{"appnode2"}, []string{"appnode1", "appnode3"}}, // plain text: a name search
 	}
 	for _, c := range cases {
@@ -125,7 +125,7 @@ func TestInventoryQueryErrorIsShownInline(t *testing.T) {
 func TestJSONExport(t *testing.T) {
 	_, h, st := testServer(t)
 	seedQuery(t, st)
-	rec := get(t, h, "/hosts.json?q="+url.QueryEscape(`stack == "splunk-prod"`)+"&col=os.version,hw.cpu.cores,env", nil)
+	rec := get(t, h, "/hosts.json?q="+url.QueryEscape(`stack == "orders-prod"`)+"&col=os.version,hw.cpu.cores,env", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
@@ -140,11 +140,11 @@ func TestJSONExport(t *testing.T) {
 		t.Fatalf("got %d hosts, want 2", len(got))
 	}
 	a := got[0]
-	if a["name"] != "appnode1" || a["application"] != "splunk" {
+	if a["name"] != "appnode1" || a["application"] != "nginx" {
 		t.Errorf("first host: %v", a)
 	}
 	stacks, _ := a["stacks"].([]any)
-	if len(stacks) != 1 || fmt.Sprint(stacks[0]) != "map[role:indexer stack:splunk-prod]" {
+	if len(stacks) != 1 || fmt.Sprint(stacks[0]) != "map[role:backend stack:orders-prod]" {
 		t.Errorf("stacks: %v", a["stacks"])
 	}
 	vals, _ := a["values"].(map[string]any)
@@ -154,7 +154,7 @@ func TestJSONExport(t *testing.T) {
 	if v, ok := vals["env"]; !ok || v != nil {
 		t.Errorf("a column with no value should be null, got %v (present %v)", v, ok)
 	}
-	if _, ok := vals["file.splunk.exists"]; ok {
+	if _, ok := vals["file.nginx.exists"]; ok {
 		t.Error("values holds an attribute that is not a chosen column")
 	}
 
@@ -164,7 +164,7 @@ func TestJSONExport(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &all); err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 1 || all[0].Values["file.splunk.exists"] != "true" {
+	if len(all) != 1 || all[0].Values["file.nginx.exists"] != "true" {
 		t.Errorf("col=*: %+v", all)
 	}
 }

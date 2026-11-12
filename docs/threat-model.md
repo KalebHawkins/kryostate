@@ -191,8 +191,8 @@ that cannot turn it into a way to run commands or to take credentials.
   Tests feed each pattern injection attempts.
 - **Templates that read content are off by default on the page.** File
   contents, a setting from a config file and an environment variable can
-  return secrets (`pass4SymmKey` sits in Splunk's `server.conf`). The page
-  offers them only under `serve -allow-content-collectors`. The command line
+  return secrets (an app's config file often holds its database password).
+  The page offers them only under `serve -allow-content-collectors`. The command line
   always can, because whoever runs it already has the database.
 - **Connections it creates or edits use `agent:` only, without a bastion.** A
   page that could change a password-bearing connection's address could send
