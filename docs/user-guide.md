@@ -572,6 +572,73 @@ before. **Changes** lists them for the last 24 hours, 7 days or 30 days; the
 Overview shows the last day, and a host page marks a value that changed in
 the last week with **changed** (hover for the old value).
 
+### Notifications
+
+KryoState can send a daily digest of what changed to a chat channel or by
+email. Each digest covers the time since the previous one and holds:
+
+- **values that changed**, grouped by host with the old and new value, as on
+  the Changes page (at most 20 hosts and 10 values a host; the rest are
+  counted);
+- **hosts that started failing** since the last digest, and **hosts that
+  recovered**;
+- **hosts never collected**;
+- a link to the Changes page, when a base URL is set.
+
+When nothing changed and no host started failing or recovered, no digest is
+sent, unless **Send even when nothing happened** is on. Hosts never collected
+are a standing list, so they alone do not make a digest worth sending.
+
+**Where it goes is set from the command line only.** The web interface can
+show the destinations and send a test, but cannot add or change one: a form
+that took a URL or a mail server would let anyone who can reach the page make
+the server connect wherever they liked. Webhook URLs carry their token in the
+URL, so they and SMTP passwords are given as credential references, like
+connection credentials: `env:NAME`, `file:/path`, `exec:…` or
+`keyring:service/account`. The database holds only the reference.
+
+```sh
+# Slack, or a classic Teams incoming webhook
+export KRYOSTATE_SLACK_URL='https://hooks.slack.com/services/…'
+kryostate notify -add-webhook -name ops -url-ref env:KRYOSTATE_SLACK_URL
+
+# Anything that takes JSON, such as a Teams workflow
+kryostate notify -add-webhook -name feed -url-ref file:/etc/kryostate/feed-url -format generic
+
+# Email over SMTP with STARTTLS (or -tls for port 465)
+kryostate notify -add-email -name team -to ops@example.com,dba@example.com \
+  -from kryostate@example.com -smtp smtp.example.com:587 \
+  -user kryostate -password-ref env:KRYOSTATE_SMTP_PASSWORD -starttls
+
+kryostate notify -base-url https://kryostate.example.com   # the link in each digest
+kryostate notify -list                 # destinations, settings and recent sends
+kryostate notify -test ops             # send a test message now
+kryostate notify -preview              # print the digest that would be sent now
+kryostate notify -remove ops
+```
+
+A reference is resolved by the process that sends: the server for the daily
+digest, the command for `-test`. An `env:` reference must therefore be set
+in the server's environment. A password is only sent over an encrypted
+connection, and a server that does not offer STARTTLS when it was asked for
+is refused rather than used in clear.
+
+The `slack` format (the default) posts Slack's `text` and `blocks`. The
+`generic` format posts a JSON object with `subject`, `text`, `counts`,
+`changes`, `started_failing`, `recovered` and `never_collected`.
+
+**Notifications** (linked from the Changes page) is where the digest is
+turned on or off, its time of day chosen, its sections picked and
+send-when-quiet set. It lists the destinations with their targets masked,
+has a **Send a test now** button for each, a **Preview** of the digest as it
+would be sent now, and the recent sends with their results. The digest goes
+out at the chosen local time, once a day; if the server was down at that
+time, it goes when the server is next running that day. Every send is
+recorded, so a restart never sends the same day twice. A failed send is tried
+three times, a little longer apart each time, and then recorded with its
+error, which the page shows. The digest is sent by the scheduler, so a server
+started with `-no-schedule` sends none.
+
 ### Finding hosts
 
 On the **Inventory** page, type part of a name or a query into the box,

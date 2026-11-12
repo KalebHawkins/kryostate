@@ -1,0 +1,131 @@
+{{define "notifications.html"}}
+<h1>Daily digest</h1>
+<p class="muted">Once a day KryoState can send what changed since the last digest: values that changed, hosts that started failing or recovered, and hosts never collected. <a href="/changes" hx-get="/changes" hx-target="#main" hx-push-url="true">Back to Changes</a>.</p>
+{{if .SchedulerOff}}<p class="notice small">Scheduling is off in this server (<span class="mono">-no-schedule</span>), so no digest is sent. Tests and the preview below still work.</p>{{end}}
+
+<section class="card" aria-labelledby="h-digest-settings">
+  <h2 id="h-digest-settings">When and what</h2>
+  {{with .LastDigest}}
+  <p>Last digest {{stamp (index . 0).At}}:
+    {{range $i, $x := .}}{{if $i}}; {{end}}{{if eq .Kind "skipped"}}nothing happened, not sent{{else}}to <strong>{{.Dest}}</strong>: {{if .OK}}ok{{else}}<span class="chip chip--bad">failed</span> <span class="small">{{.Error}}</span>{{end}}{{end}}{{end}}
+  </p>
+  {{else}}<p class="muted">No digest has been sent yet.</p>{{end}}
+  {{if .Dests}}<p>Next digest: <strong>{{.Next}}</strong>.</p>{{end}}
+  <form class="form" method="post" action="/notifications">
+    <label class="check"><input type="checkbox" name="enabled" value="on"{{if .Settings.Enabled}} checked{{end}}> Send a daily digest</label>
+    <fieldset class="sched-clock">
+      <legend>At <span class="hint">Local time of this server ({{.Loc}})</span></legend>
+      <label><span class="visually-hidden">Hour</span>
+        <select name="hour">{{range .HourOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <span aria-hidden="true">:</span>
+      <label><span class="visually-hidden">Minute</span>
+        <select name="minute">{{range .MinuteOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    </fieldset>
+    <fieldset>
+      <legend>Include</legend>
+      {{range .Sections}}
+      <p><label class="check"><input type="checkbox" name="section" value="{{.Key}}"{{if .On}} checked{{end}}> {{.Label}}</label> <span class="hint">{{.Hint}}</span></p>
+      {{end}}
+    </fieldset>
+    <label class="check"><input type="checkbox" name="quiet" value="on"{{if .Settings.SendQuiet}} checked{{end}}> Send even when nothing happened</label>
+    <div class="form__actions">
+      <button class="btn btn--primary" type="submit">Save</button>
+      <a class="btn btn--ghost" href="/notifications?preview=1#preview" hx-get="/notifications?preview=1" hx-target="#main" hx-push-url="true">Preview</a>
+    </div>
+  </form>
+  <p class="muted small">Link in each digest: {{with .Settings.BaseURL}}<span class="mono">{{.}}</span>{{else}}none; set one with <span class="mono">kryostate notify -base-url https://kryostate.example.com</span>{{end}}.</p>
+</section>
+
+<section class="card" aria-labelledby="h-dests">
+  <h2 id="h-dests">Destinations</h2>
+  <p class="muted small">Destinations are added and removed from the command line only, so this page can never be used to point the server at an address: <span class="mono">kryostate notify -add-webhook</span>, <span class="mono">-add-email</span>, <span class="mono">-remove</span>. Webhook URLs and SMTP passwords are kept as credential references, never in the database.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Where</th><th scope="col">Last send</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+    <tbody>
+    {{range .Dests}}
+      <tr>
+        <td><strong>{{.Name}}</strong></td>
+        <td>{{.Kind}}</td>
+        <td class="small">{{.Target}}{{with .Secret}}<br><span class="muted mono">{{.}}</span>{{end}}</td>
+        <td class="small">{{with .Last}}<span title="{{stamp .At}}">{{ago .At}}</span> {{.Kind}}: {{if .OK}}ok{{else}}<span class="chip chip--bad">failed</span> {{.Error}}{{end}}{{else}}<span class="muted">never</span>{{end}}</td>
+        <td><form method="post" action="/notifications/test"><input type="hidden" name="name" value="{{.Name}}"><button class="btn btn--small" type="submit">Send a test now<span class="visually-hidden"> to {{.Name}}</span></button></form></td>
+      </tr>
+    {{else}}
+      <tr><td colspan="5" class="muted">No destinations yet. Add one with <span class="mono">kryostate notify -add-webhook -name ops -url-ref env:KRYOSTATE_SLACK_URL</span>.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+{{if or .Preview .PreviewErr}}
+<section class="card" id="preview" aria-labelledby="h-preview">
+  <h2 id="h-preview">Preview</h2>
+  {{with .PreviewErr}}<p class="flash flash--error">{{.}}</p>{{end}}
+  {{with .Preview}}
+  <p><strong>{{.Subject}}</strong><br><span class="muted small">{{.Window}}{{if .Quiet}}; nothing happened, so this would {{if .Settings.SendQuiet}}still be sent{{else}}not be sent{{end}}{{end}}</span></p>
+  {{if .Settings.Has "changes"}}
+    <h3>{{if .ChangeCount}}{{.ChangeCount}} value{{if ne .ChangeCount 1}}s{{end}} changed on {{.HostsChanged}} host{{if ne .HostsChanged 1}}s{{end}}{{else}}No values changed{{end}}</h3>
+    {{if .Changes}}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Host</th><th scope="col">Attribute</th><th scope="col">Was</th><th scope="col">Now</th></tr></thead>
+      <tbody>
+      {{range .Changes}}{{$h := .}}
+        {{range $i, $c := .Items}}
+        <tr>
+          <td class="host">{{if not $i}}<a href="/hosts/{{$h.CIID}}" hx-get="/hosts/{{$h.CIID}}" hx-target="#main" hx-push-url="true">{{$h.Host}}</a>{{end}}</td>
+          <td>{{$c.Attr}}{{if $c.Scope}} <span class="muted mono">[{{$c.Scope}}]</span>{{end}}</td>
+          <td class="mono change__old">{{short $c.Old 60}}</td>
+          <td class="mono change__new">{{short $c.New 60}}</td>
+        </tr>
+        {{end}}
+        {{if .More}}<tr><td></td><td colspan="3" class="muted small">… and {{.More}} more on this host</td></tr>{{end}}
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{if .MoreHosts}}<p class="muted small">… and {{.MoreHosts}} more host{{if ne .MoreHosts 1}}s{{end}}.</p>{{end}}
+    {{end}}
+  {{end}}
+  {{if .Settings.Has "health"}}
+    <h3>Started failing</h3>
+    {{if .StartedFailing}}<ul>{{range .StartedFailing}}<li><a href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Label}}</a> <span class="chip chip--bad">{{.Outcome}}</span> <span class="small muted">{{short .Detail 120}}</span></li>{{end}}</ul>{{else}}<p class="muted">None.</p>{{end}}
+    <h3>Recovered</h3>
+    {{if .Recovered}}<ul>{{range .Recovered}}<li><a href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Label}}</a></li>{{end}}</ul>{{else}}<p class="muted">None.</p>{{end}}
+  {{end}}
+  {{if .Settings.Has "never"}}
+    <h3>Never collected</h3>
+    {{if .NeverCount}}<p>{{range $i, $h := .Never}}{{if $i}}, {{end}}<a href="/hosts/{{$h.CIID}}" hx-get="/hosts/{{$h.CIID}}" hx-target="#main" hx-push-url="true">{{$h.Label}}</a>{{end}}{{if gt .NeverCount (len .Never)}} … and {{sub .NeverCount (len .Never)}} more{{end}}</p>{{else}}<p class="muted">None.</p>{{end}}
+  {{end}}
+  {{range .Extra}}
+    <h3>{{.Title}}</h3>
+    <ul>{{range .Lines}}<li>{{.}}</li>{{end}}</ul>
+  {{end}}
+  {{end}}
+</section>
+{{end}}
+
+<section class="card" aria-labelledby="h-sends">
+  <h2 id="h-sends">Recent sends</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">When</th><th scope="col">What</th><th scope="col">To</th><th scope="col">Result</th><th scope="col">Counts</th></tr></thead>
+    <tbody>
+    {{range .Sends}}
+      <tr>
+        <td class="mono nowrap" title="{{stamp .At}}">{{ago .At}}</td>
+        <td>{{.Kind}}</td>
+        <td>{{if .Dest}}{{.Dest}}{{else}}<span class="muted">nobody</span>{{end}}</td>
+        <td class="small">{{if eq .Kind "skipped"}}quiet day{{else if .OK}}ok{{if gt .Attempts 1}} after {{.Attempts}} tries{{end}}{{else}}<span class="chip chip--bad">failed</span> {{.Error}}{{if gt .Attempts 1}} ({{.Attempts}} tries){{end}}{{end}}</td>
+        <td class="small muted">{{if ne .Kind "test"}}{{.Changes}} changed · {{.Failing}} failing · {{.Recovered}} recovered · {{.Never}} never{{end}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="5" class="muted">Nothing sent yet.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{end}}

@@ -59,6 +59,7 @@ Setup and maintenance:
   target         add or list a connection profile
   stack          define a stack or add members
   secret         manage credential references
+  notify         send a daily digest of changes to chat or email
   export         write the whole store to a JSON file
   restore        load a JSON file into an empty store
 
@@ -112,6 +113,8 @@ func main() {
 		err = cmdStack(ctx, os.Args[2:])
 	case "secret":
 		err = cmdSecret(ctx, os.Args[2:])
+	case "notify":
+		err = cmdNotify(ctx, os.Args[2:])
 	case "export":
 		err = cmdExport(ctx, os.Args[2:])
 	case "restore":
@@ -326,6 +329,9 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 		defer func() {
 			stopSched()
 			<-schedDone
+			if srv.Notifier != nil {
+				srv.Notifier.Wait()
+			}
 		}()
 		log.Info("scheduler on", "sessions", srv.Scheduler.MaxSessions, "per_host", srv.Scheduler.PerHost)
 	} else {

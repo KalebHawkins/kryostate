@@ -1,6 +1,7 @@
 {{define "changes.html"}}
 <h1>Changes{{if .HostLabel}} on <span class="mono">{{.HostLabel}}</span>{{end}}</h1>
 <p class="muted">A change is a collected value that differs from what the same collector read before it. The first value a host ever reports is not a change, and neither is anything a person or a document states.</p>
+<p class="small"><a href="/notifications" hx-get="/notifications" hx-target="#main" hx-push-url="true">Daily digest</a>: have these sent to chat or email once a day.</p>
 
 <nav class="filterbar" aria-label="Time window">
   {{$host := .Host}}{{$attr := .Attr}}{{$cur := .Window}}
