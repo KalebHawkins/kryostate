@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <title>{{.Title}} — KryoState</title>
+<script>/* theme: apply a stored choice before the first paint, so the page never flashes the other one */try{var t=localStorage.getItem("kryostate-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js" defer></script>
 <script src="/static/sse.js" defer></script>
@@ -24,6 +26,7 @@
   <a href="/collectors" {{if eq .Nav "collectors"}}aria-current="page"{{end}} hx-get="/collectors" hx-target="#main" hx-push-url="true">Collectors</a>
   <span class="nav__spacer"></span>
   <a href="/guide" {{if eq .Nav "guide"}}aria-current="page"{{end}} hx-get="/guide" hx-target="#main" hx-push-url="true">Guide</a>
+  <button class="nav__theme" type="button" data-theme-toggle hidden title="Colour theme: System, Light or Dark"><span aria-hidden="true">&#9680;</span> <span data-theme-name>System</span><span class="visually-hidden"> theme (change)</span></button>
   <span class="htmx-indicator muted" id="spinner">working…</span>
 </nav>
 <main class="content" id="main">
