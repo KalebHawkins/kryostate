@@ -102,7 +102,6 @@ var windows = []string{"windows"}
 var linux = []string{"linux"}
 
 func rx(p string) Parse { return Parse{Kind: ParseRegex, Pattern: p} }
-func kv(k string) Parse { return Parse{Kind: ParseKV, Key: k} }
 func first() Parse      { return Parse{Kind: ParseFirstLine} }
 func everything() Parse { return Parse{Kind: ParseAll} }
 
@@ -257,32 +256,6 @@ var Catalog = []Template{
 			// and quoting it would stop the shell expanding it.
 			{Name: "unix", OS: unix, Command: `. /etc/profile >/dev/null 2>&1; echo "${{{name}}}"`, Parse: first()},
 			{Name: "windows", OS: windows, Command: "[Environment]::GetEnvironmentVariable({{param}}, 'Machine')", Parse: first()},
-		},
-	},
-
-	// ---- vendor products, offered last ----
-	{
-		ID: "splunk.uf.version", Title: "Splunk Universal Forwarder version", Category: "Splunk", Attr: "splunk.uf.version", Type: model.TypeText,
-		Description: "Read from the forwarder's splunk.version file in its default location.",
-		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "cat /opt/splunkforwarder/etc/splunk.version", Parse: kv("VERSION")},
-			{Name: "windows", OS: windows, Command: `Get-Content 'C:\Program Files\SplunkUniversalForwarder\etc\splunk.version'`, Parse: kv("VERSION")},
-		},
-	},
-	{
-		ID: "splunk.enterprise.version", Title: "Splunk Enterprise version", Category: "Splunk", Attr: "splunk.enterprise.version", Type: model.TypeText,
-		Description: "Read from Splunk Enterprise's splunk.version file in its default location.",
-		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "cat /opt/splunk/etc/splunk.version", Parse: kv("VERSION")},
-			{Name: "windows", OS: windows, Command: `Get-Content 'C:\Program Files\Splunk\etc\splunk.version'`, Parse: kv("VERSION")},
-		},
-	},
-	{
-		ID: "splunk.home", Title: "Splunk home (from the running splunkd)", Category: "Splunk", Attr: "splunk.home", Type: model.TypePath,
-		Description: "Where Splunk is installed, read from the running splunkd process, so it is right even outside the default location.",
-		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "ps -eo args | grep '[s]plunkd'", Parse: rx(`(/[^ ]+)/bin/splunkd`)},
-			{Name: "windows", OS: windows, Command: `(Get-CimInstance Win32_Service | Where-Object { $_.Name -like 'Splunk*' } | Select-Object -First 1).PathName`, Parse: rx(`^"?(.+?)\\bin\\splunkd`)},
 		},
 	},
 }
@@ -466,11 +439,23 @@ type Choice struct {
 	Target string
 }
 
+// ErrNotInCatalog is why a choice does not run when its catalog entry was
+// removed in a later build. The row stays in the database until someone
+// switches it off, so that nothing a person chose disappears silently.
+var ErrNotInCatalog = errors.New("no longer in the catalog")
+
+// InCatalog reports whether the choice's catalog entry still exists in this
+// build.
+func (c Choice) InCatalog() bool {
+	_, ok := Lookup(c.Template)
+	return ok
+}
+
 // Specs turns a choice into the specs that run, one per variant.
 func (c Choice) Specs() ([]Spec, error) {
 	t, ok := Lookup(c.Template)
 	if !ok {
-		return nil, fmt.Errorf("no catalog entry %q", c.Template)
+		return nil, fmt.Errorf("%s: %w", c.Template, ErrNotInCatalog)
 	}
 	if !t.Fixed() {
 		if err := CheckParam(t.Param.Kind, c.Param); err != nil {

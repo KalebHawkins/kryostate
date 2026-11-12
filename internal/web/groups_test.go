@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -30,8 +31,9 @@ func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 		t.Fatalf("after the group: %v", runs)
 	}
 
-	// From the edge stack's card, the same group adds edge beside data.
-	_, msg = followFlash(t, h, post(t, h, "/stacks/collectors", url.Values{"stack": {"edge"}, "what": {"group.runtimes"}}))
+	// The same group for edge adds edge beside data.
+	edge := url.Values{"group": {"group.runtimes"}, "where": {"stacks"}, "stack": {"edge"}}
+	_, msg = followFlash(t, h, post(t, h, "/collectors/group", edge))
 	if !strings.Contains(msg, "Language runtimes") {
 		t.Errorf("message %q", msg)
 	}
@@ -42,25 +44,21 @@ func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 		}
 	}
 	// Doing it again changes nothing, and says so.
-	if _, msg := followFlash(t, h, post(t, h, "/stacks/collectors", url.Values{"stack": {"edge"}, "what": {"group.runtimes"}})); !strings.Contains(msg, "nothing changed") {
+	if _, msg := followFlash(t, h, post(t, h, "/collectors/group", edge)); !strings.Contains(msg, "nothing changed") {
 		t.Errorf("repeat gave %q", msg)
 	}
-	// A single entry from the card, and things the card may not switch on.
-	post(t, h, "/stacks/collectors", url.Values{"stack": {"edge"}, "what": {"cpu.cores"}})
+	// Things a group button may not switch on.
 	for _, what := range []string{"file.contents", "file.exists", "made.up"} {
-		if _, msg := followFlash(t, h, post(t, h, "/stacks/collectors", url.Values{"stack": {"edge"}, "what": {what}})); !strings.Contains(msg, "choose a group") {
+		if _, msg := followFlash(t, h, post(t, h, "/collectors/group", url.Values{"group": {what}, "where": {"all"}})); !strings.Contains(msg, "choose a group") {
 			t.Errorf("%s gave %q", what, msg)
 		}
 	}
-	if _, msg := followFlash(t, h, post(t, h, "/stacks/collectors", url.Values{"stack": {"gone"}, "what": {"cpu.cores"}})); !strings.Contains(msg, "no such stack") {
-		t.Errorf("unknown stack gave %q", msg)
-	}
 
-	page := get(t, h, "/stacks/edge", nil).Body.String()
-	for _, want := range []string{"Collected here", "CPU cores", "Python version", "Language runtimes"} {
-		if !strings.Contains(page, want) {
-			t.Errorf("stack page lacks %q", want)
-		}
+	if page := get(t, h, "/stacks/edge", nil).Body.String(); strings.Contains(page, "Collected here") || strings.Contains(page, "/stacks/collectors") {
+		t.Error("the stack page still has its Collected here card")
+	}
+	if rec := post(t, h, "/stacks/collectors", url.Values{"stack": {"edge"}, "what": {"cpu.cores"}}); rec.Code != http.StatusMethodNotAllowed && rec.Code != http.StatusNotFound {
+		t.Errorf("POST /stacks/collectors gave %d; the route is gone", rec.Code)
 	}
 }
 

@@ -119,9 +119,6 @@ func TestDefaultAttrIsUsable(t *testing.T) {
 func TestCatalogParsesRealOutput(t *testing.T) {
 	for _, tc := range []struct{ id, variant, out, want string }{
 		{"memory.total", "aix", "Memory Size: 16384 MB\n", "16384"},
-		{"splunk.uf.version", "unix", "VERSION=9.1.2\nBUILD=b6b9c8185839\nPRODUCT=splunk\n", "9.1.2"},
-		{"splunk.home", "unix", "splunkd -p 8089 start\n[splunkd pid=1234] /opt/splunkforwarder/bin/splunkd -p 8089 start [process-runner]\n", "/opt/splunkforwarder"},
-		{"splunk.home", "windows", `"C:\Program Files\SplunkUniversalForwarder\bin\splunkd.exe" service`, `C:\Program Files\SplunkUniversalForwarder`},
 		{"java.version", "unix", "openjdk version \"17.0.9\" 2023-10-17\nOpenJDK Runtime Environment\n", "17.0.9"},
 		{"python.version", "unix", "Python 3.11.5\n", "3.11.5"},
 		{"openssl.version", "unix", "OpenSSL 3.0.7 1 Nov 2022 (Library: OpenSSL 3.0.7 1 Nov 2022)\n", "3.0.7"},

@@ -54,7 +54,6 @@ var collectorCategories = []collectorCategory{
 	{"runtimes", "Runtimes & packages"},
 	{"web", "Web servers"},
 	{"files", "Files & config"},
-	{"splunk", "Splunk"},
 	{"custom", "Custom"},
 }
 
@@ -147,6 +146,9 @@ type collectorsData struct {
 	Groups     []groupView
 	Chips      targetChips
 	Own        int
+	// Gone are switched-on collectors whose catalog entry this build no
+	// longer has. They never run; each is listed so someone can turn it off.
+	Gone []collect.Choice
 }
 
 // collectorRows lists every collector from every source, in the order the
@@ -262,6 +264,11 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, err)
 		return
+	}
+	for _, c := range choices {
+		if !c.InCatalog() {
+			d.Gone = append(d.Gone, c)
+		}
 	}
 	for _, g := range collect.Groups {
 		v := groupView{G: g, Total: len(g.Entries)}

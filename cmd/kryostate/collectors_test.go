@@ -117,6 +117,56 @@ func TestTryAndDisableFindCatalogCollectors(t *testing.T) {
 	}
 }
 
+// TestListShowsARemovedCatalogEntry: a collector switched on from a catalog
+// entry this build no longer has is listed, marked, with how to remove it,
+// and -disable finds it by number.
+func TestListShowsARemovedCatalogEntry(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	res, err := st.DB().ExecContext(ctx,
+		`INSERT INTO collector_choice (template, param, attr, target, created_at)
+		 VALUES ('vendor.gone.version', '', 'vendor.gone.version', '', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+	eng, err := buildEngine(st, engineFiles{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout := os.Stdout
+	os.Stdout = w
+	lerr := listCollectors(ctx, eng, st, "")
+	os.Stdout = stdout
+	w.Close()
+	out, _ := io.ReadAll(r)
+	if lerr != nil {
+		t.Fatal(lerr)
+	}
+	for _, want := range []string{"vendor.gone.version (no longer in the catalog, skipped)",
+		"kryostate collectors -disable " + strconv.FormatInt(id, 10)} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("listing lacks %q:\n%s", want, out)
+		}
+	}
+	c, err := findChoice(ctx, st, strconv.FormatInt(id, 10), "")
+	if err != nil || c.Template != "vendor.gone.version" {
+		t.Fatalf("-disable by number: %+v, %v", c, err)
+	}
+	if err := st.DeleteChoice(ctx, c.ID, "test"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestShowPrintsALoadableDefinition: -show is the command-line way to see a
 // collector written out, and what it prints must load as a collectors file.
 func TestShowPrintsALoadableDefinition(t *testing.T) {

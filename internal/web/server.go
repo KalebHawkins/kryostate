@@ -132,7 +132,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /collectors/target/hosts", s.handleTargetHosts)
 	mux.HandleFunc("GET /collectors/try/hosts", s.handleTryHosts)
 	mux.HandleFunc("POST /stacks/hosts", s.handleBulkHosts)
-	mux.HandleFunc("POST /stacks/collectors", s.handleStackCollectors)
 	mux.HandleFunc("POST /stacks/query", s.handleStackQuery)
 	mux.HandleFunc("POST /collectors/group", s.handleChooseGroup)
 	mux.HandleFunc("GET /runs", s.handleRuns)
@@ -264,6 +263,9 @@ type hostData struct {
 	// Changed holds the recent change behind a fact, by assertion id, for the
 	// "changed" badge.
 	Changed map[int64]*store.Change
+	// Collectors are what runs on this host and why, and what is on but
+	// skips it.
+	Collectors hostCollectors
 }
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
@@ -319,8 +321,12 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Labels = s.attrTitles(ctx)
 	d.Changed = s.hostChanges(ctx, id)
+	d.Collectors = s.hostCollectorsFor(ctx, id, facts, d.Changed)
 	if choices, err := s.Store.Choices(ctx); err == nil {
 		for _, c := range choices {
+			if !c.InCatalog() {
+				continue
+			}
 			d.Testable = append(d.Testable, testOption{Value: "choice:" + strconv.FormatInt(c.ID, 10), Label: c.Label(), Group: "Switched on"})
 		}
 	}

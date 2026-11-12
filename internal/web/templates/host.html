@@ -27,6 +27,8 @@
 </table>
 </div>
 
+{{template "host-collectors" .}}
+
 <div class="cards" style="margin-top:1.5rem">
   <div class="card">
     <h2>Reachability</h2>
@@ -206,3 +208,43 @@
 {{end}}
 
 {{define "long-value"}}{{if multiline .}}<details class="fact-full"><summary>{{short . 40}}</summary><pre>{{.}}</pre></details>{{else}}{{.}}{{end}}{{end}}
+
+{{/* host-collectors answers "what runs here and why": each collector that
+     runs on the host, the reason, its schedule and the last values it
+     recorded, then the ones that are on but skip this host. */}}
+{{define "host-collectors"}}
+{{$c := .Collectors}}
+<section class="hcoll" id="collectors" aria-labelledby="h-collectors">
+  <h2 id="h-collectors">Collectors on this host</h2>
+  {{if $c.Err}}<p class="notice notice--bad" role="alert">Could not work out which collectors run here: {{$c.Err}}</p>
+  {{else}}
+  <p class="muted small">What runs here, why, and when{{if not .Profiles}}, once the host has a connection{{end}}.{{if not $c.Family}} This host has not reported its system yet, so commands for every system are listed; the one for its system is picked when it connects.{{end}}</p>
+  <div class="table-wrap">
+  <table class="hcoll__table">
+    <caption class="visually-hidden">Collectors that run on {{.CI.Label}}</caption>
+    <thead><tr><th scope="col">Collector</th><th scope="col">Why it runs here</th><th scope="col">Schedule</th><th scope="col">Last value</th></tr></thead>
+    <tbody>
+    {{range $c.Running}}
+      <tr>
+        <td><a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Title}}</a></td>
+        <td class="small">{{.Why}}{{with .Query}} <code class="mono">{{.}}</code>{{end}}</td>
+        <td class="small nowrap">{{.Schedule}}</td>
+        <td class="small">{{range .Values}}<div><span class="muted" title="{{.Attr}}">{{label .Attr}}{{with .Scope}} [{{.}}]{{end}}:</span> <span class="mono">{{short .Value 60}}</span>{{with .Changed}} <span class="chip chip--changed" title="was {{.Old}} · changed {{stamp .At}}">changed</span>{{end}}</div>{{else}}<span class="muted">nothing yet</span>{{end}}{{if .More}}<div class="muted">and {{.More}} more under Facts</div>{{end}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="4" class="muted">No collector runs on this host.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{if $c.Skipped}}
+  <details class="disclosure hcoll__skipped">
+    <summary>Not running here ({{len $c.Skipped}})</summary>
+    <ul class="small">
+    {{range $c.Skipped}}<li><a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Title}}</a> <span class="muted">· {{.Why}}</span>{{with .Query}} <code class="mono">{{.}}</code>{{end}}</li>{{end}}
+    </ul>
+  </details>
+  {{end}}
+  {{end}}
+</section>
+{{end}}

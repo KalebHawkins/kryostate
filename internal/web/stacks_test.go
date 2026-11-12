@@ -79,7 +79,7 @@ func TestStackPage(t *testing.T) {
 		"← Stacks", "<h1>payments</h1>", "web01", "db01", `chip--role">database<`,
 		`action="/stacks/members/remove"`, `name="back" value="/stacks/payments"`,
 		`hx-get="/stacks/payments/hosts"`, "Add hosts by query", `href="/guide/queries"`,
-		"Collected here", "Also collect on payments", "Edit details", "Delete payments",
+		"Each host's page lists the collectors", `href="/hosts/`, "Edit details", "Delete payments",
 		"kryostate hosts -stack payments", "kryostate stack -name payments -add web01:app",
 		"kryostate stack -name payments -q",
 	} {
@@ -89,6 +89,9 @@ func TestStackPage(t *testing.T) {
 	}
 	if strings.Contains(page, "<datalist") {
 		t.Error("the stack page lists every host")
+	}
+	if strings.Contains(page, "Collected here") || strings.Contains(page, "Also collect on") {
+		t.Error("the stack page still has its Collected here card")
 	}
 	if rec := get(t, h, "/stacks/nope", nil); rec.Code != http.StatusNotFound {
 		t.Errorf("an unknown stack gave %d", rec.Code)
@@ -182,7 +185,6 @@ func TestStackFormsReturnToTheStackPage(t *testing.T) {
 		"add from the list":    {"/stacks/members", url.Values{"stack": {"payments"}, "host": {"web01"}, "back": {"/stacks"}}, "/stacks"},
 		"remove from the page": {"/stacks/members/remove", url.Values{"stack": {"payments"}, "ci": {id}, "back": {page}}, page},
 		"edit":                 {"/stacks/edit", url.Values{"stack": {"payments"}, "owner": {"team-b"}, "back": {page}}, page},
-		"collectors":           {"/stacks/collectors", url.Values{"stack": {"payments"}, "what": {"cpu.cores"}, "back": {page}}, page},
 		"several hosts":        {"/stacks/hosts", url.Values{"stack": {"payments"}, "hosts": {"web03 app"}, "back": {page}}, page},
 		"by query":             {"/stacks/query", url.Values{"stack": {"payments"}, "query": {`name == "web03"`}, "back": {page}}, page},
 		"create":               {"/stacks", url.Values{"name": {"new one"}}, "/stacks/new%20one"},

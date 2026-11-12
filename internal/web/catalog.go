@@ -110,7 +110,11 @@ func (s *Server) handleUnchoose(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, "/collectors", err)
 		return
 	}
-	done(w, r, collectorURL(c.Template)+"#where", c.Label()+" is off. Values it already collected are kept.")
+	back := collectorURL(c.Template) + "#where"
+	if !c.InCatalog() {
+		back = "/collectors"
+	}
+	done(w, r, back, c.Label()+" is off. Values it already collected are kept.")
 }
 
 type tryData struct {
@@ -271,18 +275,6 @@ func (s *Server) bulkAdd(r *http.Request, stack string) (string, error) {
 	return res.Summary(stack), nil
 }
 
-// fixedEntries lists the catalog entries that need no value, which are the
-// ones a single button can switch on.
-func fixedEntries() []collect.Template {
-	var out []collect.Template
-	for _, t := range collect.Catalog {
-		if t.Fixed() {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
 // enableFor switches on a group, or one fixed catalog entry, for the hosts
 // a target matches (blank meaning every host). It only widens where things run. It
 // returns a sentence for the flash message.
@@ -346,23 +338,6 @@ func (s *Server) handleChooseGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	done(w, r, "/collectors#groups", msg)
-}
-
-// handleStackCollectors switches a group or collector on for one stack, from
-// that stack's card.
-func (s *Server) handleStackCollectors(w http.ResponseWriter, r *http.Request) {
-	stack := field(r, "stack")
-	back := stackBack(field(r, "back"), stackURL(stack))
-	if _, err := s.Store.StackID(r.Context(), stack); err != nil {
-		refuse(w, r, "/stacks", errors.New("no such stack"))
-		return
-	}
-	msg, err := s.enableFor(r, field(r, "what"), store.StacksTarget([]string{stack}))
-	if err != nil {
-		refuse(w, r, back, err)
-		return
-	}
-	done(w, r, back, msg)
 }
 
 // testOption is one entry in a host page's Test list.

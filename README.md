@@ -265,10 +265,8 @@ A catalog of ready-made collectors is compiled in: CPU cores, memory size,
 time zone, DNS servers, SELinux mode, Java, Python, OpenSSL, nginx, httpd and
 Docker versions, and templates for a file's existence, a file's contents, one
 setting in a config file, an environment variable, and an installed package's
-version. A few vendor-specific entries (Splunk versions and install location)
-come last. Groups switch several on together: host basics, language runtimes,
-web servers. Switch them on in the web interface on the Collectors page or from
-a stack's page, or:
+version. Groups switch several on together: host basics, language runtimes,
+web servers. Switch them on in the web interface on the Collectors page, or:
 
 ```sh
 ./kryostate collectors -catalog

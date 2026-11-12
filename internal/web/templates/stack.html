@@ -41,6 +41,7 @@
   </table>
   </div>
   {{if .MoreMembers}}<p class="muted small">and {{.MoreMembers}} more — <a href="{{.Inventory}}" hx-get="{{.Inventory}}" hx-target="#main" hx-push-url="true">open in inventory</a>.</p>{{end}}
+  {{with index .Members 0}}<p class="muted small">Each host's page lists the collectors that run on it, and why, such as <a href="/hosts/{{.Host.CI.ID}}#collectors" hx-get="/hosts/{{.Host.CI.ID}}" hx-target="#main" hx-push-url="true">{{.Host.CI.Label}}</a>.</p>{{end}}
   {{else}}<p class="muted">No members yet. Add a host below.</p>{{end}}
 
   <h3>Add a host</h3>
@@ -78,25 +79,6 @@
       <div class="form__actions"><button class="btn" type="submit">Add hosts</button></div>
     </form>
   </details>
-</section>
-
-<section class="card sdetail" aria-labelledby="h-collected">
-  <h2 id="h-collected">Collected here</h2>
-  <p class="small">
-    {{if or .Collectors .Everywhere}}
-    {{range $i, $c := .Collectors}}{{if $i}}, {{end}}{{$c.ShortLabel}}{{end}}{{if and .Collectors .Everywhere}}, {{end}}{{range $i, $c := .Everywhere}}{{if $i}}, {{end}}{{$c.ShortLabel}}{{end}}
-    {{else}}<span class="muted">Only what is always collected: operating system, kernel, hardware model and serial.</span>{{end}}
-  </p>
-  <form class="form form--inline" method="post" action="/stacks/collectors">
-    <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="{{.Href}}">
-    <label>Also collect on {{$name}}
-      <select name="what">
-        <optgroup label="Groups">{{range .Groups}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</optgroup>
-        <optgroup label="Single collectors">{{range .Fixed}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</optgroup>
-      </select></label>
-    <button class="btn" type="submit">Switch on</button>
-    <a class="small" href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">Files, packages and more…</a>
-  </form>
 </section>
 
 <section class="card sdetail" aria-labelledby="h-details">

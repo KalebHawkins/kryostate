@@ -47,6 +47,10 @@ type Engine struct {
 	// Dial replaces the real SSH and WinRM connection, for tests. It returns
 	// the transport and the operating system family the host reports.
 	Dial func(ctx context.Context, p store.ConnProfile) (collect.Transport, string, error)
+
+	// warned holds the switched-on catalog collectors already reported as no
+	// longer in the catalog, so the warning is logged once, not on every run.
+	warned sync.Map
 }
 
 // Wire gives the store the rules it needs to normalise an application a person
