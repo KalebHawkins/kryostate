@@ -46,10 +46,10 @@
   <h3>Add a host</h3>
   <form class="form form--inline hostpick" method="post" action="/stacks/members">
     <input type="hidden" name="stack" value="{{$name}}"><input type="hidden" name="back" value="{{.Href}}">
-    <label for="stack-host">Host</label>
-    <input type="search" id="stack-host" name="host" required autocomplete="off" placeholder="Type part of a name" class="hostpick__input"
+    <label for="stack-host" class="visually-hidden">Host</label>
+    <input type="search" id="stack-host" name="host" required autocomplete="off" placeholder="Host: type part of a name" class="hostpick__input"
       hx-get="{{.Href}}/hosts" hx-trigger="input changed delay:250ms" hx-target="#stack-host-picks" hx-sync="this:replace">
-    <label>Role <input type="text" name="role" placeholder="app, database…"></label>
+    <label><span class="visually-hidden">Role</span><input type="text" name="role" placeholder="Role: app, database…"></label>
     <button class="btn" type="submit">Add host</button>
     <div class="hostpick__list" id="stack-host-picks" data-picklist aria-live="polite"></div>
   </form>
