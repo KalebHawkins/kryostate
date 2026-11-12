@@ -261,7 +261,7 @@ func TestChartsPageOverlayAndSkips(t *testing.T) {
 		}
 	}
 	body := get(t, h, "/charts", nil).Body.String()
-	for _, want := range []string{`<dialog class="viz-dialog"`, `data-dialog="chart-1"`, `<table>`, "/static/charts.js"} {
+	for _, want := range []string{`<dialog class="viz-dialog"`, `data-dialog="chart-os-version"`, `<table>`, "/static/charts.js"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("charts page lacks %s", want)
 		}

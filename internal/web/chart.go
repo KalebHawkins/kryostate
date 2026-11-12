@@ -631,6 +631,7 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 	}
 	titles := s.attrTitles(ctx)
 	var d chartsData
+	domIDs := map[string]int{}
 	requested := r.URL.Query()["attr"]
 	d.Single = len(requested) > 0
 	for _, a := range attrs {
@@ -659,7 +660,9 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 			kind = KindBar
 		}
 		c := NewChart(a.Attr, title, kind, buckets)
-		c.DomID = fmt.Sprintf("chart-%d", len(d.Charts)+1)
+		// Named for the attribute so /charts#chart-os-version keeps pointing at
+		// the same chart however many others come before it.
+		c.DomID = "chart-" + slug(a.Attr, domIDs)
 		d.Charts = append(d.Charts, c)
 	}
 	s.render(w, r, "charts.html", "Charts", "charts", d)

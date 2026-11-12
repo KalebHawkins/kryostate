@@ -28,6 +28,17 @@
     }
   });
 
+  // /charts#<chart id> opens that chart's overlay, so a link can point at one.
+  function openFromHash() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    if (!id) return;
+    var d = document.getElementById(id);
+    if (d && d.tagName === "DIALOG" && !d.open && typeof d.showModal === "function") d.showModal();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", openFromHash);
+  else openFromHash();
+  document.addEventListener("htmx:afterSettle", openFromHash);
+
   // Following a link out of an overlay swaps the page under it; close it
   // first so the top layer does not outlive its content.
   document.addEventListener("htmx:beforeRequest", function () {

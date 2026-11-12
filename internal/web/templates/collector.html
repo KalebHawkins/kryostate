@@ -141,7 +141,7 @@
 </section>
 
 <section class="card" id="definition" aria-labelledby="h-definition">
-  <details class="cdef" {{if ne .Row.Source "catalog"}}open{{end}}>
+  <details class="cdef" open>
     <summary><h2 id="h-definition">View definition</h2> <span class="muted small">as written in {{.DefFile}}</span></summary>
     {{if .DefErr}}<p class="flash flash--error">{{.DefErr}}</p>{{else}}
     <div class="cdef__bar">
