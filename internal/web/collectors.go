@@ -319,10 +319,10 @@ type collectorDetail struct {
 	DefNote  string
 	DefErr   string
 	// ShowCmd is the command line that prints the same definition.
-	ShowCmd     string
+	ShowCmd string
 	// Schedules are this collector's rows from the schedules page.
-	Schedules  []scheduleRow
-	Scheduling bool
+	Schedules   []scheduleRow
+	Scheduling  bool
 	FileProblem string
 }
 
