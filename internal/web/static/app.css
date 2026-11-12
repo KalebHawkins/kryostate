@@ -1343,3 +1343,123 @@ td .hostpick__input { width: 11rem; min-width: 0; }
 .sdetail .disclosure { margin: var(--s-3) 0; }
 .smembers td { vertical-align: middle; }
 .smembers td.host { overflow-wrap: anywhere; }
+
+/* ---------- guide layout, query help, external programs ----------
+   The guide takes a wider container than other pages: a sticky contents
+   column on the left, the reading column beside it. Prose keeps a readable
+   line length; tables and code may use the full width. */
+/* Sized to the contents column, the reading measure and room for a wide
+   table, and centred, so neither side is left as a large empty gutter. */
+.content:has(> .guide) {
+  --measure: 52rem; /* about 90 characters of body text */
+  max-width: calc(17rem + var(--s-6) + var(--measure) + 12rem + 2 * var(--s-5));
+}
+.guide {
+  grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-areas: "switch switch" "side main";
+  column-gap: var(--s-6);
+  row-gap: var(--s-5);
+}
+.guide__switch {
+  grid-area: switch;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  padding: var(--s-1);
+  width: max-content;
+  max-width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.guide__switch a {
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-sm);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-weight: 500;
+}
+.guide__switch a:hover { color: var(--text); background: var(--hairline); }
+.guide__switch a[aria-current="page"] { color: var(--text); background: var(--bg-raised); box-shadow: inset 0 -2px 0 var(--accent); }
+.guide__side {
+  grid-area: side;
+  position: sticky;
+  top: calc(var(--nav-h) + var(--s-4));
+  max-height: calc(100vh - var(--nav-h) - var(--s-5));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  padding-right: var(--s-2);
+  border-right: 1px solid var(--hairline);
+}
+.guide__side .guide__toc { position: static; max-height: none; overflow: visible; }
+.guide__toc .guide__toc-title { display: grid; gap: 2px; margin: 0 0 var(--s-3); text-transform: none; letter-spacing: 0; font-size: 1rem; color: var(--text); }
+.guide__toc-kicker { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); }
+.guide__toc-name { font-weight: 600; }
+.guide__toc-list { list-style: none; margin: 0; padding: 0; font-size: 0.875rem; }
+.guide__toc-list li { margin: 0; }
+.guide__toc-list a { display: block; padding: 3px var(--s-2); border-left: 2px solid transparent; color: var(--text-dim); text-decoration: none; line-height: 1.35; }
+.guide__toc-list a:hover { color: var(--text); }
+.guide__toc-list .toc-l2 { margin-top: var(--s-2); }
+.guide__toc-list .toc-l2:first-child { margin-top: 0; }
+.guide__toc-list .toc-l2 > a { color: var(--text); font-weight: 500; }
+.guide__toc-list .toc-l3 > a { padding-left: var(--s-4); }
+.guide__toc-list a.is-current { color: var(--accent-strong); border-left-color: var(--accent); background: var(--hairline); }
+.guide__main { grid-area: main; min-width: 0; }
+.guide__toc-m { display: none; }
+.guide .prose { max-width: none; font-size: 1.0625rem; }
+.guide .prose > :is(p, ul, ol, h1, h2, h3, h4) { max-width: var(--measure); }
+.guide .prose .table-wrap { width: fit-content; max-width: 100%; }
+.guide .prose .table-wrap table { width: auto; }
+.guide .prose :is(td, th) { font-size: 0.9375rem; }
+.guide .prose pre { width: fit-content; min-width: min(100%, var(--measure)); max-width: 100%; }
+@media (min-width: 112rem) {
+  .content:has(> .guide) { --measure: 56rem; }
+  .guide .prose { font-size: 1.125rem; }
+}
+@media (max-width: 52rem) {
+  .guide { grid-template-columns: minmax(0, 1fr); grid-template-areas: "switch" "main"; row-gap: var(--s-3); }
+  .guide__side { display: none; }
+  .guide__switch { width: 100%; }
+  .guide__switch a { flex: 1 1 auto; text-align: center; padding: var(--s-2); }
+  .guide__toc-m { display: block; margin: 0 0 var(--s-4); padding: var(--s-2) var(--s-3); background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r-md); }
+  .guide__toc-m > summary { cursor: pointer; font-weight: 600; }
+  .guide__toc-m[open] > summary { margin-bottom: var(--s-2); }
+  .guide .prose { font-size: 1rem; }
+}
+
+/* Inventory query help: an operator table, the special names, and examples
+   that run when clicked. */
+.qhelp__body { max-width: 64rem; display: grid; gap: var(--s-3); padding-top: var(--s-3); }
+.qhelp__body > p { margin: 0; }
+.qhelp__table { width: 100%; font-size: 0.875rem; background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--r-md); }
+.qhelp__table caption { caption-side: top; text-align: left; padding: 0 0 var(--s-1); font-weight: 600; color: var(--text); }
+.qhelp__table caption .muted { font-weight: 400; margin-left: var(--s-2); }
+.qhelp__table thead th { position: static; background: none; }
+.qhelp__table td { vertical-align: top; border-top: 1px solid var(--hairline); color: var(--text); }
+.qhelp__table code { font-family: var(--font-mono); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.qhelp__op { white-space: nowrap; width: 1%; }
+.qhelp__op code { display: inline-block; padding: 0 0.3em; margin: 0 2px 2px 0; background: var(--bg-inset); border: 1px solid var(--hairline); border-radius: var(--r-sm); }
+.qhelp__ops td:nth-child(2) { width: 40%; }
+.qhelp__ex td:first-child { width: 55%; }
+.qhelp__ex a { font-size: 0.8125rem; overflow-wrap: anywhere; text-decoration: none; }
+.qhelp__ex a:hover, .qhelp__ex a:focus-visible { text-decoration: underline; }
+.qhelp__names { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-2); }
+.qhelp__names > code { padding: 0.05em 0.45em; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 999px; color: var(--text); }
+.qhelp__label { font-weight: 600; color: var(--text); }
+@media (max-width: 40rem) {
+  .qhelp__table thead { display: none; }
+  .qhelp__table, .qhelp__table tbody, .qhelp__table tr, .qhelp__table td { display: block; width: auto; }
+  .qhelp__table caption { display: block; padding: var(--s-2) var(--s-3); }
+  .qhelp__table tr { padding: var(--s-2) var(--s-3); border-top: 1px solid var(--hairline); }
+  .qhelp__table td, .qhelp__table td:nth-child(n) { border: 0; padding: 0; width: auto; }
+  .qhelp__op { white-space: normal; }
+  .qhelp__table td + td { color: var(--text-dim); margin-top: 2px; }
+}
+
+/* External programs card on the collectors page. */
+.ext-steps { margin: 0 0 var(--s-3); padding-left: 1.1rem; display: grid; gap: var(--s-1); }
+/* A long server path wraps inside its card instead of running out of it. */
+.cfoot .mono { overflow-wrap: anywhere; }
+/* ---------- end guide layout, query help, external programs ---------- */

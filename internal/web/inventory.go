@@ -35,9 +35,10 @@ type hostsData struct {
 	// is on screen.
 	Query template.URL
 	// Expr is the q parameter as typed; QErr is set when it does not parse.
-	Expr     string
-	QErr     *query.Error
-	Examples []queryExample
+	Expr      string
+	QErr      *query.Error
+	Examples  []queryExample
+	Operators []queryOperator
 	// HealthLabel describes the health filter, if one is set.
 	HealthLabel string
 }
@@ -50,11 +51,32 @@ type queryExample struct {
 
 var examples = []queryExample{
 	{Q: `os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"`, Note: "Linux hosts without the SSH hardening drop-in"},
-	{Q: `stack == "data" && role == "database"`, Note: "members of a stack in one role"},
-	{Q: `name =~ "^web"`, Note: "names starting with web (patterns are unanchored)"},
-	{Q: `os.version =~ "^Red Hat 7" || os.version == "CentOS 7"`, Note: "either of two"},
-	{Q: `hw.cpu.cores >= 8 && hw.memory.total_mb < 16000`, Note: "numbers compare as numbers"},
-	{Q: `!has(os.version)`, Note: "no value recorded"},
+	{Q: `stack == "data" && role == "database"`, Note: "The database hosts of the data stack"},
+	{Q: `name =~ "^web"`, Note: "Names that start with web"},
+	{Q: `name in ("web01", "db01")`, Note: "Two hosts, by name"},
+	{Q: `os.version =~ "^Red Hat 7" || os.version == "CentOS 7"`, Note: "Either of two operating systems"},
+	{Q: `hw.cpu.cores >= 8 && hw.memory.total_mb < 16000`, Note: "Eight cores or more, under 16 GB of memory"},
+	{Q: `!has(os.version)`, Note: "Hosts with no OS version recorded yet"},
+}
+
+// queryOperator is one row of the operator table in the inventory's query
+// help. Ops are shown as code; Example is a query that uses them.
+type queryOperator struct {
+	Ops     []string
+	Meaning string
+	Example string
+}
+
+var queryOperators = []queryOperator{
+	{[]string{"==", "!="}, "Equal, not equal", `os.family == "Linux"`},
+	{[]string{"=~", "!~"}, "Matches a pattern, or does not. Patterns are unanchored: add ^ or $ to anchor", `name =~ "^web"`},
+	{[]string{"<", "<=", ">", ">="}, "Order numbers and versions", `hw.cpu.cores >= 8`},
+	{[]string{"&&", "||"}, "Both, either", `stack == "web" && role == "app"`},
+	{[]string{"!"}, "Not", `!(stack == "web")`},
+	{[]string{"( )"}, "Group", `(stack == "web" || stack == "api") && role == "app"`},
+	{[]string{"in ( )"}, "Any of a list", `name in ("web01", "db01")`},
+	{[]string{"has( )"}, "Has a value at all", `has(hw.serial)`},
+	{[]string{"[ ]"}, "A collector that takes a path or a name", `file.exists["/etc/hosts"] == true`},
 }
 
 func init() {
@@ -170,7 +192,7 @@ func (s *Server) handleHosts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
 	f := s.hostFilter(ctx, q)
-	d := hostsData{Filter: f, Expr: q.Get("q"), Query: template.URL(r.URL.RawQuery), Examples: examples}
+	d := hostsData{Filter: f, Expr: q.Get("q"), Query: template.URL(r.URL.RawQuery), Examples: examples, Operators: queryOperators}
 	d.HealthLabel = healthLabels[f.Health]
 	var err error
 	if d.Columns, d.Attrs, err = s.inventoryColumns(ctx, q); err != nil {

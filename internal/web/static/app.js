@@ -140,3 +140,43 @@ document.addEventListener("click", function (e) {
     if (e.key === "Enter" && e.target.hasAttribute && e.target.hasAttribute("data-no-submit")) e.preventDefault();
   });
 })();
+
+// ---- Guide: mark the section being read in the contents ----
+//
+// Only a highlight: the contents are plain links and work without this. The
+// current section is the last heading that has scrolled above the top quarter
+// of the window. The sidebar scrolls on its own to keep that link in view.
+(function () {
+  var pending = false;
+  function update() {
+    pending = false;
+    var body = document.querySelector(".guide__body");
+    if (!body) return;
+    var heads = body.querySelectorAll("h2[id], h3[id]");
+    var line = window.innerHeight / 4, id = "";
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].getBoundingClientRect().top > line) break;
+      id = heads[i].id;
+    }
+    document.querySelectorAll(".guide__toc-list a").forEach(function (a) {
+      var on = id !== "" && a.getAttribute("href") === "#" + id;
+      if (on === a.classList.contains("is-current")) return;
+      a.classList.toggle("is-current", on);
+      if (on) a.setAttribute("aria-current", "location"); else a.removeAttribute("aria-current");
+      var side = a.closest(".guide__side");
+      if (on && side) {
+        var r = a.getBoundingClientRect(), s = side.getBoundingClientRect();
+        if (r.top < s.top || r.bottom > s.bottom) side.scrollTop += r.top - s.top - s.height / 3;
+      }
+    });
+  }
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(update);
+  }
+  window.addEventListener("scroll", schedule, { passive: true });
+  window.addEventListener("resize", schedule);
+  document.addEventListener("DOMContentLoaded", schedule);
+  document.addEventListener("htmx:load", schedule);
+})();

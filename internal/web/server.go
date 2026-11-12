@@ -370,10 +370,7 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGuide(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "guide.html", "User guide", "guide", struct {
-		Body template.HTML
-		TOC  []tocEntry
-	}{s.guide, s.guideTOC})
+	s.renderGuide(w, r, "/guide", s.guide, s.guideTOC)
 }
 
 func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {

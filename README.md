@@ -307,14 +307,18 @@ Every command reads `collectors.json`, `rules.json` and `externals.json` from
 the folder that holds the database. The `-collectors`, `-rules` and
 `-externals` flags name a different file.
 
-An external collector is a program that you supply:
+An external program (or external collector) is for facts that a host cannot
+report about itself, such as its hypervisor cluster, its cloud tags or its
+owner in a CMDB. It is a program that you write. It runs on the machine that
+runs KryoState, not on the host, once for each host, looks the host up
+wherever those facts live, and prints them. List it in `externals.json` next to
+the database, or name another file:
 
 ```sh
 ./kryostate collect -externals ./my-externals.json
 ```
 
-The tool runs the external program on the machine that runs KryoState, once for
-each host. The program receives `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
+The program receives `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
 `KRYOSTATE_SCHEMA`, `PATH`, and the variables that its own definition lists. It
 receives nothing else, and it receives no credential. On Windows the Go
 runtime also supplies `SystemRoot`, because a process without that variable

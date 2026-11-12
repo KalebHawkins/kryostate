@@ -56,12 +56,23 @@
 <details class="qhelp"{{if .QErr}} open{{end}}>
   <summary>Query syntax and examples</summary>
   <div class="qhelp__body">
-    <p>Compare with <code>==</code> and <code>!=</code>, match a pattern with <code>=~</code> and <code>!~</code> (Go regular expressions, unanchored: add <code>^</code> or <code>$</code> to anchor), and order numbers and versions with <code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code>. Join conditions with <code>&amp;&amp;</code> and <code>||</code>, negate with <code>!</code>, and group with parentheses. Text goes in double quotes; <code>true</code>, <code>false</code> and numbers do not.</p>
-    <p>A name is an attribute such as <code>os.version</code>, or one of <code>name</code>, <code>stack</code>, <code>role</code> and <code>application</code>. A collector that takes a path or a name is written with it in brackets, <code>file.exists["/etc/hosts"]</code>, or as <code>file.exists == "/etc/hosts"</code>. <code>has(os.version)</code> is true when there is a value. Text without any of these symbols searches host names.</p>
-    <ul class="qhelp__examples">
-      {{range .Examples}}<li><a class="mono" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Q}}</a> <span class="muted">{{.Note}}</span></li>{{end}}
-    </ul>
-    <p class="small"><a href="/guide/queries" hx-get="/guide/queries" hx-target="#main" hx-push-url="true">The full query guide</a>: every operator, how missing values and versions compare, recipes and common mistakes.</p>
+    <p class="qhelp__lead">A query is a <strong>name</strong>, an <strong>operator</strong> and a <strong>value</strong>, such as <code>os.family == "Linux"</code>. Text goes in double quotes; numbers, <code>true</code> and <code>false</code> do not. Text with none of these symbols just searches host names.</p>
+    <table class="qhelp__table qhelp__ops">
+      <caption>Operators</caption>
+      <thead><tr><th scope="col">Operator</th><th scope="col">Meaning</th><th scope="col">Example</th></tr></thead>
+      <tbody>
+      {{range .Operators}}<tr><td class="qhelp__op">{{range .Ops}}<code>{{.}}</code> {{end}}</td><td>{{.Meaning}}</td><td><code>{{.Example}}</code></td></tr>
+      {{end}}</tbody>
+    </table>
+    <p class="qhelp__names"><span class="qhelp__label">Names</span> <span>any attribute, such as <code>os.version</code> or <code>hw.cpu.cores</code>, and four special names:</span> <code>name</code> <code>stack</code> <code>role</code> <code>application</code></p>
+    <table class="qhelp__table qhelp__ex">
+      <caption>Examples <span class="muted">click one to run it</span></caption>
+      <thead><tr><th scope="col">Query</th><th scope="col">What it finds</th></tr></thead>
+      <tbody>
+      {{range .Examples}}<tr><td><a class="mono" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Q}}</a></td><td>{{.Note}}</td></tr>
+      {{end}}</tbody>
+    </table>
+    <p class="qhelp__more"><a href="/guide/queries" hx-get="/guide/queries" hx-target="#main" hx-push-url="true">The full query guide</a> <span class="muted">— every operator, how missing values and versions compare, recipes and common mistakes.</span></p>
   </div>
 </details>
 

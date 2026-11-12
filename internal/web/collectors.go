@@ -147,6 +147,10 @@ type collectorsData struct {
 	Groups     []groupView
 	Chips      targetChips
 	Own        int
+	// Externals counts the external programs loaded; ExternalsPath is the
+	// file they were read from, or where that file would go.
+	Externals     int
+	ExternalsPath string
 }
 
 // collectorRows lists every collector from every source, in the order the
@@ -231,6 +235,10 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 	if d.WantPath == "" && s.Config.Dir != "" {
 		d.WantPath = filepath.Join(s.Config.Dir, "collectors.json")
 	}
+	d.ExternalsPath = s.Config.Externals
+	if d.ExternalsPath == "" && s.Config.Dir != "" {
+		d.ExternalsPath = filepath.Join(s.Config.Dir, "externals.json")
+	}
 	rows, err := s.collectorRows(ctx)
 	if err != nil {
 		s.fail(w, err)
@@ -246,6 +254,9 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 			if !row.Hidden {
 				sec.Hidden = false
 				d.Shown++
+			}
+			if row.Source == srcExternal {
+				d.Externals++
 			}
 			if row.Source == srcOwn {
 				d.Own++
@@ -552,18 +563,45 @@ func systemNames(oss []string) []string {
 }
 
 func (s *Server) handleCollectorGuide(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "guide.html", "Writing a collector", "guide", struct {
-		Body template.HTML
-		TOC  []tocEntry
-	}{s.collectorGuide, s.collectorGuideTOC})
+	s.renderGuide(w, r, "/guide/collectors", s.collectorGuide, s.collectorGuideTOC)
 }
 
 // handleQueryGuide serves the query language reference.
 func (s *Server) handleQueryGuide(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, "guide.html", "Queries", "guide", struct {
-		Body template.HTML
-		TOC  []tocEntry
-	}{s.queryGuide, s.queryGuideTOC})
+	s.renderGuide(w, r, "/guide/queries", s.queryGuide, s.queryGuideTOC)
+}
+
+// guideLink is one guide in the switcher above every guide.
+type guideLink struct {
+	Path  string
+	Title string
+}
+
+// guides lists the guides in the order the switcher shows them.
+var guides = []guideLink{
+	{"/guide", "User guide"},
+	{"/guide/collectors", "Writing collectors"},
+	{"/guide/queries", "Queries"},
+}
+
+// guidePage is what guide.html renders: one guide, its contents, and the
+// switcher between all of them.
+type guidePage struct {
+	Guides  []guideLink
+	Current guideLink
+	Body    template.HTML
+	TOC     []tocEntry
+}
+
+// renderGuide renders the guide served at path.
+func (s *Server) renderGuide(w http.ResponseWriter, r *http.Request, path string, body template.HTML, toc []tocEntry) {
+	d := guidePage{Guides: guides, Body: body, TOC: toc}
+	for _, g := range guides {
+		if g.Path == path {
+			d.Current = g
+		}
+	}
+	s.render(w, r, "guide.html", d.Current.Title, "guide", d)
 }
 
 // renderDocs renders the embedded documents once, at start-up.

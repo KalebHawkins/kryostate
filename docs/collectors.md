@@ -572,12 +572,24 @@ kryostate reparse -spec linux.nginx.version
 
 ### External programs
 
-When the value is not on the host at all, for example it is in a hypervisor
-or a cloud API, write a small program instead. KryoState runs it on the machine
-that runs KryoState, once for each host, and reads JSON from it.
+Some facts about a host are not on the host at all: which hypervisor cluster
+it runs on, its tags in a cloud account, its owner in a CMDB. No command run on
+the host can read them. For these, write an **external program**: a program
+of your own, in any language, that looks the host up somewhere else and prints
+what it found.
 
-The program receives the host's name in `KRYOSTATE_TARGET` and its address in
-`KRYOSTATE_ADDRESS`. It must print:
+The difference from every other collector is where it runs. An external
+program runs **on the machine that runs KryoState, not on the host**. KryoState
+runs it once for each host and reads what it prints.
+
+1. KryoState starts the program with the host in its environment:
+   `KRYOSTATE_TARGET` is the host's name and `KRYOSTATE_ADDRESS` its address.
+2. The program looks the host up, for example in vCenter, and prints one JSON
+   envelope of facts to standard output.
+3. KryoState checks the envelope and records each fact as a value of that host,
+   like any collected value.
+
+The envelope looks like this:
 
 ```json
 {
@@ -590,8 +602,12 @@ The program receives the host's name in `KRYOSTATE_TARGET` and its address in
 }
 ```
 
-Each `key` needs at least one dot. List the program in `externals.json`, next
-to `collectors.json`:
+Each `key` is an attribute name and needs at least one dot. If anything in the
+envelope is wrong, none of it is recorded, so a broken program shows up as a
+failed run instead of half an answer.
+
+Tell KryoState about the program in `externals.json`, in the same folder as the
+database and `collectors.json`, and restart the server:
 
 ```json
 {
@@ -607,8 +623,9 @@ to `collectors.json`:
 }
 ```
 
-The program gets no other environment variables and no credentials, except
-the ones you list in `env`.
+Besides the two variables above it gets only `KRYOSTATE_SCHEMA`, `PATH` and
+what you list in `env`. It gets no credentials unless you put one there. The
+program appears on the **Collectors** page with the source "external".
 
 ## Every field, for reference
 

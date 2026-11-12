@@ -1,19 +1,26 @@
 {{define "guide.html"}}
 <div class="guide">
-  <nav class="guide__toc" aria-label="Contents">
-    <p class="guide__toc-title">Guides</p>
-    <ul class="guide__docs">
-      <li><a href="/guide" hx-get="/guide" hx-target="#main" hx-push-url="true">User guide</a></li>
-      <li><a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">Writing collectors</a></li>
-      <li><a href="/guide/queries" hx-get="/guide/queries" hx-target="#main" hx-push-url="true">Queries</a></li>
-    </ul>
-    <p class="guide__toc-title">Contents</p>
-    <ul>
-    {{range .TOC}}<li class="toc-l{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}
-    </ul>
+  <nav class="guide__switch" aria-label="Guides">
+    {{range .Guides}}<a href="{{.Path}}" hx-get="{{.Path}}" hx-target="#main" hx-push-url="true"{{if eq .Path $.Current.Path}} aria-current="page"{{end}}>{{.Title}}</a>{{end}}
   </nav>
-  <article class="guide__body prose">
-    {{.Body}}
-  </article>
+  <aside class="guide__side">
+    <nav class="guide__toc" aria-labelledby="guide-toc-title">
+      <p class="guide__toc-title" id="guide-toc-title"><span class="guide__toc-kicker">On this page</span> <span class="guide__toc-name">{{.Current.Title}}</span></p>
+      {{template "guide-toc" .TOC}}
+    </nav>
+  </aside>
+  <div class="guide__main">
+    <details class="guide__toc-m">
+      <summary>On this page: {{.Current.Title}}</summary>
+      <nav aria-label="{{.Current.Title}}: contents">{{template "guide-toc" .TOC}}</nav>
+    </details>
+    <article class="guide__body prose">
+      {{.Body}}
+    </article>
+  </div>
 </div>
 {{end}}
+
+{{define "guide-toc"}}<ul class="guide__toc-list">
+{{range .}}<li class="toc-l{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}
+</ul>{{end}}

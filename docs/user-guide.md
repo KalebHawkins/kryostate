@@ -756,6 +756,7 @@ first, or use PowerShell or the web page.
 | Collector | Something that reads a value from a host |
 | Connection profile | How to reach a host: transport, address, user, credential reference |
 | Evidence | The stored output of a collector command |
+| External program | A program you write that runs on the KryoState server, not on the host, once for each host. It is given the host in `KRYOSTATE_TARGET` and `KRYOSTATE_ADDRESS` and prints a JSON envelope of facts that the host cannot report itself, such as its hypervisor cluster or its owner in a CMDB. Listed in `externals.json` next to the database |
 | Change | A collected value that differs from what the same collector read before |
 | Normaliser | A rule that turns a raw string into a comparable value |
 | Query | A condition, such as `os.family == "Linux"`, that picks hosts in the inventory |

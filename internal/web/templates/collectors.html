@@ -85,8 +85,18 @@
   </div>
   <div class="card">
     <h2>External programs</h2>
-    <p class="muted small">Programs that run on the KryoState server, once per host, and print what they know.
-    {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{else}}None configured: list them in externals.json next to the database.{{end}}</p>
+    <p class="muted small">For facts a host cannot tell you about itself, such as which hypervisor cluster it runs on, its cloud tags, or its owner in a CMDB. An external program is one you write. It runs <strong>on the KryoState server, not on the host</strong>, once for each host.</p>
+    <ul class="muted small ext-steps">
+      <li>It is given the host in the environment: <code>KRYOSTATE_TARGET</code> (its name) and <code>KRYOSTATE_ADDRESS</code>.</li>
+      <li>It prints one JSON envelope of facts, such as <code>vm.cluster</code>, to standard output.</li>
+      <li>It is listed in <span class="mono">externals.json</span> next to the database, and read when the server starts.</li>
+    </ul>
+    {{if .Externals}}
+    <p class="small">{{.Externals}} configured, read from <span class="mono">{{.ExternalsPath}}</span>. <a href="/collectors?source=external" hx-get="/collectors?source=external" hx-target="#main" hx-push-url="true">Show them</a></p>
+    {{else}}
+    <p class="small">None are configured.{{with .ExternalsPath}} To add one, create <span class="mono">{{.}}</span> and restart the server.{{end}}</p>
+    {{end}}
+    <p class="small"><a href="/guide/collectors#external-programs">How to write an external program</a></p>
   </div>
 </div>
 {{template "cli" (list "kryostate collectors" "kryostate collectors -catalog" "kryostate collectors -enable <id> -where 'stack == \"web\"'" "kryostate collectors -show <id>")}}

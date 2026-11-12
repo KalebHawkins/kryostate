@@ -314,6 +314,12 @@ func TestNoDisagreementsAnywhere(t *testing.T) {
 // tableBody narrows a page to the rows of its table, so a filter test is not
 // satisfied by a hostname appearing in a filter chip or a heading.
 func tableBody(html string) string {
+	// The inventory's query help has tables of its own above the host table.
+	if k := strings.Index(html, `<details class="qhelp"`); k >= 0 {
+		if e := strings.Index(html[k:], "</details>"); e >= 0 {
+			html = html[k+e:]
+		}
+	}
 	i := strings.Index(html, "<tbody")
 	if i < 0 {
 		return ""
