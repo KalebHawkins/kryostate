@@ -205,19 +205,20 @@ kryostate show web01
 A host cannot say what application it runs. You can. This is the only
 attribute you enter by hand; its stacks and role are covered in section 5.
 
-**In the web interface:** on the host's page, use **Application**. Enter the
-application and a reason.
+**In the web interface:** on the host's page, use **Application** and enter
+the application.
 
 **On the command line:**
 
 ```sh
-kryostate set web01 application=payments -reason "per CHG-1042"
+kryostate set web01 application=payments
 kryostate set web01 stack=payments-prod role=app -reason "per CHG-1042"
 ```
 
 Anything else, such as `env=production`, is refused.
 
-The reason is required. It goes into the audit log with your name.
+Every change goes into the audit log with your name. `-reason` adds an
+optional note to that entry, such as a ticket number.
 
 ### Step 6 (optional): add a health check
 
@@ -640,7 +641,7 @@ kryostate restore -db new.db -in backup.json
 
 | Page | What it shows | What you can change |
 |---|---|---|
-| Overview | Whether hosts collected, failing hosts and why, the last day's changes, what runs next | |
+| Overview | One line saying whether every host collected; the hosts that need attention (failing, no connection, out of date, never collected), each linking to the inventory filtered to them; the last day's changes; the next runs by clock time; hosts by operating system, stack and application | |
 | Inventory | One row for each host, filtered by a query | Add a host; choose columns; download CSV or JSON |
 | Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, application, retire and restore, chosen address; test any collector on it |
 | Stacks | One card for each stack, with roles and what is collected there | Create, edit and delete stacks; add and remove members; switch collectors on for one stack |

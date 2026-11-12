@@ -35,8 +35,8 @@ func TestSetAcceptsOnlyApplicationStackAndRole(t *testing.T) {
 	if err := cmdSet(ctx, []string{"-db", db, "web01", "application=ledger", "stack=pay", "role=app", "-reason", "r"}); err != nil {
 		t.Fatal(err)
 	}
-	// A role alone goes to the one stack the host is in.
-	if err := cmdSet(ctx, []string{"-db", db, "web01", "role=api", "-reason", "r"}); err != nil {
+	// A role alone goes to the one stack the host is in. The reason is optional.
+	if err := cmdSet(ctx, []string{"-db", db, "web01", "role=api"}); err != nil {
 		t.Fatal(err)
 	}
 

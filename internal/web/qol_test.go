@@ -67,19 +67,34 @@ func TestColumnsAreChosenInTheURL(t *testing.T) {
 }
 
 // TestApplicationFromTheHostPage: the application is the one attribute the
-// host page lets a person state, and it carries their name and reason.
+// host page lets a person state. It carries their name and needs no reason;
+// the audit log notes where it was set.
 func TestApplicationFromTheHostPage(t *testing.T) {
 	_, h, st := testServer(t)
 	id := seed(t, st)
 
+	page := get(t, h, "/hosts/"+id, nil).Body.String()
+	if i := strings.Index(page, `id="application"`); i < 0 {
+		t.Fatal("no application form on the host page")
+	} else if form := page[i:]; strings.Contains(form[:strings.Index(form, "</form>")], `name="reason"`) {
+		t.Error("the application form still asks for a reason")
+	}
+
 	set := func(form url.Values) *httptest.ResponseRecorder {
 		return post(t, h, "/hosts/"+id+"/application", form)
 	}
-	if _, msg := followFlash(t, h, set(url.Values{"application": {"ledger"}})); !strings.Contains(msg, "reason") {
-		t.Errorf("an application with no reason gave %q", msg)
+	if _, msg := followFlash(t, h, set(url.Values{"application": {"  "}})); !strings.Contains(msg, "name the application") {
+		t.Errorf("an empty application gave %q", msg)
 	}
-	if _, msg := followFlash(t, h, set(url.Values{"application": {"ledger"}, "reason": {"ticket 7"}})); !strings.Contains(msg, "ledger") {
+	if _, msg := followFlash(t, h, set(url.Values{"application": {"ledger"}})); !strings.Contains(msg, "ledger") {
 		t.Fatalf("setting the application gave %q", msg)
+	}
+	var detail string
+	if err := st.DB().QueryRow(`SELECT detail FROM audit WHERE action='set application' AND subject=?`, id).Scan(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail != "application=ledger: set on the host page" {
+		t.Errorf("audit detail is %q", detail)
 	}
 	facts, err := st.Facts(context.Background(), id)
 	if err != nil {

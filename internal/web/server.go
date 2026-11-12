@@ -400,9 +400,9 @@ func (s *Server) handleSelectAddress(w http.ResponseWriter, r *http.Request) {
 
 // handleApplication records the application a person says a host runs. It is
 // the only attribute the page accepts: role and stack are set as stack
-// membership, and everything else is what the host reports. A reason is
-// required, as on the command line: a value with no reason cannot be argued
-// with later.
+// membership, and everything else is what the host reports. No reason is
+// asked for: the audit log records who set it, when, and that it was set
+// here.
 func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, err := s.Store.CI(r.Context(), id); err != nil {
@@ -410,12 +410,11 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value := strings.TrimSpace(r.FormValue("application"))
-	reason := strings.TrimSpace(r.FormValue("reason"))
-	if value == "" || reason == "" {
-		refuse(w, r, hostURL(id), errors.New("an application and a reason are both required"))
+	if value == "" {
+		refuse(w, r, hostURL(id), errors.New("name the application"))
 		return
 	}
-	if err := s.Store.SetApplication(r.Context(), id, value, actorOf(r), reason); err != nil {
+	if err := s.Store.SetApplication(r.Context(), id, value, actorOf(r), "set on the host page"); err != nil {
 		refuse(w, r, hostURL(id), err)
 		return
 	}

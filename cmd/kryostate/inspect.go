@@ -288,8 +288,8 @@ func factValue(f model.Fact) string {
 func cmdSet(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	db := dbFlag(fs)
-	reason := fs.String("reason", "", "why, recorded in the audit log (required)")
-	const usage = `usage: kryostate set <host> [application=NAME] [stack=NAME] [role=ROLE] -reason "why"`
+	reason := fs.String("reason", "", "optional note for the audit log")
+	const usage = `usage: kryostate set <host> [application=NAME] [stack=NAME] [role=ROLE] [-reason "note"]`
 	fs.Usage = func() {
 		fmt.Fprintln(fs.Output(), usage)
 		fmt.Fprintln(fs.Output(), "Only application, stack and role can be set by hand; everything else is what the host reports.")
@@ -298,9 +298,6 @@ func cmdSet(ctx context.Context, args []string) error {
 	pos := parseInterspersed(fs, args)
 	if len(pos) < 2 {
 		return errors.New(usage)
-	}
-	if strings.TrimSpace(*reason) == "" {
-		return errors.New("-reason is required: a value a person states is only as good as the reason given for it")
 	}
 	var app, stack, role string
 	var haveApp, haveStack, haveRole bool
@@ -338,9 +335,13 @@ func cmdSet(ctx context.Context, args []string) error {
 		return err
 	}
 	who := actor()
+	note := strings.TrimSpace(*reason)
+	if note == "" {
+		note = "set from the command line"
+	}
 
 	if haveApp {
-		if err := st.SetApplication(ctx, id, app, who, *reason); err != nil {
+		if err := st.SetApplication(ctx, id, app, who, note); err != nil {
 			return err
 		}
 		fmt.Printf("%s: application = %s (stated by %s)\n", pos[0], app, who)
@@ -378,7 +379,7 @@ func cmdSet(ctx context.Context, args []string) error {
 		if role != "" {
 			detail += " as " + role
 		}
-		if err := st.Audit(ctx, who, "set stack", id, detail+": "+*reason); err != nil {
+		if err := st.Audit(ctx, who, "set stack", id, detail+": "+note); err != nil {
 			return err
 		}
 		fmt.Printf("%s: in stack %s\n", pos[0], detail)
