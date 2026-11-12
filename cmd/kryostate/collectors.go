@@ -271,7 +271,7 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 		return err
 	}
 	fmt.Println("\nswitch one on:   kryostate collectors -enable cpu.cores")
-	fmt.Println("a whole group:   kryostate collectors -enable group.splunk.forwarder -stacks splunk-prod")
+	fmt.Println("a whole group:   kryostate collectors -enable group.web -stacks web-prod")
 	fmt.Println("a config value:  kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName")
 	fmt.Println("with a value:    kryostate collectors -enable file.exists -param /etc/resolv.conf")
 	fmt.Println("for some stacks: kryostate collectors -enable splunk.uf.version -stacks splunk-prod")

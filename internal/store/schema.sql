@@ -56,10 +56,6 @@ CREATE TABLE IF NOT EXISTS assertion (
     -- when the claim was first made; confirmed_at is the last time anyone
     -- stood behind it, which is the question staleness actually asks.
     confirmed_at  TEXT NOT NULL DEFAULT '',
-    -- Set when a person settled a disagreement in favour of this value. A
-    -- decision outranks the precedence table, which is the point of making
-    -- one, and it applies to this attribute on this one CI.
-    decided       INTEGER NOT NULL DEFAULT 0,
     retracted_at  TEXT
 );
 CREATE INDEX IF NOT EXISTS assertion_ci_attr_idx ON assertion(ci_id, attr, scope);
@@ -91,12 +87,6 @@ CREATE TABLE IF NOT EXISTS precedence (
     rank        INTEGER NOT NULL,
     allowed     INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (attr, source_kind)
-);
-
--- How stale an attribute may be before it is reported as a discrepancy.
-CREATE TABLE IF NOT EXISTS freshness_budget (
-    attr        TEXT PRIMARY KEY,
-    max_age_sec INTEGER NOT NULL
 );
 
 -- Probes are discrete events, not a rolled-up timestamp. A failure row is as
@@ -219,30 +209,8 @@ CREATE TABLE IF NOT EXISTS run (
     note        TEXT NOT NULL DEFAULT ''
 );
 
--- Open disagreements. fingerprint keeps a repeated detection from piling up
--- duplicates while preserving a disposition already made against it.
-CREATE TABLE IF NOT EXISTS discrepancy (
-    id           INTEGER PRIMARY KEY,
-    fingerprint  TEXT NOT NULL UNIQUE,
-    ci_id        TEXT NOT NULL REFERENCES ci(id) ON DELETE CASCADE,
-    attr         TEXT NOT NULL DEFAULT '',
-    scope        TEXT NOT NULL DEFAULT '',
-    kind         TEXT NOT NULL,
-    summary      TEXT NOT NULL DEFAULT '',
-    claimed      TEXT NOT NULL DEFAULT '',
-    claimed_by   TEXT NOT NULL DEFAULT '',
-    observed     TEXT NOT NULL DEFAULT '',
-    observed_by  TEXT NOT NULL DEFAULT '',
-    detected_at  TEXT NOT NULL,
-    disposition  TEXT NOT NULL DEFAULT 'open',
-    disposed_by  TEXT NOT NULL DEFAULT '',
-    disposed_at  TEXT,
-    note         TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS discrepancy_open_idx ON discrepancy(disposition, kind);
-
--- Who did what. Written for credential use and for every disposition, and
--- never for secret material or unbounded raw output.
+-- Who did what. Written for credential use and for every change a person
+-- makes, and never for secret material or unbounded raw output.
 CREATE TABLE IF NOT EXISTS audit (
     id       INTEGER PRIMARY KEY,
     at       TEXT NOT NULL,
@@ -269,8 +237,9 @@ CREATE TABLE IF NOT EXISTS fact_meta (
 -- Resolution. One row per (ci, attr, scope): the winning assertion under the
 -- configured precedence, most recent first within a rank. Sources barred from
 -- an attribute are filtered out before ranking rather than losing on rank, so
--- a barred source can never win by being the only claimant. A value a person
--- decided on sorts ahead of all of them.
+-- a barred source can never win by being the only claimant. What a host
+-- reports sorts ahead of every other kind of source, whatever the precedence
+-- table says: a collected value is the truth for that attribute.
 DROP VIEW IF EXISTS current_fact;
 DROP VIEW IF EXISTS ranked_assertion;
 CREATE VIEW ranked_assertion AS
@@ -283,7 +252,6 @@ SELECT
     a.value_type    AS value_type,
     a.observed_at   AS observed_at,
     COALESCE(NULLIF(a.confirmed_at, ''), a.observed_at) AS confirmed_at,
-    a.decided       AS decided,
     a.source_id     AS source_id,
     s.kind          AS source_kind,
     s.name          AS source_name,
@@ -297,7 +265,8 @@ SELECT
     -- last week, and ordering on observed_at alone would say otherwise.
     ROW_NUMBER() OVER (
         PARTITION BY a.ci_id, a.attr, a.scope
-        ORDER BY a.decided DESC, COALESCE(ps.rank, pd.rank, 500) ASC,
+        ORDER BY CASE WHEN s.kind = 'collector' THEN 0 ELSE 1 END,
+                 COALESCE(ps.rank, pd.rank, 500) ASC,
                  MAX(a.observed_at, COALESCE(NULLIF(a.confirmed_at, ''), a.observed_at)) DESC,
                  a.observed_at DESC, a.id DESC
     ) AS rn
@@ -312,7 +281,7 @@ WHERE a.retracted_at IS NULL
 CREATE VIEW current_fact AS
 SELECT assertion_id, ci_id, attr, scope, raw_value, value_type,
        norm_value, family, normalizer_version, source_kind, source_name,
-       observed_at, confirmed_at, decided
+       observed_at, confirmed_at
 FROM ranked_assertion
 WHERE rn = 1;
 

@@ -109,15 +109,15 @@ func (e *Engine) Reparse(ctx context.Context, f store.EvidenceFilter) (ReparseSu
 
 		// The earlier reading is withdrawn rather than outranked. It was this
 		// tool's misreading of output the host sent once, not a second thing
-		// the host said, and leaving it in place would show the collector
-		// disagreeing with itself over a single observation.
+		// the host said, and leaving it in place would leave the collector
+		// contradicting itself over a single observation.
 		//
 		// An assertion two specs both produced is left alone. Identical
 		// values from the same source are stored once, so withdrawing it on
 		// one spec's behalf would silently withdraw the other's claim as
 		// well; the repair adds its corrected value and lets precedence
 		// settle the rest.
-		if prev != nil && prev.Retracted == nil && !prev.Decided {
+		if prev != nil && prev.Retracted == nil {
 			resting, err := e.Store.EvidenceRestingOn(ctx, prev.ID)
 			if err != nil {
 				return sum, err

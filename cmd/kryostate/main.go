@@ -1,5 +1,6 @@
-// Command kryostate records what documents claim about an estate, reads what the
-// machines actually report, and lists where the two disagree.
+// Command kryostate keeps an inventory of an estate: the hosts, the stacks they
+// belong to and what they run come from people and documents, and everything
+// else is what the machines themselves report.
 package main
 
 import (
@@ -40,18 +41,16 @@ Usage: kryostate <command> [flags]
 Everyday:
   hosts          list hosts, with a few attributes as columns
   show           everything known about one host
-  disagreements  list open disagreements, or settle them with -decide
-  refresh        collect, run checks and compare, in one go
-  set            state a value yourself, such as env or owner
+  refresh        collect and run checks, in one go
+  set            state a host's application, stack or role yourself
   collectors     list collectors, create your own, and test one safely
   serve          run the web interface
 
 Setup and maintenance:
-  import         read a Markdown or CSV inventory as document claims
+  import         read hosts, stacks, roles and applications from a Markdown or CSV inventory
   collect        connect to every enabled target and record what it reports
   check          run the liveness checks and record the results
   resolve        look names up in DNS and record the answers
-  detect         compare sources and raise disagreements
   renormalize    re-run normaliser rules over values already collected
   reparse        re-run collector parse rules over stored command output
   evidence       list or delete the stored output of collector commands
@@ -84,8 +83,6 @@ func main() {
 		err = cmdShow(ctx, os.Args[2:])
 	case "set":
 		err = cmdSet(ctx, os.Args[2:])
-	case "disagreements", "disc":
-		err = cmdDisagreements(ctx, os.Args[2:])
 	case "collectors":
 		err = cmdCollectors(ctx, os.Args[2:])
 	case "refresh":
@@ -100,8 +97,6 @@ func main() {
 		err = cmdCheck(ctx, os.Args[2:])
 	case "resolve":
 		err = cmdResolve(ctx, os.Args[2:])
-	case "detect":
-		err = cmdDetect(ctx, os.Args[2:])
 	case "renormalize":
 		err = cmdRenormalize(ctx, os.Args[2:])
 	case "reparse":
@@ -265,7 +260,7 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	rules := fs.String("rules", "", "extra normaliser rules file")
 	collectors := fs.String("collectors", "", "extra collector spec file")
 	externals := fs.String("externals", "", "file listing external collector programs")
-	stale := fs.Duration("stale-after", 14*24*time.Hour, "age at which a collected value is called stale, zero to not check")
+	stale := fs.Duration("stale-after", 14*24*time.Hour, "age at which a collected value counts as stale on the overview")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
 	trusted := fs.String("trusted-origin", "", "comma-separated origins, such as https://cmdb.example.com, allowed to submit forms when a proxy serves this under another name")
 	allowContent := fs.Bool("allow-content-collectors", false, "let the web interface switch on catalog collectors that read the contents of files and variables")
@@ -319,11 +314,10 @@ func cmdImport(ctx context.Context, args []string) error {
 	db := dbFlag(fs)
 	name := fs.String("name", "", "name for this document, used as the source")
 	mapPath := fs.String("map", "", "JSON file describing which column means what")
-	section := fs.String("section-attr", "", "attribute to record the heading a row appeared under")
 	fs.Parse(args)
 
 	if *name == "" || fs.NArg() != 1 {
-		return errors.New("usage: kryostate import -name <source> [-map map.json] <file.md|file.csv>  (without -map, columns such as Host, OS, Role and Stack are recognised by name)")
+		return errors.New("usage: kryostate import -name <source> [-map map.json] <file.md|file.csv>  (without -map, columns such as Host, Address, Stack, Role and Application are recognised by name)")
 	}
 	path := fs.Arg(0)
 
@@ -375,9 +369,6 @@ func cmdImport(ctx context.Context, args []string) error {
 			fmt.Println("  " + n)
 		}
 	}
-	if *section != "" {
-		m.SectionAttr = *section
-	}
 
 	st, err := openStore(*db)
 	if err != nil {
@@ -393,7 +384,7 @@ func cmdImport(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%d rows: %d hosts created, %d matched, %d claims recorded, %d rows skipped\n",
+	fmt.Printf("%d rows: %d hosts created, %d matched, %d applications recorded, %d rows skipped\n",
 		res.Rows, res.Created, res.Matched, res.Asserted, res.Skipped)
 	for sec, n := range res.BySection {
 		// A document with no headings reports one unnamed group, which is
@@ -402,6 +393,10 @@ func cmdImport(ctx context.Context, args []string) error {
 			continue
 		}
 		fmt.Printf("  %-40s %d\n", sec, n)
+	}
+	if len(res.Ignored) > 0 {
+		fmt.Printf("not imported: %s (an inventory supplies hosts, addresses, stacks, roles and applications; everything else is collected from the host)\n",
+			strings.Join(res.Ignored, ", "))
 	}
 	for _, p := range res.Problems {
 		fmt.Println("  problem:", p)
@@ -448,8 +443,6 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 	fmt.Printf("run %s: %d targets, %d ok, %d failed\n", sum.ID, sum.Targets, sum.Succeeded, sum.Failed)
 	if sum.Targets == 0 {
 		fmt.Println("no enabled targets; add one with: kryostate target -host <name> -address <addr> -user <user> -credential agent:")
-	} else {
-		fmt.Println("compare the sources with: kryostate detect   (or use kryostate refresh next time)")
 	}
 	return nil
 }
@@ -587,30 +580,6 @@ func cmdResolve(ctx context.Context, args []string) error {
 	if sum.Failed > 0 {
 		fmt.Printf("%d lookups failed outright and were not counted either way\n", sum.Failed)
 	}
-	return nil
-}
-
-func cmdDetect(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("detect", flag.ExitOnError)
-	db := dbFlag(fs)
-	stale := fs.Duration("stale-after", 14*24*time.Hour, "age at which a value is called stale")
-	fs.Parse(args)
-
-	st, err := openStore(*db)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	eng, err := buildEngine(st, engineFiles{}, nil)
-	if err != nil {
-		return err
-	}
-	sum, err := eng.Detect(ctx, *stale)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%d conflicts, %d values no rule understood, %d past their freshness budget, %d undocumented\n",
-		sum.Conflicts, sum.Unparsed, sum.Stale, sum.Undocumented)
 	return nil
 }
 
@@ -935,6 +904,7 @@ func cmdStack(ctx context.Context, args []string) error {
 	user := fs.String("user", "", "with -add or -file: give hosts with no connection one that logs in as this user through ssh-agent")
 	remove := fs.String("remove", "", "comma-separated hosts (names or ids) to take out")
 	role := fs.String("role", "", "role for added members that do not name their own")
+	app := fs.String("application", "", "with -add or -file: the application the added hosts run")
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -1003,7 +973,7 @@ func cmdStack(ctx context.Context, args []string) error {
 	}
 	if len(lines) > 0 {
 		res, err := ingest.AddHostsToStack(ctx, st, *name, lines,
-			ingest.BulkOptions{Create: *create, User: *user, By: actor()})
+			ingest.BulkOptions{Create: *create, User: *user, Application: *app, By: actor()})
 		if err != nil {
 			return err
 		}
@@ -1049,11 +1019,11 @@ func listStacks(ctx context.Context, st *store.Store) error {
 		return nil
 	}
 	tw := newTable(os.Stdout)
-	fmt.Fprintln(tw, "STACK\tENV\tOWNER\tMEMBERS\tCOLLECTED\tFAILED\tNEVER\tOPEN")
+	fmt.Fprintln(tw, "STACK\tENV\tOWNER\tMEMBERS\tCOLLECTED\tFAILED\tNEVER")
 	for _, v := range views {
 		h := v.Health
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n", v.Stack.Name, dash(v.Stack.Environment),
-			dash(v.Stack.Owner), h.Members, h.Collected, h.Failed, h.NeverSeen, h.Discrepancy)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\n", v.Stack.Name, dash(v.Stack.Environment),
+			dash(v.Stack.Owner), h.Members, h.Collected, h.Failed, h.NeverSeen)
 	}
 	return tw.Flush()
 }

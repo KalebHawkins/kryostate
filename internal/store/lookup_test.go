@@ -84,31 +84,28 @@ func TestLookupOfNothingSuggestsSomething(t *testing.T) {
 	}
 }
 
-// TestClaimCompetesUnderPrecedence: a value stated with kryostate set is an
-// ordinary human assertion, so it wins env over a collector but not
-// os.version, where the machine ranks first.
-func TestClaimCompetesUnderPrecedence(t *testing.T) {
+// TestSetApplicationLosesToTheHost: a person may state what a host is for, and
+// that stands until the host itself reports something else.
+func TestSetApplicationLosesToTheHost(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	ci := mustHost(t, s, "node-claim")
-	col := mustSource(t, s, model.SourceCollector, "ssh")
-	assertValue(t, s, ci, "env", "staging", col, time.Now())
-	assertValue(t, s, ci, "os.version", "RHEL 9.4", col, time.Now())
 
-	if err := s.Claim(ctx, ci, "env", "", "production", "operator", "change ticket 42"); err != nil {
+	if err := s.SetApplication(ctx, ci, "ledger", "operator", "change ticket 42"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Claim(ctx, ci, "os.version", "", "RHEL 8.6", "operator", "the wiki says so"); err != nil {
-		t.Fatal(err)
+	if got := factFor(t, s, ci, model.AttrApplication); got.Raw != "ledger" || got.SourceKind != model.SourceHuman {
+		t.Errorf("application: got %q from %s, want the person's value", got.Raw, got.SourceKind)
 	}
-	if got := factFor(t, s, ci, "env"); got.Raw != "production" || got.SourceKind != model.SourceHuman {
-		t.Errorf("env: got %q from %s, want the person's claim", got.Raw, got.SourceKind)
+
+	col := mustSource(t, s, model.SourceCollector, "ssh")
+	assertValue(t, s, ci, model.AttrApplication, "ledger-v2", col, time.Now().Add(-time.Hour))
+	if got := factFor(t, s, ci, model.AttrApplication); got.Raw != "ledger-v2" {
+		t.Errorf("application: got %q, the host should win", got.Raw)
 	}
-	if got := factFor(t, s, ci, "os.version"); got.Raw != "RHEL 9.4" {
-		t.Errorf("os.version: got %q, the machine should still win", got.Raw)
-	}
-	if err := s.Claim(ctx, ci, " ", "", "x", "operator", "r"); err == nil {
-		t.Error("a claim with no attribute was accepted")
+
+	if err := s.SetApplication(ctx, ci, "  ", "operator", "r"); err == nil {
+		t.Error("an empty application was accepted")
 	}
 }
 

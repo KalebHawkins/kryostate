@@ -28,6 +28,11 @@ const (
 	SourceDNS SourceKind = "dns"
 )
 
+// AttrApplication is the attribute holding the application a host runs. It is
+// the only attribute a person or an imported document may state; everything
+// else about a host is what the host itself reports.
+const AttrApplication = "application"
+
 // ValueType describes how a value should be compared and rendered. Collectors
 // may declare it; otherwise it is inferred from how the value behaves across
 // the estate.
@@ -38,8 +43,9 @@ const (
 	TypeVersion ValueType = "version"
 	TypePath    ValueType = "path"
 	TypeNumber  ValueType = "number"
-	TypeFlag    ValueType = "flag"
-	TypeList    ValueType = "list"
+	// TypeBool is a true or false answer, recorded as the words true and false.
+	TypeBool ValueType = "bool"
+	TypeList ValueType = "list"
 )
 
 // CIKind separates the things that can be asserted about. A host and the
@@ -106,10 +112,7 @@ type Assertion struct {
 	RunID      string
 	ObservedAt time.Time
 	ReceivedAt time.Time
-	// Decided marks a value a person chose while settling a disagreement. It
-	// outranks the precedence table for this attribute on this CI.
-	Decided   bool
-	Retracted *time.Time
+	Retracted  *time.Time
 }
 
 // Fact is a resolved view: the assertion that currently wins for an attribute,
@@ -127,8 +130,6 @@ type Fact struct {
 	// ConfirmedAt is the last time a source stood behind this value, which
 	// differs from ObservedAt whenever an unchanged value is re-collected.
 	ConfirmedAt time.Time
-	Decided     bool
-	Contested   bool // another source currently asserts a different value
 	Normalizer  int
 	AssertionID int64
 }
@@ -200,62 +201,6 @@ const (
 	UnknownUnparsed Unknown = "unparsed"
 )
 
-// DiscrepancyKind names a class of disagreement worth a person's attention.
-type DiscrepancyKind string
-
-const (
-	// DiscValueConflict: two sources assert different values for one attribute.
-	DiscValueConflict DiscrepancyKind = "value_conflict"
-	// DiscUnresolved: a documented host resolves in no zone.
-	DiscUnresolved DiscrepancyKind = "unresolved"
-	// DiscMultiAddress: a name returns several addresses and none is chosen.
-	DiscMultiAddress DiscrepancyKind = "multi_address"
-	// DiscUndocumented: a machine answers that no document mentions.
-	DiscUndocumented DiscrepancyKind = "undocumented"
-	// DiscStale: the winning assertion is older than the attribute's budget.
-	DiscStale DiscrepancyKind = "stale"
-	// DiscUnparsed: a value was collected that no normaliser rule matched.
-	DiscUnparsed DiscrepancyKind = "unparsed"
-)
-
-// Disposition is what a person decided about a discrepancy. Recording the
-// decision, who made it and why is the audit trail that makes the tool worth
-// trusting a second time.
-type Disposition string
-
-const (
-	DispOpen           Disposition = "open"
-	DispConfirmMachine Disposition = "confirm_machine" // the document was stale
-	DispKeepDocument   Disposition = "keep_document"   // the collector misread
-	DispAccepted       Disposition = "accepted"        // known and tolerated
-	// DispLapsed is written by the detector, not by a person, when a
-	// disagreement stops being detected. It is kept distinct from
-	// DispAccepted so that "a machine noticed it went away" is never read as
-	// "someone looked at this and decided to live with it".
-	DispLapsed Disposition = "lapsed"
-)
-
-// Discrepancy is a disagreement about one attribute of one CI. Finding these
-// is the purpose of the tool; the list of hosts supports it.
-type Discrepancy struct {
-	ID          int64
-	CIID        string
-	CILabel     string
-	Attr        string
-	Scope       string
-	Kind        DiscrepancyKind
-	Summary     string
-	Claimed     string
-	ClaimedBy   string
-	Observed    string
-	ObservedBy  string
-	DetectedAt  time.Time
-	Disposition Disposition
-	DisposedBy  string
-	DisposedAt  *time.Time
-	Note        string
-}
-
 // Stack is a deployed system. It is a first-class entity rather than a string
 // tag because it carries an owner and a description, and because membership is
 // many-to-many: a shared database host serves more than one stack.
@@ -270,9 +215,8 @@ type Stack struct {
 // StackHealth is a count breakdown, never a single colour. A stack with two
 // unreachable members is not red and not green; it is 11 of 14 collected.
 type StackHealth struct {
-	Members     int
-	Collected   int
-	Failed      int
-	NeverSeen   int
-	Discrepancy int
+	Members   int
+	Collected int
+	Failed    int
+	NeverSeen int
 }

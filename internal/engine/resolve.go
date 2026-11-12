@@ -38,8 +38,8 @@ type ResolveSummary struct {
 // Resolve looks up every host and records what the name service said.
 //
 // The answers are stored as observations, not as instructions. When a name
-// returns more than one address the tool records all of them and raises the
-// ambiguity rather than picking one: an address chosen because it sorts first
+// returns more than one address the tool records all of them and counts the
+// host rather than picking one: an address chosen because it sorts first
 // is a decision nobody made, pointed at production.
 func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummary, error) {
 	if opt.Concurrency <= 0 {
@@ -75,9 +75,6 @@ func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummar
 	var (
 		mu  sync.Mutex
 		sum ResolveSummary
-		// answered lists the hosts the resolver actually gave an answer
-		// about, positive or negative. Only their findings may be lapsed.
-		answered []string
 	)
 	sem := make(chan struct{}, opt.Concurrency)
 	var wg sync.WaitGroup
@@ -117,16 +114,8 @@ func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummar
 					mu.Unlock()
 					return
 				}
-				_ = e.Store.RaiseDiscrepancy(ctx, model.Discrepancy{
-					CIID: h.CI.ID, Kind: model.DiscUnresolved,
-					Summary:   h.CI.Label + " is listed but resolves in no zone that was tried",
-					Claimed:   h.CI.Label,
-					ClaimedBy: "document",
-					Observed:  "no answer",
-				})
 				mu.Lock()
 				sum.Unresolved++
-				answered = append(answered, h.CI.ID)
 				mu.Unlock()
 				return
 			}
@@ -145,7 +134,6 @@ func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummar
 
 			mu.Lock()
 			sum.Resolved++
-			answered = append(answered, h.CI.ID)
 			mu.Unlock()
 
 			if len(addrs) > 1 {
@@ -155,13 +143,6 @@ func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummar
 					chosen = chosen || a.Selected
 				}
 				if !chosen {
-					_ = e.Store.RaiseDiscrepancy(ctx, model.Discrepancy{
-						CIID: h.CI.ID, Kind: model.DiscMultiAddress,
-						Summary: fmt.Sprintf("%s answers with %d addresses and none has been chosen for management",
-							h.CI.Label, len(addrs)),
-						Observed:   strings.Join(addrs, ", "),
-						ObservedBy: "dns",
-					})
 					mu.Lock()
 					sum.Multi++
 					mu.Unlock()
@@ -170,14 +151,6 @@ func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummar
 		}(h)
 	}
 	wg.Wait()
-
-	// A name that now resolves should stop being reported as unresolved, but
-	// the row stays so that the history of it having been missing survives.
-	// Hosts whose lookup failed outright are left alone: this pass learned
-	// nothing about them, and a resolver outage must not read as a recovery.
-	if err := e.Store.ResolveStaleFor(ctx, model.DiscUnresolved, pass, answered); err != nil {
-		return sum, err
-	}
 	return sum, nil
 }
 

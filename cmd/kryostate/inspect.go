@@ -1,13 +1,12 @@
 package main
 
 // The commands in this file read and settle the inventory from a terminal:
-// hosts, show, set, disagreements and refresh. Everything here was already
+// hosts, show, set and refresh. Everything here was already
 // possible through the web interface or by chaining other commands; these
 // exist so the common loop does not need a browser or five invocations.
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,7 +15,6 @@ import (
 	"log/slog"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -74,8 +72,7 @@ func cmdHosts(ctx context.Context, args []string) error {
 	db := dbFlag(fs)
 	q := fs.String("q", "", "only hosts whose name or identity contains this")
 	stack := fs.String("stack", "", "only members of this stack")
-	disagrees := fs.Bool("disagrees", false, "only hosts where sources currently disagree")
-	cols := fs.String("cols", "os.version,env", "comma-separated attributes to show as columns")
+	cols := fs.String("cols", "os.version,application", "comma-separated attributes to show as columns")
 	asJSON := fs.Bool("json", false, "print JSON instead of a table")
 	if pos := parseInterspersed(fs, args); len(pos) > 0 && *q == "" {
 		*q = strings.Join(pos, " ")
@@ -86,36 +83,28 @@ func cmdHosts(ctx context.Context, args []string) error {
 		return err
 	}
 	defer st.Close()
-	rows, err := st.Hosts(ctx, store.HostFilter{Search: *q, Stack: *stack, Contested: *disagrees})
+	rows, err := st.Hosts(ctx, store.HostFilter{Search: *q, Stack: *stack})
 	if err != nil {
 		return err
 	}
 
 	if *asJSON {
 		type hostJSON struct {
-			ID           string            `json:"id"`
-			Name         string            `json:"name"`
-			Values       map[string]string `json:"values"`
-			Disagreeing  []string          `json:"disagreeing,omitempty"`
-			Stacks       []string          `json:"stacks,omitempty"`
-			LastCollect  *time.Time        `json:"last_collect,omitempty"`
-			CollectOK    bool              `json:"collect_ok"`
-			OpenFindings int               `json:"open_findings"`
+			ID          string            `json:"id"`
+			Name        string            `json:"name"`
+			Values      map[string]string `json:"values"`
+			Stacks      []string          `json:"stacks,omitempty"`
+			LastCollect *time.Time        `json:"last_collect,omitempty"`
+			CollectOK   bool              `json:"collect_ok"`
 		}
 		out := make([]hostJSON, 0, len(rows))
 		for _, r := range rows {
 			h := hostJSON{ID: r.CI.ID, Name: r.CI.Label, Values: r.Values, Stacks: r.Stacks,
-				CollectOK: r.CollectOK, OpenFindings: r.OpenDiscreps}
+				CollectOK: r.CollectOK}
 			if r.HasCollected {
 				t := r.LastCollect
 				h.LastCollect = &t
 			}
-			for a, c := range r.Contested {
-				if c {
-					h.Disagreeing = append(h.Disagreeing, a)
-				}
-			}
-			sort.Strings(h.Disagreeing)
 			out = append(out, h)
 		}
 		return writeJSON(out)
@@ -131,16 +120,13 @@ func cmdHosts(ctx context.Context, args []string) error {
 	for _, c := range columns {
 		fmt.Fprintf(tw, "\t%s", strings.ToUpper(c))
 	}
-	fmt.Fprintln(tw, "\tCOLLECTED\tOPEN\tSTACKS")
+	fmt.Fprintln(tw, "\tCOLLECTED\tSTACKS")
 	for _, r := range rows {
 		fmt.Fprintf(tw, "%s\t%s", r.CI.Label, shortID(r.CI.ID))
 		for _, c := range columns {
 			v := r.Values[c]
 			if v == "" {
 				v = "-"
-			}
-			if r.Contested[c] {
-				v += " (!)"
 			}
 			fmt.Fprintf(tw, "\t%s", v)
 		}
@@ -151,12 +137,12 @@ func cmdHosts(ctx context.Context, args []string) error {
 				collected += " FAILED"
 			}
 		}
-		fmt.Fprintf(tw, "\t%s\t%d\t%s\n", collected, r.OpenDiscreps, strings.Join(r.Stacks, ","))
+		fmt.Fprintf(tw, "\t%s\t%s\n", collected, strings.Join(r.Stacks, ","))
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Printf("%d hosts. (!) marks a value another source disputes.\n", len(rows))
+	fmt.Printf("%d hosts.\n", len(rows))
 	return nil
 }
 
@@ -186,16 +172,6 @@ func cmdShow(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	conflicts := map[string][]model.Fact{}
-	for _, f := range facts {
-		if f.Contested {
-			all, err := st.Conflicts(ctx, id, f.Attr, f.Scope)
-			if err != nil {
-				return err
-			}
-			conflicts[f.Attr+"\x00"+f.Scope] = all
-		}
-	}
 	idents, err := st.Identities(ctx, id)
 	if err != nil {
 		return err
@@ -205,10 +181,6 @@ func cmdShow(ctx context.Context, args []string) error {
 		return err
 	}
 	profiles, err := st.ConnProfiles(ctx, id)
-	if err != nil {
-		return err
-	}
-	discs, err := st.Discrepancies(ctx, store.DiscrepancyFilter{CIID: id, Disposition: model.DispOpen}, 0)
 	if err != nil {
 		return err
 	}
@@ -222,18 +194,15 @@ func cmdShow(ctx context.Context, args []string) error {
 			Source   string    `json:"source"`
 			Kind     string    `json:"source_kind"`
 			Observed time.Time `json:"observed_at"`
-			Decided  bool      `json:"decided,omitempty"`
-			Disputed bool      `json:"disputed,omitempty"`
 		}
 		var fj []factJSON
 		for _, f := range facts {
 			fj = append(fj, factJSON{Attr: f.Attr, Scope: f.Scope, Value: f.Norm, Raw: f.Raw,
-				Source: f.SourceName, Kind: string(f.SourceKind), Observed: f.ObservedAt,
-				Decided: f.Decided, Disputed: f.Contested})
+				Source: f.SourceName, Kind: string(f.SourceKind), Observed: f.ObservedAt})
 		}
 		return writeJSON(map[string]any{
 			"id": ci.ID, "name": ci.Label, "created_at": ci.CreatedAt, "retired_at": ci.RetiredAt,
-			"identities": idents, "facts": fj, "reachability": reach, "open_disagreements": discs,
+			"identities": idents, "facts": fj, "reachability": reach,
 		})
 	}
 
@@ -260,17 +229,7 @@ func cmdShow(ctx context.Context, args []string) error {
 			if f.Scope != "" {
 				attr += " [" + f.Scope + "]"
 			}
-			v := factValue(f)
-			if f.Decided {
-				v += " (decided)"
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s:%s\t%s\n", attr, v, f.SourceKind, f.SourceName, agoText(f.ObservedAt))
-			for _, o := range conflicts[f.Attr+"\x00"+f.Scope] {
-				if o.AssertionID == f.AssertionID {
-					continue
-				}
-				fmt.Fprintf(tw, "\t  but %s\t%s:%s\t%s\n", factValue(o), o.SourceKind, o.SourceName, agoText(o.ObservedAt))
-			}
+			fmt.Fprintf(tw, "%s\t%s\t%s:%s\t%s\n", attr, factValue(f), f.SourceKind, f.SourceName, agoText(f.ObservedAt))
 		}
 		if err := tw.Flush(); err != nil {
 			return err
@@ -308,10 +267,6 @@ func cmdShow(ctx context.Context, args []string) error {
 		fmt.Printf("\nno connection profile; add one with: kryostate target -host %s -address <addr> -user <user> -credential agent:\n", ci.Label)
 	}
 
-	if len(discs) > 0 {
-		fmt.Println()
-		printDisagreements(discs)
-	}
 	return nil
 }
 
@@ -330,27 +285,42 @@ func factValue(f model.Fact) string {
 	return oneLine(f.Raw, 60)
 }
 
+// cmdSet records what a person may state about a host: the application it
+// runs, and the stack it belongs to with its role there. Everything else
+// about a host is what the host reports, so no other attribute is accepted.
 func cmdSet(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	db := dbFlag(fs)
-	scope := fs.String("scope", "", "instance on the host the values apply to, blank for host-wide")
 	reason := fs.String("reason", "", "why, recorded in the audit log (required)")
 	pos := parseInterspersed(fs, args)
+	const usage = `usage: kryostate set <host> [application=NAME] [stack=NAME] [role=ROLE] -reason "why"`
 	if len(pos) < 2 {
-		return errors.New(`usage: kryostate set <host> attr=value [attr=value ...] -reason "why"`)
+		return errors.New(usage)
 	}
 	if strings.TrimSpace(*reason) == "" {
 		return errors.New("-reason is required: a value a person states is only as good as the reason given for it")
 	}
-	type kv struct{ k, v string }
-	var pairs []kv
+	var app, stack, role string
+	var haveApp, haveStack, haveRole bool
 	for _, p := range pos[1:] {
 		k, v, ok := strings.Cut(p, "=")
-		k = strings.TrimSpace(k)
+		k, v = strings.ToLower(strings.TrimSpace(k)), strings.TrimSpace(v)
 		if !ok || k == "" {
-			return fmt.Errorf("%q is not attr=value", p)
+			return fmt.Errorf("%q is not key=value; %s", p, usage)
 		}
-		pairs = append(pairs, kv{k, v})
+		switch k {
+		case model.AttrApplication:
+			app, haveApp = v, true
+		case "stack":
+			stack, haveStack = v, true
+		case "role":
+			role, haveRole = v, true
+		default:
+			return fmt.Errorf("%q cannot be set by hand: only application, stack and role can; everything else is what the host reports", k)
+		}
+	}
+	if haveStack && stack == "" {
+		return errors.New("stack= needs a name; take a host out of a stack with: kryostate stack -name <stack> -remove <host>")
 	}
 
 	st, err := openStore(*db)
@@ -366,122 +336,56 @@ func cmdSet(ctx context.Context, args []string) error {
 		return err
 	}
 	who := actor()
-	for _, p := range pairs {
-		if err := st.Claim(ctx, id, p.k, *scope, p.v, who, *reason); err != nil {
+
+	if haveApp {
+		if err := st.SetApplication(ctx, id, app, who, *reason); err != nil {
 			return err
 		}
-		fmt.Printf("%s: %s = %s (claimed by %s)\n", pos[0], p.k, p.v, who)
+		fmt.Printf("%s: application = %s (stated by %s)\n", pos[0], app, who)
 	}
-	fmt.Println("run kryostate detect to compare it with the other sources")
-	return nil
-}
 
-// dispositionAliases maps the short words used on the command line to the
-// stored dispositions.
-var dispositionAliases = map[string]model.Disposition{
-	"machine":  model.DispConfirmMachine,
-	"document": model.DispKeepDocument,
-	"doc":      model.DispKeepDocument,
-	"accept":   model.DispAccepted,
-	"accepted": model.DispAccepted,
-}
-
-func cmdDisagreements(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("disagreements", flag.ExitOnError)
-	db := dbFlag(fs)
-	host := hostFlag(fs, "only disagreements about this host")
-	kind := fs.String("kind", "", "only this kind, such as conflict, stale, unparsed or undocumented")
-	disp := fs.String("disposition", "open", "open, confirm_machine, keep_document, accepted, lapsed, or all")
-	limit := fs.Int("limit", 200, "show at most this many, zero for no limit")
-	decide := fs.String("decide", "", "comma-separated disagreement ids to settle")
-	as := fs.String("as", "", "with -decide: machine, document or accept")
-	note := fs.String("note", "", "with -decide: why, recorded with the decision")
-	asJSON := fs.Bool("json", false, "print JSON instead of text")
-	fs.Parse(args)
-
-	st, err := openStore(*db)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-
-	if *decide != "" {
-		d, ok := dispositionAliases[strings.ToLower(*as)]
-		if !ok {
-			return errors.New("-decide needs -as machine, -as document or -as accept")
-		}
-		if _, err := buildEngine(st, engineFiles{}, nil); err != nil { // wires the normaliser
+	if haveStack || haveRole {
+		ms, err := st.MembershipsOf(ctx, id)
+		if err != nil {
 			return err
 		}
-		for _, s := range splitIDs(*decide) {
-			n, err := strconv.ParseInt(s, 10, 64)
-			if err != nil {
-				return fmt.Errorf("%q is not a disagreement id", s)
+		if !haveStack {
+			// A role belongs to a stack. Without one named, the only
+			// unambiguous case is a host in exactly one.
+			if len(ms) != 1 {
+				return fmt.Errorf("%s is in %d stacks; name the one the role is for with stack=NAME", pos[0], len(ms))
 			}
-			if err := st.Dispose(ctx, n, d, actor(), *note); errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("no disagreement #%d; list them with: kryostate disagreements", n)
-			} else if err != nil {
-				return fmt.Errorf("disagreement %d: %w", n, err)
-			}
-			fmt.Printf("#%d recorded as %s\n", n, d)
+			stack = ms[0].Stack
 		}
-		return nil
-	}
-
-	f := store.DiscrepancyFilter{Kind: model.DiscrepancyKind(*kind)}
-	if *disp != "all" {
-		f.Disposition = model.Disposition(*disp)
-	}
-	if *host != "" {
-		if f.CIID, err = st.LookupCI(ctx, *host); err != nil {
+		if !haveRole {
+			// Adding a host to a stack it is already in keeps its role there.
+			for _, m := range ms {
+				if m.Stack == stack {
+					role = m.Role
+				}
+			}
+		}
+		stackID, err := st.EnsureStack(ctx, stack)
+		if err != nil {
 			return err
 		}
-	}
-	list, err := st.Discrepancies(ctx, f, *limit)
-	if err != nil {
-		return err
-	}
-	if *asJSON {
-		if list == nil {
-			list = []model.Discrepancy{}
+		if err := st.AddToStack(ctx, stackID, id, role); err != nil {
+			return err
 		}
-		return writeJSON(list)
-	}
-	if len(list) == 0 {
-		fmt.Println("nothing matches")
-		return nil
-	}
-	printDisagreements(list)
-	if f.Disposition == model.DispOpen {
-		fmt.Println("\nsettle one with: kryostate disagreements -decide <id> -as machine|document|accept [-note why]")
+		detail := stack
+		if role != "" {
+			detail += " as " + role
+		}
+		if err := st.Audit(ctx, who, "set stack", id, detail+": "+*reason); err != nil {
+			return err
+		}
+		fmt.Printf("%s: in stack %s\n", pos[0], detail)
 	}
 	return nil
-}
-
-func printDisagreements(list []model.Discrepancy) {
-	tw := newTable(os.Stdout)
-	fmt.Fprintln(tw, "ID\tHOST\tKIND\tATTRIBUTE\tCLAIMED\tOBSERVED\tSTATE")
-	for _, d := range list {
-		attr := d.Attr
-		if d.Scope != "" {
-			attr += " [" + d.Scope + "]"
-		}
-		claimed := oneLine(d.Claimed, 30)
-		if d.ClaimedBy != "" {
-			claimed += " (" + d.ClaimedBy + ")"
-		}
-		observed := oneLine(d.Observed, 30)
-		if d.ObservedBy != "" {
-			observed += " (" + d.ObservedBy + ")"
-		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n", d.ID, d.CILabel, d.Kind, dash(attr),
-			dash(claimed), dash(observed), d.Disposition)
-	}
-	_ = tw.Flush()
 }
 
 // cmdRefresh is the whole loop in one command: optionally look names up,
-// collect, run the liveness checks, then compare. It is what the web
+// collect, then run the liveness checks. It is what the web
 // interface's collect button does, plus the checks.
 func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("refresh", flag.ExitOnError)
@@ -491,7 +395,6 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 	timeout := fs.Duration("host-timeout", 2*time.Minute, "limit for everything done against one host")
 	resolve := fs.Bool("resolve", false, "look every host up in DNS first")
 	noChecks := fs.Bool("no-checks", false, "skip the liveness checks")
-	stale := fs.Duration("stale-after", 14*24*time.Hour, "age at which a value is called stale")
 	rules := fs.String("rules", "", "extra normaliser rules file")
 	collectors := fs.String("collectors", "", "extra collector spec file")
 	externals := fs.String("externals", "", "file listing external collector programs")
@@ -544,15 +447,6 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 		}
 	}
 
-	det, err := eng.Detect(ctx, *stale)
-	if err != nil {
-		return fmt.Errorf("detect: %w", err)
-	}
-	fmt.Printf("detect:  %d conflicts, %d not understood, %d stale, %d undocumented\n",
-		det.Conflicts, det.Unparsed, det.Stale, det.Undocumented)
-	if _, total, err := st.DiscrepancyCounts(ctx); err == nil && total > 0 {
-		fmt.Printf("%d disagreements open; list them with: kryostate disagreements\n", total)
-	}
 	return nil
 }
 

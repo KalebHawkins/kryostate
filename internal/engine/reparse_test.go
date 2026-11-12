@@ -85,14 +85,14 @@ func TestABadParseRuleIsFixedWithoutTouchingAHost(t *testing.T) {
 		t.Errorf("after reparse os.version is %q, want 9.4", got)
 	}
 
-	// The withdrawn reading must not come back as the collector arguing with
-	// itself. A disagreement the tool manufactured is worse than none.
-	conflicts, err := st.Conflicts(ctx, id, "os.version", "")
+	// The wrong reading is withdrawn, not left in place as a second live
+	// claim by the same collector about a single observation.
+	live, err := st.RawAssertions(ctx, "os.version")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(conflicts) > 1 {
-		t.Errorf("reparse left %d competing values for one attribute: %+v", len(conflicts), conflicts)
+	if len(live) != 1 {
+		t.Errorf("reparse left %d live values for one attribute: %+v", len(live), live)
 	}
 }
 

@@ -41,7 +41,7 @@ func TestAddHostsToStack(t *testing.T) {
 	defer st.Close()
 
 	lines, _ := ParseHostList("web01 app web01.example.invalid\ndb01 database")
-	res, err := AddHostsToStack(ctx, st, "payments", lines, BulkOptions{Create: true, User: "svc-ro", By: "op"})
+	res, err := AddHostsToStack(ctx, st, "payments", lines, BulkOptions{Create: true, User: "svc-ro", Application: "payments-api", By: "op"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +56,10 @@ func TestAddHostsToStack(t *testing.T) {
 	ms, _ := st.MembershipsOf(ctx, id)
 	if len(ms) != 1 || ms[0].Role != "app" {
 		t.Errorf("membership %+v", ms)
+	}
+	hosts, _ := st.Hosts(ctx, store.HostFilter{Search: "web01"})
+	if len(hosts) != 1 || hosts[0].Values["application"] != "payments-api" {
+		t.Errorf("application not recorded: %+v", hosts)
 	}
 
 	// Again, without Create: existing hosts are found, unknown ones reported,

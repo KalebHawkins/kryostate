@@ -85,9 +85,6 @@ func TestCollectorOutranksDocument(t *testing.T) {
 	if f.SourceKind != model.SourceCollector {
 		t.Errorf("source kind: got %s", f.SourceKind)
 	}
-	if !f.Contested {
-		t.Error("two sources disagree and the fact is not marked contested")
-	}
 }
 
 // TestBarredSourceCannotWinUnopposed guards the naming-convention case: a
@@ -119,22 +116,27 @@ func TestBarredSourceCannotWinUnopposed(t *testing.T) {
 	}
 }
 
-// TestHumanOutranksCollectorOnJudgement separates measurement from judgement.
-// A collector can read an operating system; it cannot know that a machine
-// named like production is somebody's test rig.
-func TestHumanOutranksCollectorOnJudgement(t *testing.T) {
+// TestWhatAHostReportsAlwaysWins: a collected value is the truth for its
+// attribute, even where a person stated something else more recently and even
+// where the precedence table says otherwise.
+func TestWhatAHostReportsAlwaysWins(t *testing.T) {
 	s := testStore(t)
 	ci := mustHost(t, s, "node-c")
 	col := mustSource(t, s, model.SourceCollector, "ssh")
 	person := mustSource(t, s, model.SourceHuman, "operator")
 
-	assertValue(t, s, ci, "env", "production", col, time.Now())
-	assertValue(t, s, ci, "env", "development", person, time.Now().Add(-time.Hour))
-
-	if got := factFor(t, s, ci, "env").Raw; got != "development" {
-		t.Errorf("env: got %q, want development", got)
+	// A table carried over from an older build ranked a person first here.
+	if _, err := s.DB().Exec(`INSERT INTO precedence (attr, source_kind, rank, allowed) VALUES ('env', 'human', 1, 1)
+		ON CONFLICT(attr, source_kind) DO UPDATE SET rank=1`); err != nil {
+		t.Fatal(err)
 	}
-	if got := factFor(t, s, ci, "env").SourceKind; got != model.SourceHuman {
+	assertValue(t, s, ci, "env", "production", col, time.Now().Add(-time.Hour))
+	assertValue(t, s, ci, "env", "development", person, time.Now())
+
+	if got := factFor(t, s, ci, "env").Raw; got != "production" {
+		t.Errorf("env: got %q, want what the host reported", got)
+	}
+	if got := factFor(t, s, ci, "env").SourceKind; got != model.SourceCollector {
 		t.Errorf("source: got %s", got)
 	}
 }
@@ -212,18 +214,6 @@ func TestRepeatedValueDoesNotGrowHistory(t *testing.T) {
 		t.Errorf("history was overwritten: %d assertions retained", len(raws))
 	}
 
-	// The superseded value is history, not a live disagreement. One source
-	// that changed its mind contradicts nobody.
-	live, err := s.Conflicts(context.Background(), ci, "os.version", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(live) != 1 {
-		t.Errorf("one source's own history counted as disagreement: %d live claims", len(live))
-	}
-	if factFor(t, s, ci, "os.version").Contested {
-		t.Error("a host that was upgraded is reported as contested")
-	}
 }
 
 // TestAmbiguousIdentityStops checks the tool refuses to guess which machine it
@@ -318,65 +308,6 @@ func TestDistributionAlwaysAccountsForEveryHost(t *testing.T) {
 		if byKey[string(want)] != 1 {
 			t.Errorf("%s counted %d, want 1", want, byKey[string(want)])
 		}
-	}
-}
-
-// TestDisposeTakesEffect checks that deciding a disagreement changes what the
-// inventory says. A decision that only closes a ticket leaves the tool
-// reporting the same conflict tomorrow.
-func TestDisposeTakesEffect(t *testing.T) {
-	ctx := context.Background()
-	s := testStore(t)
-	ci := mustHost(t, s, "node-i")
-	doc := mustSource(t, s, model.SourceDocument, "inventory.md")
-
-	assertValue(t, s, ci, "role", "web", doc, time.Now())
-	if err := s.RaiseDiscrepancy(ctx, model.Discrepancy{
-		CIID: ci, Attr: "role", Kind: model.DiscValueConflict,
-		Claimed: "web", ClaimedBy: "inventory.md",
-		Observed: "database", ObservedBy: "ssh",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	list, err := s.Discrepancies(ctx, DiscrepancyFilter{CIID: ci}, 10)
-	if err != nil || len(list) != 1 {
-		t.Fatalf("expected one discrepancy, got %d (%v)", len(list), err)
-	}
-	if err := s.Dispose(ctx, list[0].ID, model.DispConfirmMachine, "operator", "checked by hand"); err != nil {
-		t.Fatal(err)
-	}
-	if got := factFor(t, s, ci, "role").Raw; got != "database" {
-		t.Errorf("after confirming the machine, role is still %q", got)
-	}
-}
-
-// TestRaiseDiscrepancyKeepsDisposition stops a nightly detection pass from
-// reopening something a person already decided.
-func TestRaiseDiscrepancyKeepsDisposition(t *testing.T) {
-	ctx := context.Background()
-	s := testStore(t)
-	ci := mustHost(t, s, "node-j")
-	d := model.Discrepancy{
-		CIID: ci, Attr: "os.version", Kind: model.DiscValueConflict,
-		Claimed: "RHEL 7.9", ClaimedBy: "inventory.md",
-		Observed: "RHEL 8.6", ObservedBy: "ssh",
-	}
-	if err := s.RaiseDiscrepancy(ctx, d); err != nil {
-		t.Fatal(err)
-	}
-	list, _ := s.Discrepancies(ctx, DiscrepancyFilter{CIID: ci}, 10)
-	if err := s.Dispose(ctx, list[0].ID, model.DispAccepted, "operator", "upgrade is scheduled"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.RaiseDiscrepancy(ctx, d); err != nil {
-		t.Fatal(err)
-	}
-	after, _ := s.Discrepancies(ctx, DiscrepancyFilter{CIID: ci}, 10)
-	if len(after) != 1 {
-		t.Fatalf("re-detection created a duplicate: %d rows", len(after))
-	}
-	if after[0].Disposition != model.DispAccepted {
-		t.Errorf("a decided disagreement reopened as %s", after[0].Disposition)
 	}
 }
 

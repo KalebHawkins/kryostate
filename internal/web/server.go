@@ -41,8 +41,7 @@ type Server struct {
 	Engine *engine.Engine
 	Log    *slog.Logger
 	// StaleAfter is how long a collected value may go unconfirmed before the
-	// detection pass that follows a run raises it. Zero turns the check off
-	// rather than defaulting to a number nobody chose.
+	// overview counts it as stale. Zero keeps the default window.
 	StaleAfter time.Duration
 	// TrustedOrigins are extra origins allowed to submit forms, for a proxy
 	// that serves this interface under a different host name than it
@@ -96,10 +95,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /hosts/{id}", s.handleHost)
 	mux.HandleFunc("GET /stacks", s.handleStacks)
 	mux.HandleFunc("GET /charts", s.handleCharts)
-	mux.HandleFunc("GET /discrepancies", s.handleDiscrepancies)
-	mux.HandleFunc("POST /discrepancies/{id}/dispose", s.handleDispose)
 	mux.HandleFunc("POST /hosts/{id}/address", s.handleSelectAddress)
-	mux.HandleFunc("POST /hosts/{id}/claim", s.handleClaim)
+	mux.HandleFunc("POST /hosts/{id}/application", s.handleApplication)
 	mux.HandleFunc("POST /hosts", s.handleCreateHost)
 	mux.HandleFunc("POST /hosts/{id}/retire", s.handleRetire)
 	mux.HandleFunc("POST /hosts/{id}/unretire", s.handleUnretire)
@@ -141,11 +138,10 @@ func (s *Server) Routes() http.Handler {
 }
 
 type pageData struct {
-	Title    string
-	Nav      string
-	Content  template.HTML
-	OpenDisc int
-	Flash    *flash
+	Title   string
+	Nav     string
+	Content template.HTML
+	Flash   *flash
 }
 
 // render writes either the fragment or the whole page.
@@ -168,12 +164,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name, title, nav
 		return
 	}
 
-	open := 0
-	if _, total, err := s.Store.DiscrepancyCounts(r.Context()); err == nil {
-		open = total
-	}
-	page := pageData{Title: title, Nav: nav, Content: template.HTML(buf.String()), OpenDisc: open,
-		Flash: takeFlash(w, r)}
+	page := pageData{Title: title, Nav: nav, Content: template.HTML(buf.String()), Flash: takeFlash(w, r)}
 	if err := s.tmpl.ExecuteTemplate(w, "layout.html", page); err != nil {
 		s.fail(w, err)
 	}
@@ -186,24 +177,15 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 
 type homeData struct {
 	Coverage  store.Coverage
-	Counts    map[model.DiscrepancyKind]int
-	Total     int
-	Recent    []model.Discrepancy
 	LastRun   *store.RunSummary
 	StaleDays int
 }
 
-// handleHome shows the disagreements first.
-//
-// The landing page is not a count of hosts. Anyone can count hosts. What a
-// written inventory cannot tell you is where it is wrong, so that is what
-// opens.
+// handleHome shows coverage and the collect button.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// The overview follows -stale-after so that its "older than" tile and the
-	// stale findings raised after a run use the same window. Zero turns the
-	// findings off, but a coverage tile still needs some window to count
-	// against, so it keeps the default.
+	// The overview's "older than" tile counts against -stale-after, and
+	// keeps the default window when that is zero.
 	staleAfter := s.StaleAfter
 	if staleAfter <= 0 {
 		staleAfter = 14 * 24 * time.Hour
@@ -214,22 +196,11 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	counts, total, err := s.Store.DiscrepancyCounts(ctx)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	recent, err := s.Store.Discrepancies(ctx, store.DiscrepancyFilter{Disposition: model.DispOpen}, 25)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	d := homeData{Coverage: cov, Counts: counts, Total: total, Recent: recent,
-		StaleDays: int(staleAfter.Hours() / 24)}
+	d := homeData{Coverage: cov, StaleDays: int(staleAfter.Hours() / 24)}
 	if runs, err := s.Store.Runs(ctx, 1); err == nil && len(runs) > 0 {
 		d.LastRun = &runs[0]
 	}
-	s.render(w, r, "home.html", "Disagreements", "home", d)
+	s.render(w, r, "home.html", "Overview", "home", d)
 }
 
 type hostsData struct {
@@ -243,7 +214,7 @@ type hostsData struct {
 // defaultColumns are the attributes shown in the table. They are the ones most
 // inventories are kept for; anything else lives on the host page, where high
 // cardinality costs nothing.
-var defaultColumns = []string{"os.version", "app.name", "role", "env", "site"}
+var defaultColumns = []string{"os.version", model.AttrApplication}
 
 // columnsFrom reads the chosen columns from the URL. Both repeated
 // "col=a&col=b" (what a form of checkboxes sends) and "col=a,b" (what a person
@@ -272,10 +243,7 @@ func hostFilterFrom(q url.Values) store.HostFilter {
 		Unknown:  q.Get("unknown"),
 		Because:  q.Get("because"),
 		Unparsed: q.Get("unparsed"),
-		// The UI calls this "disagrees" everywhere else, and a URL is part of
-		// the UI: it gets pasted into chat messages and tickets.
-		Contested: q.Get("disagrees") == "1" || q.Get("contested") == "1",
-		Retired:   q.Get("retired") == "1",
+		Retired:  q.Get("retired") == "1",
 	}
 }
 
@@ -312,7 +280,7 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="kryostate-inventory.csv"`)
 	cw := csv.NewWriter(w)
 	header := append([]string{"host", "id"}, cols...)
-	header = append(header, "stacks", "last_collected", "collect_ok", "open_disagreements")
+	header = append(header, "stacks", "last_collected", "collect_ok")
 	_ = cw.Write(header)
 	for _, h := range rows {
 		rec := []string{csvSafe(h.CI.Label), h.CI.ID}
@@ -324,7 +292,7 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 			last = h.LastCollect.UTC().Format(time.RFC3339)
 		}
 		rec = append(rec, csvSafe(strings.Join(h.Stacks, ";")), last,
-			strconv.FormatBool(h.CollectOK), strconv.Itoa(h.OpenDiscreps))
+			strconv.FormatBool(h.CollectOK))
 		_ = cw.Write(rec)
 	}
 	cw.Flush()
@@ -343,12 +311,10 @@ func csvSafe(v string) string {
 type hostData struct {
 	CI         model.CI
 	Facts      []model.Fact
-	Conflicts  map[string][]model.Fact
 	Identities []model.Identity
 	Addresses  []store.Address
 	Profiles   []store.ConnProfile
 	Reach      store.Reachability
-	Discs      []model.Discrepancy
 	Stacks     []string
 	// Memberships are the stacks this host is in, with its role in each.
 	Memberships []store.Membership
@@ -382,25 +348,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	conflicts := map[string][]model.Fact{}
-	for _, f := range facts {
-		if !f.Contested {
-			continue
-		}
-		all, err := s.Store.Conflicts(ctx, id, f.Attr, f.Scope)
-		if err != nil {
-			s.fail(w, err)
-			return
-		}
-		conflicts[f.Attr] = all
-	}
 	ids, _ := s.Store.Identities(ctx, id)
 	addrs, _ := s.Store.Addresses(ctx, id)
 	profiles, _ := s.Store.ConnProfiles(ctx, id)
 	reach, _ := s.Store.Reachability(ctx, id)
-	// The page heads this list "Open against this host"; settled ones belong
-	// on the disagreements page, filtered to this host.
-	discs, _ := s.Store.Discrepancies(ctx, store.DiscrepancyFilter{CIID: id, Disposition: model.DispOpen}, 50)
 	freeText, err := s.Store.FreeTextAttrs(ctx)
 	if err != nil {
 		s.fail(w, err)
@@ -408,8 +359,8 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d := hostData{
-		CI: ci, Facts: facts, Conflicts: conflicts, Identities: ids,
-		Addresses: addrs, Profiles: profiles, Reach: reach, Discs: discs,
+		CI: ci, Facts: facts, Identities: ids,
+		Addresses: addrs, Profiles: profiles, Reach: reach,
 		FreeText: freeText,
 	}
 	if d.Memberships, err = s.Store.MembershipsOf(ctx, id); err != nil {
@@ -555,67 +506,6 @@ func (s *Server) handleCharts(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "charts.html", "Charts", "charts", d)
 }
 
-func (s *Server) handleDiscrepancies(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := store.DiscrepancyFilter{
-		Kind:        model.DiscrepancyKind(q.Get("kind")),
-		Disposition: model.Disposition(q.Get("disposition")),
-		CIID:        q.Get("ci"),
-	}
-	switch f.Disposition {
-	case "":
-		f.Disposition = model.DispOpen
-	case "all":
-		f.Disposition = ""
-	}
-	var hostLabel string
-	if f.CIID != "" {
-		ci, err := s.Store.CI(r.Context(), f.CIID)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		hostLabel = ci.Label
-	}
-	list, err := s.Store.Discrepancies(r.Context(), f, 500)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	counts, total, _ := s.Store.DiscrepancyCounts(r.Context())
-	s.render(w, r, "discrepancies.html", "Disagreements", "discrepancies", struct {
-		List      []model.Discrepancy
-		Counts    map[model.DiscrepancyKind]int
-		Total     int
-		Filter    store.DiscrepancyFilter
-		HostLabel string
-	}{list, counts, total, f, hostLabel})
-}
-
-func (s *Server) handleDispose(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "bad id", http.StatusBadRequest)
-		return
-	}
-	disp := model.Disposition(r.FormValue("disposition"))
-	switch disp {
-	case model.DispConfirmMachine, model.DispKeepDocument, model.DispAccepted:
-	default:
-		http.Error(w, "unknown disposition", http.StatusBadRequest)
-		return
-	}
-	actor := actorOf(r)
-	if err := s.Store.Dispose(r.Context(), id, disp, actor, r.FormValue("note")); err != nil {
-		s.fail(w, err)
-		return
-	}
-	w.Header().Set("HX-Trigger", "discrepancy-disposed")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `<p class="muted">Recorded as %s by %s.</p>`,
-		template.HTMLEscapeString(string(disp)), template.HTMLEscapeString(actor))
-}
-
 func (s *Server) handleSelectAddress(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	addr := r.FormValue("address")
@@ -626,28 +516,28 @@ func (s *Server) handleSelectAddress(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/hosts/"+id, http.StatusSeeOther)
 }
 
-// handleClaim records a value a person states about a host. A reason is
-// required, as on the command line: a claim with no reason cannot be argued
+// handleApplication records the application a person says a host runs. It is
+// the only attribute the page accepts: role and stack are set as stack
+// membership, and everything else is what the host reports. A reason is
+// required, as on the command line: a value with no reason cannot be argued
 // with later.
-func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if _, err := s.Store.CI(r.Context(), id); err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	attr := strings.TrimSpace(r.FormValue("attr"))
+	value := strings.TrimSpace(r.FormValue("application"))
 	reason := strings.TrimSpace(r.FormValue("reason"))
-	if attr == "" || reason == "" {
-		refuse(w, r, hostURL(id), errors.New("an attribute and a reason are both required"))
+	if value == "" || reason == "" {
+		refuse(w, r, hostURL(id), errors.New("an application and a reason are both required"))
 		return
 	}
-	value := r.FormValue("value")
-	if err := s.Store.Claim(r.Context(), id, attr, strings.TrimSpace(r.FormValue("scope")),
-		value, actorOf(r), reason); err != nil {
+	if err := s.Store.SetApplication(r.Context(), id, value, actorOf(r), reason); err != nil {
 		refuse(w, r, hostURL(id), err)
 		return
 	}
-	done(w, r, hostURL(id), "Recorded "+attr+" = "+value+".")
+	done(w, r, hostURL(id), "Recorded the application as "+value+".")
 }
 
 func (s *Server) handleGuide(w http.ResponseWriter, r *http.Request) {
@@ -700,19 +590,10 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.Log.Error("collection run", "err", err)
 		}
-		// Detection follows collection without being asked. The landing page
-		// is the list of disagreements; leaving it to a separate command
-		// would let the page report none when what it means is that nobody
-		// has looked since the facts changed.
-		det, derr := s.Engine.Detect(ctx, s.StaleAfter)
-		if derr != nil {
-			s.Log.Error("detection pass", "err", derr)
-		}
 		s.hub.broadcast(engine.Progress{
 			RunID: sum.ID, Label: "run finished", Done: sum.Targets, Total: sum.Targets,
 			Outcome: model.OutcomeOK,
-			Detail: fmt.Sprintf("%d ok, %d failed, %d disagreements",
-				sum.Succeeded, sum.Failed, det.Conflicts+det.Unparsed+det.Stale+det.Undocumented),
+			Detail:  fmt.Sprintf("%d ok, %d failed", sum.Succeeded, sum.Failed),
 		})
 	}()
 

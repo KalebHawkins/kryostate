@@ -281,7 +281,7 @@ func (s *Server) bulkAdd(r *http.Request, stack string) (string, error) {
 		}
 	}
 	res, err := ingest.AddHostsToStack(r.Context(), s.Store, stack, lines,
-		ingest.BulkOptions{Create: true, User: user, By: actorOf(r)})
+		ingest.BulkOptions{Create: true, User: user, Application: field(r, "application"), By: actorOf(r)})
 	if err != nil {
 		return "", err
 	}

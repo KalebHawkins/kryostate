@@ -43,9 +43,9 @@ func testServer(t *testing.T) (*Server, http.Handler, *store.Store) {
 	return s, s.Routes(), st
 }
 
-// seed puts enough in the store that the pages have something to be wrong
-// about: two hosts that agree, one the document and the collector disagree
-// over, and one nobody has ever reached.
+// seed puts enough in the store that the pages have something to show: a host
+// a document and a collector both describe, one only a collector has read, and
+// one nobody has ever reached.
 func seed(t *testing.T, st *store.Store) string {
 	t.Helper()
 	ctx := context.Background()
@@ -96,14 +96,6 @@ func seed(t *testing.T, st *store.Store) string {
 	assert(disputed, "Red Hat Enterprise Linux 8.6 (Ootpa)", col, "RHEL 8.6")
 	assert(agreed, "Red Hat Enterprise Linux 7.9 (Maipo)", col, "RHEL 7.9")
 
-	if err := st.RaiseDiscrepancy(ctx, model.Discrepancy{
-		CIID: disputed, Attr: "os.version", Kind: model.DiscValueConflict,
-		Summary: "the document and the machine disagree",
-		Claimed: "RHEL 7.9", ClaimedBy: "inventory.md",
-		Observed: "RHEL 8.6", ObservedBy: "ssh", DetectedAt: at,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if err := st.RecordProbe(ctx, model.Probe{
 		CIID: disputed, Kind: model.ProbeCollectorRun, Outcome: model.OutcomeOK, At: at,
 	}); err != nil {
@@ -181,7 +173,6 @@ func TestFilterStateLivesInTheURL(t *testing.T) {
 		{"?attr=os.version&value=RHEL+8.6", []string{"appnode1"}, []string{"appnode2", "appnode3"}},
 		{"?attr=os.version&value=RHEL+7.9", []string{"appnode2"}, []string{"appnode1", "appnode3"}},
 		{"?unknown=os.version", []string{"appnode3"}, []string{"appnode2"}},
-		{"?contested=1", []string{"appnode1"}, []string{"appnode2", "appnode3"}},
 		{"?q=appnode2", []string{"appnode2"}, []string{"appnode1", "appnode3"}},
 	}
 	for _, tc := range cases {
@@ -274,56 +265,6 @@ func TestEveryHostIsAccountedForOnTheChartsPage(t *testing.T) {
 	}
 }
 
-// TestDisposingADiscrepancyRecordsWhoDidIt. A decision with no name on it is
-// not an audit trail.
-func TestDisposingADiscrepancyRecordsWhoDidIt(t *testing.T) {
-	_, h, st := testServer(t)
-	seed(t, st)
-	ctx := context.Background()
-
-	open, err := st.Discrepancies(ctx, store.DiscrepancyFilter{Disposition: model.DispOpen}, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(open) != 1 {
-		t.Fatalf("expected one discrepancy to act on, got %d", len(open))
-	}
-
-	form := url.Values{"disposition": {string(model.DispConfirmMachine)}, "note": {"rebuilt last month"}}
-	req := httptest.NewRequest(http.MethodPost,
-		"/discrepancies/"+itoa(open[0].ID)+"/dispose", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
-	req.Header.Set("X-Forwarded-User", "operator@example.invalid")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("dispose returned %d: %s", rec.Code, rec.Body.String())
-	}
-	after, err := st.Discrepancies(ctx, store.DiscrepancyFilter{Disposition: model.DispOpen}, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(after) != 0 {
-		t.Errorf("the disposed discrepancy is still shown as open")
-	}
-
-	all, err := st.Discrepancies(ctx, store.DiscrepancyFilter{Disposition: model.DispConfirmMachine}, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(all) != 1 {
-		t.Fatalf("the decision was not recorded")
-	}
-	if all[0].DisposedBy != "operator@example.invalid" {
-		t.Errorf("recorded the decision as %q, not the person who made it", all[0].DisposedBy)
-	}
-	if all[0].Note == "" {
-		t.Error("the reason given was dropped")
-	}
-}
-
 // TestUnknownHostIsNotA500 covers the path a stale bookmark takes.
 func TestUnknownHostIsNotA500(t *testing.T) {
 	_, h, _ := testServer(t)
@@ -352,14 +293,21 @@ func TestStaticAssetsAreServedLocally(t *testing.T) {
 	}
 }
 
-// TestHomeIsTheDisagreements, not the host table. What a person needs on
-// opening this is what is wrong, not what exists.
-func TestHomeIsTheDisagreements(t *testing.T) {
+// TestNoDisagreementsAnywhere: what a host reports is the truth, so there is
+// nothing to settle and no page or link that offers to.
+func TestNoDisagreementsAnywhere(t *testing.T) {
 	_, h, st := testServer(t)
-	seed(t, st)
-	body := get(t, h, "/", nil).Body.String()
-	if !strings.Contains(body, "the document and the machine disagree") {
-		t.Error("the landing page does not lead with the disagreements")
+	id := seed(t, st)
+	for _, path := range []string{"/", "/hosts", "/hosts/" + id, "/stacks"} {
+		body := get(t, h, path, nil).Body.String()
+		if strings.Contains(body, "/discrepancies") || strings.Contains(strings.ToLower(body), "disagree") {
+			t.Errorf("%s still mentions disagreements", path)
+		}
+	}
+	// appnode1 has a document claim and a collected value that differ, and
+	// the inventory shows the collected one.
+	if !strings.Contains(tableBody(get(t, h, "/hosts?attr=os.version&value=RHEL+8.6", nil).Body.String()), "appnode1") {
+		t.Error("the collected value did not win")
 	}
 }
 
@@ -423,9 +371,13 @@ func TestFreeTextIsShownNotCalledUnparsed(t *testing.T) {
 
 	// os.version does have rules, so a value that escapes them must still be
 	// reported rather than quietly shown as though it were understood.
+	col, err := st.SourceID(ctx, model.SourceCollector, "ssh")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := st.Assert(ctx, model.Assertion{
 		CIID: id, Attr: "os.version", Raw: "something no rule matches",
-		SourceID: doc, Decided: true, ObservedAt: time.Now(),
+		SourceID: col, ObservedAt: time.Now(),
 	}, nil); err != nil {
 		t.Fatal(err)
 	}

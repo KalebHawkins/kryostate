@@ -126,31 +126,30 @@ func (s *Store) suggest(ctx context.Context, ref string) string {
 	return strings.Join(names, ", ")
 }
 
-// Claim records a value a named person states directly, outside of settling a
-// disagreement. It is an ordinary human assertion: it competes under the
-// precedence table like any other source, which is what lets env, site and
-// owner, where a person outranks every machine, be set at all. The reason is
-// written to the audit trail.
-func (s *Store) Claim(ctx context.Context, ciID, attr, scope, value, by, reason string) error {
-	if strings.TrimSpace(attr) == "" {
-		return errors.New("a claim needs an attribute")
+// SetApplication records the application a host runs, as stated by a named
+// person. A machine cannot say what it is for, so the application is the one
+// attribute a person may state; role and stack are stack membership, set with
+// AddToStack. A collector that does report an application still wins: what a
+// host reports is the truth for that attribute. The reason is written to the
+// audit trail.
+func (s *Store) SetApplication(ctx context.Context, ciID, value, by, reason string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return errors.New("an application needs a name")
 	}
 	srcID, err := s.SourceID(ctx, model.SourceHuman, by)
 	if err != nil {
 		return err
 	}
 	if _, err := s.Assert(ctx, model.Assertion{
-		CIID: ciID, Attr: attr, Scope: scope, Raw: value,
+		CIID: ciID, Attr: model.AttrApplication, Raw: value,
 		SourceID: srcID, ObservedAt: time.Now(),
-	}, s.normalizedFor(ctx, attr, value)); err != nil {
+	}, s.normalizedFor(ctx, model.AttrApplication, value)); err != nil {
 		return err
 	}
-	detail := attr + "=" + value
-	if scope != "" {
-		detail = attr + "[" + scope + "]=" + value
-	}
+	detail := model.AttrApplication + "=" + value
 	if reason != "" {
 		detail += ": " + reason
 	}
-	return s.Audit(ctx, by, "claim", ciID, detail)
+	return s.Audit(ctx, by, "set application", ciID, detail)
 }

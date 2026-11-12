@@ -78,19 +78,21 @@ start() {
 hs() { podman exec -i kryostate-lab kryostate "$@"; }
 
 seed() {
-	# The stacks and their hosts, the way the Stacks page's paste box takes
-	# them: name, then role. New hosts get a connection as the lab user.
-	printf '%s\n' "uf01 forwarder" "uf02 forwarder" "idx01 indexer" \
-		| hs stack -name splunk-lab -create -user kryostate -file -
-	printf '%s\n' "web01 web" | hs stack -name web -create -user kryostate -file -
-
-	# A hand-kept inventory to check the hosts against.
+	# The inventory supplies the hosts, their stacks and roles, and the
+	# application each runs.
 	podman cp "$here/inventory.md" kryostate-lab:/data/inventory.md
 	hs import -name inventory.md /data/inventory.md
 
+	# Each host gets a connection as the lab user, through the ssh-agent.
+	for h in "${hosts[@]}"; do
+		hs target -host "${h%% *}" -user kryostate
+	done
+
 	# What to collect beyond the operating system.
 	hs collectors -enable group.basics
-	hs collectors -enable group.splunk.forwarder -stacks splunk-lab
+	hs collectors -enable splunk.uf.version -stacks splunk-lab
+	hs collectors -enable splunk.enterprise.version -stacks splunk-lab
+	hs collectors -enable splunk.home -stacks splunk-lab
 	hs collectors -enable group.web -stacks web
 	hs collectors -enable config.value -stacks splunk-lab \
 		-param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName

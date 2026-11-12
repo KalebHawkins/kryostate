@@ -27,6 +27,19 @@ func okEnvelope() Envelope {
 	}
 }
 
+// TestFlagIsReadAsBool: collectors written before the boolean type was named
+// bool declared "flag", and still validate.
+func TestFlagIsReadAsBool(t *testing.T) {
+	e := okEnvelope()
+	e.Facts = append(e.Facts, FactItem{Key: "product.enabled", Value: "true", Type: "flag"})
+	if err := e.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.Facts[2].Type; got != model.TypeBool {
+		t.Errorf("flag read as %q", got)
+	}
+}
+
 // TestValidateIsAllOrNothing is the rule that keeps a buggy collector visible.
 // Nine good facts and one bad one is a bug, and taking the nine hides it until
 // somebody acts on the tenth.

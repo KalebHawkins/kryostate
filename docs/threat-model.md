@@ -14,9 +14,9 @@ rather than left for a reader to assume.
    hosts. Compromise means the estate, not the inventory.
 2. **Connection detail** — addresses, usernames, which host runs what. Useful
    to someone planning an attack even without credentials.
-3. **The record itself** — the assertion history and the decisions recorded
-   against discrepancies. Compromise means decisions get made on fabricated
-   evidence.
+3. **The record itself** — the assertion history: what each host reported,
+   and the applications, stacks and roles people stated. Compromise means
+   decisions get made on fabricated evidence.
 
 The order matters. A design that protects the record but leaks credentials has
 failed.
@@ -110,8 +110,10 @@ bytes and hold no credentials. A compromised host that answers with four
 gigabytes of output gets truncated, not obeyed.
 
 **A target decides its own answers.** Everything a host reports is attributed
-to the collector that asked, with the raw bytes kept, so a lying host produces
-a visible disagreement rather than a silent correction.
+to the collector that asked, with the raw bytes kept. What a host reports wins
+over what a person or a document said, so a lying host is believed: the
+kept output and the assertion history are how a fabricated answer is traced
+afterwards.
 
 ## External collectors
 
@@ -146,10 +148,10 @@ can reach the port can read every host, every address, and every credential
 *reference* — and can trigger a collection run against the estate.
 
 The server reads `X-Forwarded-User`, `X-Remote-User` or
-`X-Auth-Request-Preferred-Username` to attribute decisions, falling back to
+`X-Auth-Request-Preferred-Username` to attribute changes, falling back to
 `anonymous`. **These headers are trusted completely.** They are only meaningful
 behind a proxy that sets them and strips any the client sent. Directly exposed,
-the attribution on every recorded decision is whatever the client typed.
+the attribution on every recorded change is whatever the client typed.
 
 Other properties worth knowing:
 

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/normalize"
@@ -28,15 +29,11 @@ func testStore(t *testing.T) *store.Store {
 
 func mapping() Mapping {
 	return Mapping{
-		HostColumn:    "Host",
-		StackColumn:   "Stack",
-		AddressColumn: "Address",
-		SectionAttr:   "site",
-		Attrs: map[string]string{
-			"Application": "app.name",
-			"Role":        "role",
-			"OS":          "os.version",
-		},
+		HostColumn:        "Host",
+		StackColumn:       "Stack",
+		AddressColumn:     "Address",
+		RoleColumn:        "Role",
+		ApplicationColumn: "Application",
 	}
 }
 
@@ -211,14 +208,23 @@ func TestDocumentedAddressIsNotAnEndpoint(t *testing.T) {
 	for _, f := range facts {
 		byAttr[f.Attr] = f
 	}
-	if _, ok := byAttr["net.documented_address"]; !ok {
-		t.Error("the documented address was dropped instead of recorded as a claim")
+	if len(addrs) != 1 || addrs[0].Addr != "198.51.100.11" {
+		t.Errorf("the documented address was not recorded: %+v", addrs)
 	}
-	if got := byAttr["site"].Raw; got != "North site" {
-		t.Errorf("site claim is %q, want the heading the row was written under", got)
+	if got := byAttr[model.AttrApplication].Raw; got != "ledger" {
+		t.Errorf("application is %q, want ledger", got)
 	}
-	if got := byAttr["os.version"].Norm; got != "RHEL 8.6" {
-		t.Errorf("os.version normalised to %q, want RHEL 8.6", got)
+	// Only the application is an attribute a document states. The operating
+	// system in the same row is the host's to report.
+	if len(facts) != 1 {
+		t.Errorf("import recorded %d attributes, want only the application: %+v", len(facts), facts)
+	}
+	ms, err := s.MembershipsOf(ctx, hosts[0].CI.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].Stack != "ledger-prod" || ms[0].Role != "app" {
+		t.Errorf("stack membership %+v, want ledger-prod as app", ms)
 	}
 }
 
@@ -275,7 +281,7 @@ func TestRowWithNoHostIsSkippedNotInvented(t *testing.T) {
 		t.Fatal(err)
 	}
 	im := &Importer{Store: testStore(t), Norm: n, Name: "doc"}
-	res, err := im.Import(ctx, tables, Mapping{HostColumn: "Host", Attrs: map[string]string{"Role": "role"}})
+	res, err := im.Import(ctx, tables, Mapping{HostColumn: "Host", RoleColumn: "Role"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,11 +291,45 @@ func TestRowWithNoHostIsSkippedNotInvented(t *testing.T) {
 	if res.Created != 1 || res.Skipped != 1 {
 		t.Errorf("created %d, skipped %d; want 1 and 1", res.Created, res.Skipped)
 	}
+	// The row names a role and no stack to play it in, which is said rather
+	// than dropped.
+	if len(res.Problems) != 1 || !strings.Contains(res.Problems[0], "no stack") {
+		t.Errorf("a role with no stack was not reported: %v", res.Problems)
+	}
 }
 
-// TestDocumentLosesToCollector is the precedence that makes the rest of the
-// tool mean anything: a written claim does not override what a machine said
-// about itself.
+// TestIgnoredColumnsAreReported: an inventory states hosts, stacks, roles and
+// applications. A column it has beyond those is named in the result, so
+// somebody whose spreadsheet used to set the operating system is told it no
+// longer does.
+func TestIgnoredColumnsAreReported(t *testing.T) {
+	ctx := context.Background()
+	doc := "## Site\n\n| Host | OS | Owner | Application |\n| --- | --- | --- | --- |\n| appnode1 | RHEL 7.9 | ops | ledger |\n"
+	tables, err := ParseMarkdown(strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := normalize.Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testStore(t)
+	im := &Importer{Store: s, Norm: n, Name: "doc"}
+	res, err := im.Import(ctx, tables, Mapping{HostColumn: "Host", ApplicationColumn: "Application"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(res.Ignored, ",") != "OS,Owner" {
+		t.Errorf("ignored columns %v, want OS and Owner", res.Ignored)
+	}
+	if res.Asserted != 1 {
+		t.Errorf("recorded %d values, want only the application", res.Asserted)
+	}
+}
+
+// TestDocumentLosesToCollector is the precedence the tool rests on: what a
+// host reports is the truth, and an application written in a document stands
+// only until the host says otherwise.
 func TestDocumentLosesToCollector(t *testing.T) {
 	ctx := context.Background()
 	s := testStore(t)
@@ -298,13 +338,13 @@ func TestDocumentLosesToCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	doc := "## Site\n\n| Host | OS |\n| --- | --- |\n| appnode1 | Red Hat Enterprise Linux 7.9 (Maipo) |\n"
+	doc := "## Site\n\n| Host | Application |\n| --- | --- |\n| appnode1 | ledger |\n"
 	tables, err := ParseMarkdown(strings.NewReader(doc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	im := &Importer{Store: s, Norm: n, Name: "doc"}
-	if _, err := im.Import(ctx, tables, Mapping{HostColumn: "Host", Attrs: map[string]string{"OS": "os.version"}}); err != nil {
+	if _, err := im.Import(ctx, tables, Mapping{HostColumn: "Host", ApplicationColumn: "Application"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,15 +355,17 @@ func TestDocumentLosesToCollector(t *testing.T) {
 	if len(hosts) != 1 {
 		t.Fatalf("expected one host, got %d", len(hosts))
 	}
+	if got := hosts[0].Values[model.AttrApplication]; got != "ledger" {
+		t.Errorf("application before collection is %q, want the document's", got)
+	}
 	col, err := s.SourceID(ctx, model.SourceCollector, "ssh")
 	if err != nil {
 		t.Fatal(err)
 	}
-	nr, _ := n.Normalize("os.version", "Red Hat Enterprise Linux 8.6 (Ootpa)")
 	if _, err := s.Assert(ctx, model.Assertion{
-		CIID: hosts[0].CI.ID, Attr: "os.version",
-		Raw: "Red Hat Enterprise Linux 8.6 (Ootpa)", SourceID: col,
-	}, &store.Normalized{Value: nr.Value, Family: nr.Family, RuleID: nr.RuleID, Version: n.Version}); err != nil {
+		CIID: hosts[0].CI.ID, Attr: model.AttrApplication, Raw: "ledger2", SourceID: col,
+		ObservedAt: time.Now().Add(-time.Hour),
+	}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -332,8 +374,8 @@ func TestDocumentLosesToCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, f := range facts {
-		if f.Attr == "os.version" && f.Norm != "RHEL 8.6" {
-			t.Errorf("resolved os.version is %q; the document beat the machine", f.Norm)
+		if f.Attr == model.AttrApplication && f.Raw != "ledger2" {
+			t.Errorf("resolved application is %q; the document beat the machine", f.Raw)
 		}
 	}
 }
