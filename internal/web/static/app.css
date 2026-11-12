@@ -1478,3 +1478,24 @@ td .hostpick__input { width: 11rem; min-width: 0; }
 .cgone__list { width: 100%; }
 .cgone__list td { vertical-align: middle; overflow-wrap: anywhere; }
 /* ---------- end collectors on a host ---------- */
+
+/* ---------- narrow screens: the top menu scrolls sideways ---------- */
+.nav > * { flex-shrink: 0; white-space: nowrap; }
+@media (max-width: 60rem) {
+  .nav {
+    gap: var(--s-3);
+    padding: 0 var(--s-3);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav__spacer { flex: 0 0 var(--s-2); }
+}
+/* Narrow screens: each schedule row becomes a small card, Edit beside the time. */
+@media (max-width: 40rem) {
+  .schedules thead { display: none; }
+  .schedules tbody tr:not(.sched-storm-row) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .schedules tbody tr:not(.sched-storm-row) > th { grid-column: 1 / -1; border-bottom: 0; padding-bottom: 0; }
+  .schedules tbody tr:not(.sched-storm-row) > td.sched-edit-cell { align-self: start; }
+}
