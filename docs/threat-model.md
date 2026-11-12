@@ -145,7 +145,8 @@ one.
 The consequence: **binding the server to anything other than localhost without
 an authenticating proxy in front of it publishes your inventory.** Anyone who
 can reach the port can read every host, every address, and every credential
-*reference* — and can trigger a collection run against the estate.
+*reference* — and can start a collection run against the estate or change how
+often each collector runs.
 
 The server reads `X-Forwarded-User`, `X-Remote-User` or
 `X-Auth-Request-Preferred-Username` to attribute changes, falling back to
@@ -163,6 +164,14 @@ Other properties worth knowing:
   `serve -trusted-origin`.
 - A second collection run cannot start while one is in progress, so clicking
   twice does not open two waves of sessions into the estate.
+- Scheduled collection is throttled: at most 4 sessions at once and 1 per
+  host, hosts spread out at random, an unreachable host backed off from 10
+  minutes up to 6 hours, and no schedule shorter than 5 minutes. A visitor who
+  sets every collector to that shortest interval still cannot exceed those
+  limits. A manual run waits for scheduled sessions and the other way round.
+- An inventory query is parsed and evaluated in Go over values already
+  loaded; no part of it reaches SQL. Its patterns are Go regular
+  expressions, which run in time linear in the input.
 - The progress stream drops updates to a slow client rather than blocking a
   collection run.
 - Every asset ships in the binary. The interface makes no request to the
@@ -192,12 +201,23 @@ that cannot turn it into a way to run commands or to take credentials.
   does that, on the command line, and the old key is written to the audit
   log. Otherwise a visitor could clear a pin and let an impersonating host
   answer the next collection.
+- **It shows, but cannot change, what collectors run.** A collector's page,
+  and its **View definition** panel, show the commands of your own collectors
+  and the path, arguments and environment variable names of an external
+  program. The values of an external program's environment variables are
+  shown as `(hidden)`, because they may hold that program's own credential.
+  Do not put secrets in a command in `collectors.json`: anyone who can reach
+  the page can read it.
 
 ## Separation of duties
 
-The web process does not need fleet credentials and the credential-bearing
-collector does not need to listen on a port. Running `serve` and `collect` as
-different OS users achieves that split, and it is what is recommended.
+The process that listens on a port and the process that holds fleet
+credentials can be different. By default they are not: `serve` runs the
+collection schedules and the Runs page's **Collect now**, so it needs the
+ssh-agent. To split them, start `serve -no-schedule` as a user with no
+credentials, and run `collect` or `refresh` on a timer as a different OS user
+that holds them. In that arrangement **Collect now** in the web interface
+cannot log in to any host; collection happens only through the timer.
 
 **The design permits that separation; it does not enforce it.** Both are
 subcommands of one binary against one database, and nothing stops an operator
@@ -219,7 +239,9 @@ These are the weaknesses known at the time of writing.
 - Audit rows live in the same database as the data they describe, so an
   attacker who can write to it can edit them.
 - `env:` credential references sit in process memory for the process lifetime.
-- No rate limiting anywhere.
+- No rate limiting of web requests. Scheduled collection is throttled, but
+  anyone who reaches the page can start a full collection run, one at a time,
+  as often as they like.
 - `govulncheck` reports fourteen findings in the Go standard library when
   built with Go 1.27.1, two of them escaping bugs in `html/template`
   (GO-2026-6600 and GO-2026-6599). They are fixed in 1.27.2. Build with a

@@ -104,7 +104,11 @@ func cmdHosts(ctx context.Context, args []string) error {
 	}
 
 	if len(rows) == 0 {
-		fmt.Println("no hosts match; add one with: kryostate host -name <name>")
+		if *q != "" || *stack != "" {
+			fmt.Println("no hosts match")
+			return nil
+		}
+		fmt.Println("no hosts yet; add one with: kryostate host -name <name>")
 		return nil
 	}
 	columns := splitIDs(*cols)
@@ -285,8 +289,13 @@ func cmdSet(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("set", flag.ExitOnError)
 	db := dbFlag(fs)
 	reason := fs.String("reason", "", "why, recorded in the audit log (required)")
-	pos := parseInterspersed(fs, args)
 	const usage = `usage: kryostate set <host> [application=NAME] [stack=NAME] [role=ROLE] -reason "why"`
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), usage)
+		fmt.Fprintln(fs.Output(), "Only application, stack and role can be set by hand; everything else is what the host reports.")
+		fs.PrintDefaults()
+	}
+	pos := parseInterspersed(fs, args)
 	if len(pos) < 2 {
 		return errors.New(usage)
 	}
@@ -389,7 +398,7 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 	resolve := fs.Bool("resolve", false, "look every host up in DNS first")
 	noChecks := fs.Bool("no-checks", false, "skip the liveness checks")
 	rules := fs.String("rules", "", "extra normaliser rules file")
-	collectors := fs.String("collectors", "", "extra collector spec file")
+	collectors := fs.String("collectors", "", "collector spec file to use instead of collectors.json beside the database")
 	externals := fs.String("externals", "", "file listing external collector programs")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
 	quiet := fs.Bool("quiet", false, "print only the summary lines, not one line per host")

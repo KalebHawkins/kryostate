@@ -28,10 +28,11 @@ Read this section before you install the tool.
   send alerts.
 - The tool does not map dependencies. Hosts belong to a stack because you put
   them in it.
-- The web interface can add and change hosts, connections, stacks and checks.
-  It refuses form submissions from other web sites, but it has no login: anyone
-  who can reach it can change the inventory. It can switch catalog collectors
-  on and off but never takes a command, and it can only create connections
+- The web interface can add and change hosts, connections, stacks,
+  applications and checks, switch catalog collectors on and off, change
+  schedules, and start a collection. It refuses form submissions from other
+  web sites, but it has no login: anyone who can reach it can change the
+  inventory. It never takes a command, and it can only create connections
   that use ssh-agent.
 
 ## 2. Description
@@ -112,7 +113,7 @@ A host with no value for an attribute falls into one of three buckets:
 | collection failed | The last collector run on this host failed | Repair the access |
 | not understood | The host answered and no rule read the answer | Report a bug against this tool |
 
-Charts show these buckets. The bars total the number of active hosts.
+Charts show these buckets, so each chart accounts for every active host.
 
 Refer to [docs/adr/](docs/adr/) for the reasoning behind each decision above.
 
@@ -134,10 +135,11 @@ The supplied collectors produce these attributes:
 | `hw.model` | AIX, Linux |
 | `hw.serial` | AIX, Windows |
 
-All other attributes come from your documents, your own collector
-specifications, or your own external programs. You choose the names.
-Application name, application version, role and middleware version are
-attributes of this kind.
+All other attributes come from catalog collectors you switch on (section
+5.3), your own collector specifications, or your own external programs. You
+choose the names. Application version and middleware version are attributes
+of this kind. People and documents supply only a host's application, and its
+stacks and roles.
 
 ## 4. Installation
 
@@ -217,7 +219,11 @@ everything else is collected. The screens in section 8 are of this lab.
 
 # 6. Read the results.
 ./kryostate hosts
+./kryostate hosts -q 'os.family == "Linux" && stack == "web"'
 ./kryostate show appnode1
+
+# 7. Run the web interface. While it runs, collectors also run on their
+#    own schedules.
 ./kryostate serve -addr 127.0.0.1:8099
 ```
 
@@ -233,11 +239,11 @@ one command.
 
 | Command | Function |
 |---|---|
-| `hosts` | Lists hosts, with chosen attributes as columns. `-json` for scripts |
+| `hosts` | Lists hosts, with chosen attributes as columns (`-cols`). `-q` filters with a query; `-json` prints the shape `/hosts.json` uses |
 | `show` | Shows the facts, probes and connections for one host |
 | `refresh` | Runs `collect`, then the checks |
 | `set` | Records a host's application, or its stack and role, with `-reason`. Nothing else can be set by hand |
-| `collectors` | Lists collectors and the catalog (`-catalog`), switches catalog collectors on and off (`-enable`, `-disable`), creates a file for your own (`-init`), and tests any collector without saving (`-try`) |
+| `collectors` | Lists collectors and the catalog (`-catalog`), switches catalog collectors on and off (`-enable`, `-disable`), creates a file for your own (`-init`), prints any collector as it would be written in that file (`-show`), tests any collector without saving (`-try`), and lists or changes schedules (`-schedules`, `-schedule`) |
 | `import` | Reads hosts, addresses, stacks, roles and applications from a Markdown or CSV document. Common column names are recognised; `-map` names them otherwise. Other columns are reported as not imported |
 | `host` | Adds a host. `-retire` marks one gone and keeps its history |
 | `target` | Adds or lists a connection profile. `-forget-host-key` clears a pinned key after a host is rebuilt |
@@ -249,7 +255,7 @@ one command.
 | `reparse` | Applies current parse rules to stored command output |
 | `renormalize` | Applies current normaliser rules to collected values |
 | `evidence` | Lists or deletes stored command output |
-| `serve` | Runs the web interface |
+| `serve` | Runs the web interface, and the collection schedules unless `-no-schedule` is given |
 | `export`, `restore` | Writes and reads the whole database as JSON |
 
 ### 5.3 Choosing what to collect
@@ -330,6 +336,49 @@ The tool validates the envelope and accepts or rejects all of it. It does not
 accept the valid facts from an invalid envelope. A rejected envelope makes the
 defect visible.
 
+Every collector, including the built-in ones, has a page in the web interface
+(`/collectors/<id>`) with a **View definition** panel: the collector written
+out as it would be in `collectors.json`. `kryostate collectors -show <id>`
+prints the same. Copy the nearest one to start your own.
+
+### 5.5 Schedules
+
+While `kryostate serve` runs, each collector runs on its own schedule. The
+built-in operating system, hardware and identity collectors, versions and
+other catalog collectors default to once a day; file and config checks to
+every 6 hours. Change one on the Schedules page, on the collector's page, or:
+
+```sh
+./kryostate collectors -schedules                              # list them
+./kryostate collectors -schedule builtin.os -every 1d -at 02:00
+./kryostate collectors -schedule cpu.cores -every 6h
+./kryostate collectors -schedule cpu.cores -manual             # or -default
+```
+
+Scheduled runs are throttled: at most 4 sessions at once and 1 per host,
+hosts spread over up to 2 minutes, an unreachable host left alone for 10
+minutes and then twice as long each time up to 6 hours, and no interval
+shorter than 5 minutes. A scheduled run logs in only to the hosts its
+collector applies to. `serve -no-schedule` turns schedules off.
+
+A collected value that differs from what the same collector read before is a
+**change**. The Changes page lists them by time window, and the Overview
+shows the last day's.
+
+### 5.6 Finding hosts and exporting
+
+The inventory takes a query, in the style of a Prometheus label matcher:
+
+```sh
+./kryostate hosts -q 'os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"'
+./kryostate hosts -q 'stack == "splunk-prod" && role == "indexer"' -json
+```
+
+In the web interface the same query goes in the Inventory page's box, and
+`/hosts?q=...` can be bookmarked. `/hosts.json` and `/hosts.csv` export the
+same view. The [user guide](docs/user-guide.md#queries) lists the operators
+and the JSON shape.
+
 ## 6. Credentials
 
 Each host can use a different credential. The database stores a reference. It
@@ -382,54 +431,85 @@ hosts, so confirm what their output contains:
 ## 8. Interface
 
 The interface is server-rendered HTML with HTMX. The charts are SVG drawn in
-Go. Each bar links to the hosts that it counts.
+Go. Each value in a chart links to the hosts that it counts.
 
 The URL holds the filter state. Two people who open the same URL see the same
 view.
 
 The screens below are of the lab in section 4.2, after `lab.sh seed`.
 
-The overview shows coverage counted from probes and collector runs, a button
-that starts a collection.
+The overview answers two questions: did every host collect, and what changed.
+It counts hosts collected, failing, stale, never collected and without a
+connection, lists failing hosts with the reason, shows the last day's
+changes, and lists the collectors that run next. Collections are started from
+the Runs page, not here.
 
 ![Overview](docs/images/overview.png)
 
-The inventory shows one row for each host. You can filter by name or by stack,
-and choose the attribute columns (`?col=os.version,application`). The CSV link
-downloads the same view. A value that no source claims is marked unknown, not
-left blank. In the CSV, a value that starts with `=`, `+`, `-` or `@` gets a
-leading apostrophe, so that a spreadsheet does not run it as a formula.
+The inventory shows one row for each host. Type a query or part of a name in
+the box (`?q=...`), and choose the attribute columns
+(`?col=os.version,application`). The CSV and JSON links download the same
+view. A value that no source claims is marked unknown, not left blank. In the
+CSV, a value that starts with `=`, `+`, `-` or `@` gets a leading apostrophe,
+so that a spreadsheet does not run it as a formula.
 
 ![Inventory](docs/images/inventory.png)
 
-The charts page shows one chart for each attribute that has more than one
-value. Hosts with no value get their own bar, divided by cause: never
-collected, collection failed, or collected and not understood. Attributes with
-close to one value per host are listed instead of charted.
-
-![Charts](docs/images/charts.png)
-
-The stacks page shows one card for each stack, with its collection coverage,
-each member's role, and what is collected there. A
-host that serves two stacks appears in both. A new stack takes a pasted list
-of hosts and roles; a card switches a collector or a group on for that stack.
-
-![Stacks](docs/images/stacks.png)
-
 The host page shows the value that currently wins for each attribute, with the
 raw string, the source, and the time of observation. What the host reports
-wins over anything a person or a document said. Reachability, identity evidence and addresses are
-separate cards. Below them, the host's connection, its stacks and its checks
-can be changed, and any collector can be tested on it without saving.
+wins over anything a person or a document said. A value that changed in the
+last week is marked. Reachability, identity evidence and addresses are
+separate cards. Below them, the host's connection, its stacks, its
+application and its checks can be changed, and any collector can be tested on
+it without saving.
 
 ![Host](docs/images/host.png)
 
-The collectors page lists what is switched on, with a Test button for each,
-then the groups and the catalog. Collectors written by hand are listed from
-their file and can be tested from here, but not written here: the page has no
-login, and a collector is a command that runs on every host.
+The stacks page shows one card for each stack, with its collection coverage,
+each member's role, and what is collected there. A host that serves two
+stacks appears in both. A new stack takes a pasted list of hosts and roles; a
+card switches a collector or a group on for that stack.
+
+![Stacks](docs/images/stacks.png)
+
+The charts page shows one chart for each attribute that has more than one
+value: a donut for a few values, ranked bars for many, and a histogram for
+numbers. Hosts with no value are counted too, divided by cause: never
+collected, collection failed, or collected and not understood. Attributes
+that identify a host, with close to one value per host, are listed instead of
+charted.
+
+![Charts](docs/images/charts.png)
+
+Opening a chart shows it larger, with a table of its values.
+
+![Chart overlay](docs/images/chart-overlay.png)
+
+The changes page lists collected values that differ from what the same
+collector read before, for the last 24 hours, 7 days or 30 days.
+
+![Changes](docs/images/changes.png)
+
+The schedules page lists every collector with its schedule, last run and next
+due time, and the limits that keep scheduled runs gentle. The runs page lists
+every collection, manual and scheduled, and has **Collect now**.
+
+![Schedules](docs/images/schedules.png)
+
+The collectors page lists every collector, built-in, catalog, your own and
+external programs, with a search box and filters by category, source and
+status. Groups are switched on from the buttons above the list.
 
 ![Collectors](docs/images/collectors.png)
+
+Each collector has its own page: what it records, where it runs, its
+commands, its schedule, and **View definition**, the collector as it would be
+written in `collectors.json`. Catalog collectors are switched on and off here.
+Collectors written by hand are listed from their file and can be tested here,
+but not written here: the page has no login, and a collector is a command
+that runs on every host.
+
+![Collector](docs/images/collector.png)
 
 The user guide and the collector guide are served at `/guide` and
 `/guide/collectors`.
@@ -457,9 +537,11 @@ The tests check these properties:
 - An incorrect parse rule is corrected, and the value is derived again, with no
   host reachable in the test.
 - A failed DNS lookup is not recorded as a missing DNS record.
-- A failed DNS lookup does not close an open finding about a host.
+- A collected value outranks what a document says.
 - Of two sources of equal rank, the source that confirmed its value most
   recently wins.
+- The query language parses and evaluates the documented examples, and a
+  query that does not parse reports the column of the problem.
 
 ## 10. Status
 

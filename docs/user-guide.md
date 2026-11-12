@@ -181,8 +181,9 @@ Progress appears for each host as it finishes.
 kryostate refresh -only web01
 ```
 
-Both connect to the host, run the built-in read-only commands for its
-operating system, and run any health checks. Leave
+Both connect to the host and run the built-in read-only commands for its
+operating system, plus every collector you switched on. `refresh` also runs
+the health checks (step 6). Leave
 out `-only` to do every host.
 
 If the connection fails, the reason is shown. The most common causes are an
@@ -232,7 +233,9 @@ HTTP and enter a URL, or TCP and enter `host:port`.
 kryostate check -host web01 -name https -http https://web01.example.com/health -expect 2xx
 ```
 
-Checks run with every collection.
+Checks run with `kryostate refresh`, or on their own with
+`kryostate check -run`. **Collect now** in the web interface and scheduled
+collections do not run them.
 
 ## 5. Tutorial: build a stack
 
@@ -423,8 +426,14 @@ Any read-only command can become a collector. You write the command, a rule
 for which part of its output to keep, and a name, in a file on the KryoState
 server. You do not need to write a program.
 
+The easiest start is a collector that already exists. Open it on the
+**Collectors** page and open **View definition**: it is written out exactly as
+you would write it in your own file, with a **Copy** button.
+`kryostate collectors -show <id>` prints the same.
+
 ```sh
 kryostate collectors -init                                  # create the file
+kryostate collectors -show cpu.cores                        # a worked example to copy
 kryostate collectors -try example.nodename -host web01      # test, saves nothing
 ```
 
@@ -436,12 +445,18 @@ when something does not work.
 
 ### The daily loop
 
+While `kryostate serve` runs, collection happens on its own (see
+**Schedules** below). Open the **Overview** to see whether every host
+collected, which hosts are failing and why, and what changed in the last day.
+
+To collect everything straight away:
+
 **In the web interface:** **Runs**, then **Collect now**.
 
 **On the command line:**
 
 ```sh
-kryostate refresh            # collect and check
+kryostate refresh            # collect, then run the health checks
 ```
 
 ### Schedules
@@ -450,16 +465,29 @@ While `kryostate serve` runs, each collector runs on its own schedule: the
 built-in operating system, hardware and identity groups, every catalog
 collector you switched on, your own commands and external programs. Hardware,
 versions and the operating system default to once a day; settings and file
-checks to every 6 hours. A scheduled run logs in only to the hosts that
-collector applies to and runs only its commands. It opens at most 4 sessions
-at once and 1 per host, spreads hosts over up to 2 minutes, and leaves a host
-it cannot reach alone for 10 minutes, doubling each time up to 6 hours. A
-**Collect now** waits for scheduled sessions to finish, and nothing scheduled
-starts while it runs.
+checks to every 6 hours.
+
+Scheduled runs are **throttled** so that they stay gentle on hosts that other
+people look after:
+
+- A scheduled run logs in only to the hosts that collector applies to, and
+  runs only that collector's commands.
+- At most 4 sessions are open at once across the estate, and 1 per host.
+- Hosts are spread out at random over up to 2 minutes, so they are not all
+  reached in the same second.
+- A host that cannot be reached is left alone for 10 minutes, then 20, and
+  so on, doubling each time up to 6 hours.
+- **Collect now** waits for scheduled sessions to finish, and nothing
+  scheduled starts while it runs.
+- The shortest interval allowed is 5 minutes.
+
+The **Schedules** page shows these limits at the top.
 
 **In the web interface:** **Schedules** lists each collector with its last
 run and next due time. Type an interval such as `30m`, `6h` or `1d`, and for
 whole days optionally a time, then **Save**; or choose **Manual only**.
+**Default** goes back to the default. Each collector's own page has the same
+controls in its **Schedule** card.
 
 **On the command line:**
 
@@ -469,6 +497,11 @@ kryostate collectors -schedule builtin.os -every 1d -at 02:00
 kryostate collectors -schedule cpu.cores -every 6h
 kryostate collectors -schedule cpu.cores -manual              # or -default
 ```
+
+Name a collector the way `-schedules` lists it: `builtin.os`, `builtin.hw` and
+`builtin.host` for the built-in groups, a catalog name such as `cpu.cores`,
+`spec.<id>` for one of your own, and `external.<name>` for an external
+program. A running server picks up a change within a minute.
 
 Start the server with `-no-schedule` to collect only when asked.
 
@@ -497,15 +530,33 @@ kryostate hosts -json                    # for scripts
 #### Queries
 
 A query is a condition on each host's current values, in the style of a
-Prometheus label matcher:
+Prometheus label matcher. The inventory shows the hosts for which it is true.
 
 ```text
 os.version == "Red Hat 7.9 (Ootpa)"
 os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"
 stack == "splunk-prod" && role == "indexer"
 name =~ "^web" || application == "nginx"
-hw.cpu.cores >= 8 && kernel.version < "4"
+hw.cpu.cores >= 8 && os.kernel < "4"
 !has(os.version)
+```
+
+Read the second one as: the host runs Linux, and the file
+`/opt/splunkforwarder/bin/splunk` is not there. That is, Linux hosts with no
+Splunk forwarder installed. It needs the **File exists** collector switched
+on for that path (section 6), so that every host has recorded `true` or
+`false` for it.
+
+Every query has the same shape: a comparison is a **name**, an
+**operator** and a **value**, and comparisons are joined with `&&` (and) and
+`||` (or), turned around with `!` (not), and grouped with parentheses:
+
+```text
+query       = condition { ("&&" | "||") condition }
+condition   = [ "!" ] ( name [ operator value ] | "has(" name ")" | "(" query ")" )
+name        = os.version, stack, file.exists["/etc/hosts"], ...
+operator    = ==  !=  =~  !~  <  <=  >  >=
+value       = "text", 'text', `text`, a number, true or false
 ```
 
 | Write | Means |
@@ -515,14 +566,14 @@ hw.cpu.cores >= 8 && kernel.version < "4"
 | `<` `<=` `>` `>=` | numbers compare as numbers (`8 < 16`), versions in version order (`"7.9" < "7.10"`). A value that is neither does not match. |
 | `&&` `\|\|` `!` `( )` | and, or, not, grouping. `&&` binds tighter than `\|\|`; `!` applies to the whole comparison after it. |
 | `"text"` `'text'` | a string; `\"`, `\\`, `\n` and `\t` are escapes. A pattern full of backslashes is easier as a raw string in backquotes, which has no escapes. |
-| `true` `false` `8` `-1.5` | literals. `true` matches a value of true or yes, `false` one of false or no. |
+| `true` `false` `8` `-1.5` | literals. `true` and `false` match attributes that record `true` or `false`, such as **File exists**. |
 | `has(x)` | the host has a value for x. So does `x != ""`; `x == ""` finds hosts without one. |
-| `x` alone | the same as `x == true`, for yes/no attributes. |
+| `x` alone | the same as `x == true`. `!x` is the same as `x != true`. |
 
 Names are attribute names such as `os.version`, plus a few that are not
 attributes: `name` (the host's name), `id`, `stack` (any stack it is in),
-`role` (its role in any stack, or its `role` attribute) and `application`
-(its `app.name`). `stack != "x"` means "not in stack x".
+`role` (its role in any stack) and `application` (the application you
+recorded for it). `stack != "x"` means "not in stack x".
 
 A collector that takes a path or a name records an attribute named after it,
 such as `file.splunk.exists` for `/opt/splunkforwarder/bin/splunk`. You can use
@@ -530,7 +581,8 @@ that name, or name the collector and its parameter:
 `file.exists["/opt/splunkforwarder/bin/splunk"] == true`. The shorter
 `file.exists == "/opt/splunkforwarder/bin/splunk"` means the same, and
 `package.version == "openssl"` means the openssl version collector has a
-value. Text with none of the query symbols in it is a name search, as before.
+value. Text with none of the query symbols in it, such as `web`, searches
+host names.
 
 A query that does not parse is shown with the column where the problem is.
 Queries are evaluated in KryoState over the loaded values; none of it is
@@ -596,7 +648,8 @@ kryostate restore -db new.db -in backup.json
 | Changes | Collected values that changed, by time window | |
 | Runs | The collection history, manual and scheduled | Start a collection |
 | Schedules | Each collector's schedule, last run and next due time | Change how often each collector runs |
-| Collectors | Every collector that will run, the groups and the catalog | Switch catalog collectors and groups on and off, choose their stacks, test one on a host |
+| Collectors | Every collector: built-in, catalog, your own and external programs, with a search box and filters, and the groups | Switch a group on |
+| Collector page | One collector: what it records, where it runs, its commands, its **Schedule**, and **View definition** (the collector as it would be written in `collectors.json`) | Switch a catalog collector on or off and choose its stacks, test it on a host, change its schedule |
 | Guide | This document | |
 
 Every change is written to the audit log with the name of the person who
@@ -675,6 +728,9 @@ first, or use PowerShell or the web page.
 | Collector | Something that reads a value from a host |
 | Connection profile | How to reach a host: transport, address, user, credential reference |
 | Evidence | The stored output of a collector command |
+| Change | A collected value that differs from what the same collector read before |
 | Normaliser | A rule that turns a raw string into a comparable value |
+| Query | A condition, such as `os.family == "Linux"`, that picks hosts in the inventory |
+| Schedule | How often a collector runs on its own while `kryostate serve` runs |
 | Scope | Separates several instances of the same thing on one host |
 | Stack | A named group of hosts that make up one deployed system |

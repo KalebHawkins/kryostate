@@ -81,9 +81,12 @@ stack's card has **Also collect on**, which switches a group or a collector on
 for that stack. On a host's page, **Test a collector** runs any switched-on
 collector on that host.
 
-It is collected from the next collection: **Overview**, then **Collect now**.
-The value appears on each host's page, and you can show it as a column on the
-**Inventory** page with **Columns**.
+It is read the next time it is due: once a day for most collectors, every 6
+hours for file and config checks, while `kryostate serve` runs. To read it
+straight away, open **Runs** and select **Collect now**. The collector's page
+has a **Schedule** card to change how often it runs. The value appears on each
+host's page, and you can show it as a column on the **Inventory** page with
+**Columns**.
 
 ### Switching one on from the command line
 
@@ -262,7 +265,7 @@ Each line means:
 | `comment` | A note for the next person | Optional. Say why the command is written the way it is |
 | `command` | The command from step 1 | Copy it exactly |
 | `parse` | Which part of the output to keep | See step 4 |
-| `type` | What kind of value it is | Use `"text"`. See "Comparing versions" below for the other choices |
+| `type` | What kind of value it is | Use `"text"`. For a yes-or-no answer use `"bool"` (see "Yes-or-no answers" below) |
 | `stacks` | Optional. Only run on hosts in these stacks | A list of stack names, such as `["splunk-prod"]`. Leave it out to run on every host |
 
 Here is the nginx collector, complete:
@@ -326,6 +329,29 @@ More detail on each:
 written twice. The pattern `\d+` must be written `"\\d+"`. To avoid this,
 write `[0-9]` instead of `\d`, and `[ ]` instead of `\s`.
 
+### Yes-or-no answers
+
+When the question is yes or no, such as "is this file there?" or "is this
+service enabled?", make the command print exactly `true` or `false`, and set
+`"type": "bool"`. This is the good practice for every yes-or-no collector, and
+it is what the catalog's **File exists** does:
+
+```json
+{
+  "id": "linux.myapp.installed",
+  "attr": "myapp.installed",
+  "os": ["linux"],
+  "command": "if [ -x /opt/myapp/bin/myapp ]; then echo true; else echo false; fi",
+  "parse": { "kind": "first_line" },
+  "type": "bool"
+}
+```
+
+Do not print `yes`/`no`, `1`/`0` or `installed`/`missing`. With `true` and
+`false`, every host answers in the same words, the charts show two clear
+groups, and an inventory query can test it simply: `myapp.installed` finds
+the hosts where it is true, and `!myapp.installed` the rest.
+
 ### Step 5: test it
 
 Test your collector against one host. **Nothing is saved**, so you can try as
@@ -378,9 +404,13 @@ Your value now appears:
 If `kryostate serve` was already running when you created or changed the file,
 restart it so that the web interface uses the new version. The
 **Collectors** page in the web interface lists every collector that will run;
-choose **your own** under the source filter to see yours, each with its
-command, its rule and a **Test** button. If the file has a mistake, the page
-says what and where, rather than the server refusing to start.
+choose **your own** under the source filter to see yours. Each one's page
+shows its command, its rule, a **Test** button and its **Schedule**. Your own
+collectors run once a day by default while `kryostate serve` runs; change
+that on the collector's page, or with
+`kryostate collectors -schedule spec.linux.nginx.version -every 6h`. If the
+file has a mistake, the page says what and where, rather than the server
+refusing to start.
 
 ## When it does not work
 
@@ -435,33 +465,38 @@ on Windows.
 
 ### Comparing versions
 
-With `"type": "text"`, KryoState compares values exactly as written. That is
-right for most things.
+Give a version an attribute name that ends in `.version`, such as
+`nginx.version`. KryoState then groups it by its first two numbers, so the
+charts put `1.24.0` and `1.24.3` together under `1.24`. The full value stays
+in the **Raw** column on the host page. This works for versions written as
+two, three or four numbers separated by dots, such as `1.24` or `9.4.1.2`.
 
-With `"type": "version"`, KryoState expects a **normaliser rule** that turns the
-text into a version it can compare and chart by major and minor number. A
-version with no matching rule is reported as "not understood". To add a rule,
-create `rules.json` next to `collectors.json`:
+If your program prints versions in another shape, such as `2024 R2`, add a
+**normaliser rule** that says how to read them. Once some hosts' values of an
+attribute are read by a rule, a value the rules cannot read is shown as "not
+understood", so you can see what the rule is missing. To add a rule, create
+`rules.json` next to `collectors.json`. This one reads `2024 R2` as version
+2024.2:
 
 ```json
 {
   "version": 1,
   "rules": [
     {
-      "id": "nginx-version",
-      "attr": "nginx.version",
-      "pattern": "^(?P<major>[0-9]+)[.](?P<minor>[0-9]+)[.](?P<patch>[0-9]+)$",
-      "family": "nginx",
+      "id": "myapp-release",
+      "attr": "myapp.version",
+      "pattern": "^(?P<major>[0-9]{4}) R(?P<minor>[0-9]+)$",
       "major": "${major}",
       "minor": "${minor}",
-      "patch": "${patch}",
-      "value": "nginx ${major}.${minor}.${patch}"
+      "value": "${major}.${minor}"
     }
   ]
 }
 ```
 
-After changing a rule, `kryostate renormalize` applies it to the values already
+`pattern` is a Go regular expression with named parts; `value` is what is
+shown and charted. Your rules are tried before the built-in ones. After
+changing a rule, `kryostate renormalize` applies it to the values already
 collected.
 
 ### Several copies of one program on a host
@@ -528,7 +563,7 @@ the ones you list in `env`.
 | `os` | yes | List of `linux`, `aix`, `windows` |
 | `command` | yes | Command to run. Read-only |
 | `parse` | yes | How to read the output: `kind`, plus `pattern`, `key`, `marker` and `field`, or `path` |
-| `type` | no | `text` (default), `version`, `path`, `number`, `bool` (a `true` or `false` answer; `flag` is read as `bool`) or `list` |
+| `type` | no | `text` (default), `version`, `path`, `number`, `bool` (the command prints `true` or `false`) or `list` |
 | `optional` | no | `true` when some hosts legitimately lack the value |
 | `stacks` | no | Only run on hosts in these stacks |
 | `scope` | no | Separates several instances on one host |

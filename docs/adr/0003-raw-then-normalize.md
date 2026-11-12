@@ -1,6 +1,10 @@
 # 3. Collectors return bytes; normalisation is a separate versioned layer
 
-Status: accepted
+Status: accepted, partly superseded
+
+> Since November 2026 what a host reports always wins, and the disagreements,
+> findings and decisions this record describes were removed. Read the
+> README for the current behaviour; the reasoning below is kept as history.
 
 ## Context
 

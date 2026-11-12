@@ -34,17 +34,17 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/web"
 )
 
-const usage = `kryostate — an inventory is kryostate until a machine confirms it
+const usage = `kryostate — an inventory of servers, read from the servers themselves
 
 Usage: kryostate <command> [flags]
 
 Everyday:
-  hosts          list hosts, with a few attributes as columns
+  hosts          list hosts, filtered by a query (-q), with chosen attributes as columns
   show           everything known about one host
   refresh        collect and run checks, in one go
   set            state a host's application, stack or role yourself
-  collectors     list collectors, create your own, and test one safely
-  serve          run the web interface
+  collectors     list, switch on, test and schedule collectors; create your own
+  serve          run the web interface, and the collection schedules
 
 Setup and maintenance:
   import         read hosts, stacks, roles and applications from a Markdown or CSV inventory
@@ -275,9 +275,9 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	db := dbFlag(fs)
 	addr := fs.String("addr", "127.0.0.1:8099", "address to listen on")
 	rules := fs.String("rules", "", "extra normaliser rules file")
-	collectors := fs.String("collectors", "", "extra collector spec file")
+	collectors := fs.String("collectors", "", "collector spec file to use instead of collectors.json beside the database")
 	externals := fs.String("externals", "", "file listing external collector programs")
-	stale := fs.Duration("stale-after", 14*24*time.Hour, "age at which a collected value counts as stale on the overview")
+	stale := fs.Duration("stale-after", 14*24*time.Hour, "when the built-in collectors run only by hand: how long after its last good collection the overview calls a host stale (otherwise twice their shortest schedule)")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
 	trusted := fs.String("trusted-origin", "", "comma-separated origins, such as https://cmdb.example.com, allowed to submit forms when a proxy serves this under another name")
 	allowContent := fs.Bool("allow-content-collectors", false, "let the web interface switch on catalog collectors that read the contents of files and variables")
@@ -458,7 +458,7 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 	conc := fs.Int("concurrency", 8, "how many hosts at once")
 	timeout := fs.Duration("host-timeout", 2*time.Minute, "limit for everything done against one host")
 	rules := fs.String("rules", "", "extra normaliser rules file")
-	collectors := fs.String("collectors", "", "extra collector spec file")
+	collectors := fs.String("collectors", "", "collector spec file to use instead of collectors.json beside the database")
 	externals := fs.String("externals", "", "file listing external collector programs")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
 	fs.Parse(args)
@@ -505,8 +505,8 @@ func cmdCheck(ctx context.Context, args []string) error {
 	httpURL := fs.String("http", "", "URL to request")
 	expect := fs.String("expect", "", "status code or pattern such as 2xx, for -http")
 	timeout := fs.Duration("timeout", 5*time.Second, "limit for one check")
-	del := fs.Bool("delete", false, "remove the named check from -ci")
-	list := fs.Bool("list", false, "list the checks on -ci")
+	del := fs.Bool("delete", false, "remove the named check from -host")
+	list := fs.Bool("list", false, "list the checks on -host")
 	run := fs.Bool("run", false, "run every enabled check and record the results")
 	only := fs.String("only", "", "comma-separated hosts (names or ids), with -run")
 	disable := fs.Bool("disable", false, "keep the check but stop running it")
@@ -662,7 +662,7 @@ func cmdReparse(ctx context.Context, args []string) error {
 	attr := fs.String("attr", "", "SQL LIKE pattern for the attributes to redo, blank for all")
 	spec := fs.String("spec", "", "single collector id to redo")
 	ci := hostFlag(fs, "single host to redo")
-	collectors := fs.String("collectors", "", "extra collector spec file")
+	collectors := fs.String("collectors", "", "collector spec file to use instead of collectors.json beside the database")
 	rules := fs.String("rules", "", "extra normaliser rules file")
 	fs.Parse(args)
 
@@ -727,7 +727,7 @@ func cmdEvidence(ctx context.Context, args []string) error {
 
 	if *forget {
 		if f.CIID == "" && f.SpecID == "" && f.Attr == "" {
-			return errors.New("refusing to delete every stored output without -ci, -spec or -attr")
+			return errors.New("refusing to delete every stored output without -host, -spec or -attr")
 		}
 		n, err := st.ForgetEvidence(ctx, f)
 		if err != nil {
