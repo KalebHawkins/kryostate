@@ -1,21 +1,67 @@
+{{define "chart-detail"}}
+<p class="muted viz__caption">{{.KindText}}, from the value that currently wins on each of {{.Total}} hosts. Hatched marks are hosts with no value, split by why. Select a mark or a row to list those hosts.</p>
+<div class="viz__large">{{.LargeSVG}}</div>
+{{with .Unknowns}}<p class="viz__unknowns">{{range .}}<a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true"><svg class="viz__swatch" viewBox="0 0 12 12" aria-hidden="true"><rect class="viz__mark viz__mark--unknown" width="12" height="12" rx="3"></rect></svg> {{.Label}}: {{.Count}}</a> {{end}}</p>{{end}}
+<div class="table-wrap viz__table">
+<table>
+  <caption class="visually-hidden">{{.Title}}: hosts by value</caption>
+  <thead><tr><th scope="col">{{if eq .Kind "hist"}}Range{{else}}Value{{end}}</th><th scope="col" class="num">Hosts</th><th scope="col" class="num">Share</th></tr></thead>
+  <tbody>
+  {{$t := .Total}}
+  {{range .Rows}}
+    <tr{{if .Unknown}} class="viz__row--unknown"{{end}}>
+      <td>{{if .Href}}<a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Label}}</a>{{else}}{{.Label}}{{end}}</td>
+      <td class="num">{{.Count}}</td>
+      <td class="num">{{.Share $t}}</td>
+    </tr>
+  {{end}}
+  {{if eq .Kind "hist"}}{{range .Unknowns}}
+    <tr class="viz__row--unknown">
+      <td>{{if .Href}}<a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Label}}</a>{{else}}{{.Label}}{{end}}</td>
+      <td class="num">{{.Count}}</td>
+      <td class="num">{{.Share $t}}</td>
+    </tr>
+  {{end}}{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
 {{define "charts.html"}}
-<h1>Charts</h1>
-<p class="muted">Counts of the value that currently wins for each attribute. Hosts with no value are shown as their own bucket, split by why: never collected, collection failed, or collected and not understood. Click a bar to see the hosts behind it.</p>
-<div class="cards">
+<h1>Charts{{if .Single}}{{range .Charts}}: {{.Title}}{{end}}{{end}}</h1>
+{{if .Single}}
+  <p><a href="/charts" hx-get="/charts" hx-target="#main" hx-push-url="true">All charts</a></p>
+  {{range .Charts}}<section class="card viz viz--single">{{template "chart-detail" .}}</section>{{else}}<div class="card"><p class="muted">Nothing is recorded for that attribute.</p></div>{{end}}
+{{else}}
+<p class="muted">How the value that currently wins for each attribute is spread across hosts. Hosts with no value are counted too, hatched, split by why: never collected, collection failed, or collected and not understood. Open a chart for a larger view and a table; each value there links to its hosts.</p>
+<div class="vizgrid">
 {{range .Charts}}
-  <div class="card">
-    <h2>{{.Title}} <span class="muted">({{.Total}})</span></h2>
-    {{.SVG}}
-  </div>
+  <section class="card viz">
+    <h2 class="viz__title">{{.Title}} <span class="muted">{{.Total}} hosts</span></h2>
+    <a class="viz__open" href="/charts?attr={{qesc .Attr}}" data-dialog="{{.DomID}}" aria-haspopup="dialog">
+      <span class="visually-hidden">Open {{.Title}}: larger chart and table of values. </span>
+      {{.CardSVG}}
+    </a>
+    <dialog class="viz-dialog" id="{{.DomID}}" aria-labelledby="{{.DomID}}-title">
+      <div class="viz-dialog__inner">
+        <header class="viz-dialog__head">
+          <h2 id="{{.DomID}}-title">{{.Title}} <span class="muted mono">{{.Attr}}</span></h2>
+          <button type="button" class="btn btn--ghost" data-close>Close</button>
+        </header>
+        {{template "chart-detail" .}}
+      </div>
+    </dialog>
+  </section>
 {{else}}
   <div class="card"><p class="muted">Nothing has enough values to chart yet.</p></div>
 {{end}}
 </div>
 {{if .Skipped}}
 <h2>Not charted</h2>
-<p class="muted">These attributes have close to one distinct value per host, so a chart of them groups nothing. Open one anyway if you need it.</p>
+<p class="muted">These attributes identify a host, or have close to one value per host, so a chart of them groups nothing. Open one anyway if you need it.</p>
 <ul>
-{{range .Skipped}}<li><a href="/charts?attr={{qesc .Attr}}" hx-get="/charts?attr={{qesc .Attr}}" hx-target="#main" hx-push-url="true">{{label .Attr}}</a> <span class="muted">{{.Distinct}} distinct over {{.CICount}} hosts</span></li>{{end}}
+{{range .Skipped}}<li><a href="/charts?attr={{qesc .Attr}}" hx-get="/charts?attr={{qesc .Attr}}" hx-target="#main" hx-push-url="true">{{.Title}}</a> <span class="mono muted">{{.Attr}}</span> <span class="muted">— {{.Reason}}, {{.Hosts}} hosts</span></li>{{end}}
 </ul>
+{{end}}
 {{end}}
 {{end}}

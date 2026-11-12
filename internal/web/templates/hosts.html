@@ -13,12 +13,13 @@
   </form>
 </details>
 <div class="filterbar">
-  <form hx-get="/hosts" hx-target="#main" hx-push-url="true">
-    <label for="q" class="visually-hidden">Search names</label>
-    <input id="q" type="search" name="q" value="{{.Filter.Search}}" placeholder="name contains…"
-           hx-get="/hosts" hx-target="#main" hx-push-url="true" hx-include="closest form" hx-trigger="keyup changed delay:300ms, search">
-    <label for="stack" class="visually-hidden">Stack</label>
-    <input id="stack" type="text" name="stack" value="{{.Filter.Stack}}" placeholder="stack">
+  <form class="qbar" hx-get="/hosts" hx-target="#main" hx-push-url="true">
+    <label for="q" class="visually-hidden">Filter hosts with a query, or type part of a name</label>
+    <input id="q" class="qbar__input mono" type="search" name="q" value="{{.Expr}}" spellcheck="false" autocomplete="off"
+           placeholder='os.family == "Linux" &amp;&amp; stack == "web"  — or part of a name'
+           {{if .QErr}}aria-invalid="true" aria-describedby="q-err"{{end}}>
+    {{if .Filter.Stack}}<input type="hidden" name="stack" value="{{.Filter.Stack}}">{{end}}
+    {{if .Filter.Retired}}<input type="hidden" name="retired" value="1">{{end}}
     {{if .Filter.Attr}}<input type="hidden" name="attr" value="{{.Filter.Attr}}">{{end}}
     {{if .Filter.Value}}<input type="hidden" name="value" value="{{.Filter.Value}}">{{end}}
     {{if .Filter.Unknown}}<input type="hidden" name="unknown" value="{{.Filter.Unknown}}">{{end}}
@@ -35,12 +36,31 @@
     <button class="btn" type="submit">Filter</button>
     <a class="btn btn--ghost" href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Clear</a>
     <a class="btn btn--ghost" href="/hosts.csv?{{.Query}}" download>CSV</a>
+    <a class="btn btn--ghost" href="/hosts.json?{{.Query}}" target="_blank" rel="noopener">JSON</a>
     {{if .Filter.Retired}}<a class="btn btn--ghost" href="/hosts">Live hosts</a>{{else}}<a class="btn btn--ghost" href="/hosts?retired=1">Retired hosts</a>{{end}}
   </form>
+  {{if .Filter.Stack}}<span class="chip chip--role">stack {{.Filter.Stack}}</span>{{end}}
   {{if .Filter.Attr}}<span class="chip chip--document">{{label .Filter.Attr}} = {{.Filter.Value}}</span>{{end}}
   {{if .Filter.Unknown}}<span class="chip chip--unknown">no {{label .Filter.Unknown}}{{if .Filter.Because}} · {{label .Filter.Because}}{{end}}</span>{{end}}
   {{if .Filter.Unparsed}}<span class="chip chip--unknown">{{label .Filter.Unparsed}} not understood</span>{{end}}
 </div>
+{{with .QErr}}
+<div id="q-err" class="qerr" role="alert">
+  <p><strong>That query does not parse:</strong> {{.Msg}} <span class="muted">(column {{.Col}})</span></p>
+  <pre class="mono" aria-hidden="true">{{$.Expr}}
+<span class="qerr__caret">{{.Caret}}</span></pre>
+</div>
+{{end}}
+<details class="qhelp"{{if .QErr}} open{{end}}>
+  <summary>Query syntax and examples</summary>
+  <div class="qhelp__body">
+    <p>Compare with <code>==</code> and <code>!=</code>, match a pattern with <code>=~</code> and <code>!~</code> (Go regular expressions, unanchored: add <code>^</code> or <code>$</code> to anchor), and order numbers and versions with <code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code>. Join conditions with <code>&amp;&amp;</code> and <code>||</code>, negate with <code>!</code>, and group with parentheses. Text goes in double quotes; <code>true</code>, <code>false</code> and numbers do not.</p>
+    <p>A name is an attribute such as <code>os.version</code>, or one of <code>name</code>, <code>stack</code>, <code>role</code> and <code>application</code>. A collector that takes a path or a name is written with it in brackets, <code>file.exists["/etc/hosts"]</code>, or as <code>file.exists == "/etc/hosts"</code>. <code>has(os.version)</code> is true when there is a value. Text without any of these symbols searches host names.</p>
+    <ul class="qhelp__examples">
+      {{range .Examples}}<li><a class="mono" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Q}}</a> <span class="muted">{{.Note}}</span></li>{{end}}
+    </ul>
+  </div>
+</details>
 
 <div class="table-wrap">
 <table>
