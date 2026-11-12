@@ -129,6 +129,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /runs", s.handleRuns)
 	mux.HandleFunc("GET /schedules", s.handleSchedules)
 	mux.HandleFunc("POST /schedules", s.handleSetSchedule)
+	mux.HandleFunc("POST /schedules/spread", s.handleSpreadSchedules)
 	mux.HandleFunc("GET /changes", s.handleChanges)
 	mux.HandleFunc("GET /guide", s.handleGuide)
 	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)

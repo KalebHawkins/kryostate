@@ -221,6 +221,9 @@ func (s *Scheduler) now() time.Time {
 	return time.Now()
 }
 
+// Loc is where times of day are read and shown.
+func (s *Scheduler) Loc() *time.Location { return s.loc() }
+
 func (s *Scheduler) loc() *time.Location {
 	if s.Location != nil {
 		return s.Location
@@ -294,7 +297,7 @@ func (s *Scheduler) Plan(ctx context.Context) ([]Planned, error) {
 		if p.Last.IsZero() {
 			p.Last = full
 		}
-		p.Next = NextDue(p.Schedule, p.Last, now, s.loc())
+		p.Next = NextDue(c.Key, p.Schedule, p.Last, now, s.loc())
 		out = append(out, p)
 	}
 	return out, nil

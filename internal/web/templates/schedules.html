@@ -1,37 +1,121 @@
 {{define "schedules.html"}}
 <h1>Schedules</h1>
-<p class="muted">How often each collector runs on its own. A scheduled run logs in only to the hosts the collector applies to and runs only its commands. Collectors due at the same moment share one session per host.</p>
+<p class="muted">When each collector runs on its own, soonest first. Collectors that start within {{.Window}} of each other are grouped, so runs that pile up are easy to see and spread out. Times are the server's ({{.Location}}).</p>
 {{if not .Scheduling}}<div class="notice">Scheduling is off in this server (it was started with <span class="mono">-no-schedule</span>). Schedules can still be set here; they take effect in a server that runs them.</div>{{end}}
-<p class="muted small">Limits: {{.MaxSessions}} sessions at once across the estate, {{.PerHost}} per host, hosts spread over up to {{.Spread}} at random, and a host that cannot be reached is left alone for {{.Backoff}}, doubling each time up to {{.BackoffMax}}. Nothing runs more often than every {{.MinEvery}}.</p>
+<p class="sched-limits small"><strong>Collectors run on many hosts at once, but never more than {{.MaxSessions}} sessions across the estate and {{.PerHost}} per host;</strong> anything more waits its turn. Collectors due in the same minute share one session per host.</p>
+<p class="muted small">Hosts are also spread over up to {{.Spread}} at random, and a host that cannot be reached is left alone for {{.Backoff}}, doubling each time up to {{.BackoffMax}}. Nothing runs more often than every {{.MinEvery}}. A schedule without a time of day gets one picked from the collector's name, so defaults do not all run together.</p>
 
-<div class="table-wrap">
-<table class="schedules">
-  <thead><tr><th scope="col">Collector</th><th scope="col">Schedule</th><th scope="col">Last run</th><th scope="col">Next</th><th scope="col">Change</th></tr></thead>
-  <tbody>
-  {{range .Rows}}
-    <tr id="{{.Anchor}}">
-      <th scope="row"><div>{{.Title}}</div><div class="muted mono small">{{.Key}}</div></th>
-      <td>{{.Describe}}{{if .Custom}} <span class="chip chip--human" title="default: {{.Default}}">chosen</span>{{else}} <span class="muted small">default</span>{{end}}</td>
-      <td>{{if .LastRun.IsZero}}<span class="muted">never</span>{{else}}{{ago .LastRun}}{{end}}
-        {{if .Outcome}}{{if eq .Outcome "ok"}}<span class="chip chip--collector">ok</span>{{else if eq .Outcome "running"}}<span class="chip chip--unknown">running</span>{{else if or (eq .Outcome "partial") (eq .Outcome "skipped")}}<span class="chip chip--stale">{{.Outcome}}</span>{{else}}<span class="chip chip--bad">{{.Outcome}}</span>{{end}}{{end}}
-        {{if .Detail}}<div class="muted small" title="{{.Detail}}">{{short .Detail 70}}</div>{{end}}</td>
-      <td class="nowrap{{if .Overdue}} sched--due{{end}}">{{.Next}}</td>
-      <td>
-        <form class="form--inline sched-form" method="post" action="/schedules">
-          <input type="hidden" name="collector" value="{{.Key}}">
-          <label><span class="visually-hidden">Every</span><input type="text" name="every" value="{{.Every}}" size="5" class="mono" aria-label="Interval, such as 30m, 6h or 1d" title="30m, 6h, 1d, 7d"></label>
-          <label><span class="visually-hidden">At</span><input type="time" name="at" value="{{.At}}" aria-label="Time of day, for whole-day intervals" title="Time of day, only with whole days"></label>
-          <button class="btn btn--small" type="submit" name="mode" value="every">Save</button>
-          {{if not .Manual}}<button class="btn btn--small btn--ghost" type="submit" name="mode" value="manual">Manual only</button>{{end}}
-          {{if .Custom}}<button class="btn btn--small btn--ghost" type="submit" name="mode" value="default" title="{{.Default}}">Default</button>{{end}}
-        </form>
-      </td>
-    </tr>
-  {{else}}
-    <tr><td colspan="5" class="muted">No collectors.</td></tr>
+<section class="sched-timeline" aria-labelledby="h-next24">
+  <h2 id="h-next24" class="sched-timeline__title">Next 24 hours <span class="muted small">runs starting each hour{{if .Measured}}; a session takes about {{.Session}}{{end}}</span></h2>
+  <div class="sched-hours">
+  {{range .Hours}}
+    {{if .Href}}<a class="sched-hour{{if .Storm}} sched-hour--busy{{end}}" href="{{.Href}}" title="{{.Title}}">{{else}}<span class="sched-hour" title="{{.Title}}">{{end}}
+      <span class="sched-hour__bar"><span class="sched-hour__fill" style="{{.Height}}"></span></span>
+      <span class="sched-hour__label">{{.Label}}</span>
+      <span class="visually-hidden">{{.Title}}</span>
+    {{if .Href}}</a>{{else}}</span>{{end}}
   {{end}}
-  </tbody>
-</table>
-</div>
+  </div>
+</section>
+
+{{range .Clusters}}
+<section class="sched-cluster{{if .Storm}} sched-cluster--busy{{end}}" id="{{.ID}}" aria-labelledby="{{.ID}}-h">
+  <h2 class="sched-cluster__head" id="{{.ID}}-h">
+    <span class="sched-cluster__when">{{.When}}{{with .Until}}<span class="muted">–{{.}}</span>{{end}}</span>
+    <span class="sched-cluster__meta">{{.Summary}}</span>
+    <span class="sched-cluster__in muted">{{.In}}</span>
+  </h2>
+  {{if .Storm}}
+  <div class="sched-storm small">
+    <p><strong>Busy slot.</strong> About {{.Sessions}} sessions start here and take {{.Duration}} to work through. Spreading them out is gentler on the hosts.</p>
+    {{if ge (len .SpreadKeys) 2}}
+    <form method="post" action="/schedules/spread">
+      {{range .SpreadKeys}}<input type="hidden" name="collector" value="{{.}}">{{end}}
+      <input type="hidden" name="start" value="{{.SpreadStart}}">
+      <input type="hidden" name="over" value="{{.SpreadOver}}">
+      <button class="btn btn--small" type="submit">Spread these over {{.SpreadOver}}</button>
+      <span class="muted">from {{.SpreadStart}}{{if .Unmovable}}; {{.Unmovable}} that run more often than daily stay where they are{{end}}</span>
+    </form>
+    {{else}}
+    <p class="muted">Move one with <strong>Edit</strong> and <strong>Use a quiet time</strong>, or give it a longer interval.</p>
+    {{end}}
+  </div>
+  {{else if gt .Sessions 0}}<p class="sched-cluster__cost muted small">~{{.Sessions}} sessions, {{.Duration}}</p>{{end}}
+  <div class="table-wrap table-wrap--full">
+  <table class="schedules">
+    <thead><tr><th scope="col">Collector</th><th scope="col">Runs</th><th scope="col">Hosts</th><th scope="col">Last run</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
+    <tbody>
+    {{range .Rows}}{{template "sched-row" .}}{{end}}
+    </tbody>
+  </table>
+  </div>
+  {{with .Also}}<p class="muted small sched-also">Also running then: {{join . "; "}}.</p>{{end}}
+</section>
+{{else}}
+<p class="muted">Nothing is scheduled. Every collector runs only when asked.</p>
+{{end}}
+
+{{with .Manual}}
+<section class="sched-cluster" id="manual" aria-labelledby="h-manual">
+  <h2 class="sched-cluster__head" id="h-manual"><span class="sched-cluster__when">Manual only</span><span class="sched-cluster__meta">{{len .}} collector{{if ne (len .) 1}}s{{end}}</span></h2>
+  <div class="table-wrap table-wrap--full">
+  <table class="schedules">
+    <thead><tr><th scope="col">Collector</th><th scope="col">Runs</th><th scope="col">Hosts</th><th scope="col">Last run</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
+    <tbody>
+    {{range .}}{{template "sched-row" .}}{{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{end}}
 <p class="muted small">The same from the command line: <span class="mono">kryostate collectors -schedules</span>, <span class="mono">kryostate collectors -schedule builtin.os -every 1d -at 02:00</span>, <span class="mono">-manual</span> or <span class="mono">-default</span>.</p>
+{{end}}
+
+{{define "sched-row"}}
+<tr id="{{.Anchor}}">
+  <th scope="row"><div>{{.Title}}</div><div class="muted mono small">{{.Key}}</div></th>
+  <td>
+    <div class="sched-when{{if .Overdue}} sched--due{{end}}">{{.When}}{{if not .Manual}}{{if not .Running}} <span class="muted small">{{.Next}}</span>{{end}}{{end}}</div>
+    <div class="muted small">{{.Describe}}{{with .Spread}}, {{.}} <span title="Picked from the collector's name so that collectors without a time of their own do not all run at once">(picked for it)</span>{{end}}{{if .Custom}} <span class="chip chip--human" title="default: {{.Default}}">chosen</span>{{else}} · default{{end}}</div>
+  </td>
+  <td class="num">{{if .Manual}}<span class="muted">—</span>{{else}}{{.Hosts}}{{end}}</td>
+  <td>{{if .LastRun.IsZero}}<span class="muted">never</span>{{else}}{{ago .LastRun}}{{end}}
+    {{if .Outcome}}{{if eq .Outcome "ok"}}<span class="chip chip--collector">ok</span>{{else if eq .Outcome "running"}}<span class="chip chip--unknown">running</span>{{else if or (eq .Outcome "partial") (eq .Outcome "skipped")}}<span class="chip chip--stale">{{.Outcome}}</span>{{else}}<span class="chip chip--bad">{{.Outcome}}</span>{{end}}{{end}}
+    {{if .Detail}}<div class="muted small" title="{{.Detail}}">{{short .Detail 70}}</div>{{end}}</td>
+  <td class="sched-edit-cell">{{template "sched-editor" dict "R" . "Back" ""}}</td>
+</tr>
+{{end}}
+
+{{/* sched-editor changes one collector's schedule. It is a plain form, so it
+     works without JavaScript; CSS hides the custom interval and the time of
+     day unless the choice needs them. Takes R (a scheduleRow) and Back (the
+     page to return to, empty for the schedules page). */}}
+{{define "sched-editor"}}
+<details class="sched-editor">
+  <summary class="btn btn--small btn--ghost">Edit<span class="visually-hidden"> schedule of {{.R.Title}}</span></summary>
+  <form class="sched-form" method="post" action="/schedules">
+    <input type="hidden" name="collector" value="{{.R.Key}}">
+    {{with .Back}}<input type="hidden" name="back" value="{{.}}">{{end}}
+    <label class="sched-field">Runs
+      <select name="preset">
+        {{range .R.Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </label>
+    <label class="sched-field sched-custom">Every <span class="hint">Such as 90m, 8h or 3d</span>
+      <input type="text" name="every" value="{{.R.CustomEvery}}" size="6" class="mono" autocomplete="off">
+    </label>
+    <fieldset class="sched-clock">
+      <legend>At <span class="hint">For daily or longer</span></legend>
+      <label><span class="visually-hidden">Hour</span>
+        <select name="hour">{{range .R.HourOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <span aria-hidden="true">:</span>
+      <label><span class="visually-hidden">Minute</span>
+        <select name="minute">{{range .R.MinuteOpts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    </fieldset>
+    <div class="sched-actions">
+      <button class="btn btn--small btn--primary" type="submit" name="mode" value="set">Save</button>
+      {{with .R.Quiet}}<button class="btn btn--small sched-quiet" type="submit" name="mode" value="quiet" title="The time of day with the fewest other runs near it">Use a quiet time ({{.}})</button>{{end}}
+    </div>
+  </form>
+</details>
 {{end}}

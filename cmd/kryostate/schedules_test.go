@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -62,5 +65,28 @@ func TestScheduleFromTheCommandLine(t *testing.T) {
 	}
 	if err := listSchedules(ctx, eng); err != nil {
 		t.Fatal(err)
+	}
+
+	// The listing leads with clock times and groups runs that start
+	// together.
+	for _, ref := range []string{"os", "hw"} {
+		if err := setSchedule(ctx, eng, ref, "1d", "02:00", false, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := engine.NewScheduler(eng, nil)
+	o, err := s.Outlook(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := writeSchedules(&buf, o, s.Loc(), s.MaxSessions, s.PerHost); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"02:00 · 2 collectors", "Manual only", "catalog.cpu.cores", "never more than\n4 sessions"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("listing lacks %q:\n%s", want, out)
+		}
 	}
 }
