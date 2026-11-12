@@ -52,6 +52,12 @@ func cmdCollectors(ctx context.Context, args []string) error {
 	key := fs.String("key", "", "with config.value: the key to read, such as serverName")
 	section := fs.String("section", "", "with config.value: only read the key inside this [section]")
 	show := fs.String("show", "", "print a collector written out as in "+defaultCollectorsFile+": a catalog name (with -param, or its example value), builtin.<attribute>, spec.<id>, external.<name>, or any spec id")
+	schedules := fs.Bool("schedules", false, "list every collector with its schedule, last run and next due time")
+	schedule := fs.String("schedule", "", "change when a collector runs on its own, such as builtin.os or cpu.cores; with -every, -manual or -default")
+	every := fs.String("every", "", "with -schedule: how often, such as 30m, 6h, 1d or 7d")
+	at := fs.String("at", "", "with -schedule and a whole-day -every: the local time of day, such as 02:00")
+	manual := fs.Bool("manual", false, "with -schedule: only run it when somebody collects")
+	resetSched := fs.Bool("default", false, "with -schedule: go back to the default schedule for its kind")
 	fs.Parse(args)
 
 	// A config.value template takes its file, key and section as one value.
@@ -130,6 +136,13 @@ func cmdCollectors(ctx context.Context, args []string) error {
 	if *show != "" {
 		return showDefinition(os.Stdout, eng, *show, *param)
 	}
+	if *schedules {
+		return listSchedules(ctx, eng)
+	}
+	if *schedule != "" || *every != "" || *at != "" || *manual || *resetSched {
+		return setSchedule(ctx, eng, *schedule, *every, *at, *manual, *resetSched)
+	}
+
 	if *try != "" {
 		specs, err := specsToTry(ctx, eng, *try, *param)
 		if err != nil {

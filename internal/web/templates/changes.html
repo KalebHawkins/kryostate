@@ -1,0 +1,34 @@
+{{define "changes.html"}}
+<h1>Changes{{if .HostLabel}} on <span class="mono">{{.HostLabel}}</span>{{end}}</h1>
+<p class="muted">A change is a collected value that differs from what the same collector read before it. The first value a host ever reports is not a change, and neither is a document disagreeing with a machine.</p>
+
+<nav class="filterbar" aria-label="Time window">
+  {{$host := .Host}}{{$attr := .Attr}}{{$cur := .Window}}
+  {{range .Windows}}
+    {{$href := printf "/changes?window=%s" .Key}}{{if $host}}{{$href = printf "%s&host=%s" $href (qesc $host)}}{{end}}{{if $attr}}{{$href = printf "%s&attr=%s" $href (qesc $attr)}}{{end}}
+    <a class="btn btn--small{{if ne .Key $cur}} btn--ghost{{end}}" href="{{$href}}" hx-get="{{$href}}" hx-target="#main" hx-push-url="true" {{if eq .Key $cur}}aria-current="page"{{end}}>{{.Label}}</a>
+  {{end}}
+  {{if or .Host .Attr}}<a class="small" href="/changes?window={{.Window}}" hx-get="/changes?window={{.Window}}" hx-target="#main" hx-push-url="true">Clear filter{{if .Attr}} ({{.Attr}}){{end}}</a>{{end}}
+</nav>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th scope="col">When</th><th scope="col">Host</th><th scope="col">Attribute</th><th scope="col">Was</th><th scope="col">Now</th><th scope="col">Collector</th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+    <tr>
+      <td class="mono nowrap" title="{{stamp .At}}">{{ago .At}}</td>
+      <td class="host"><a href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Host}}</a></td>
+      <td title="{{.Attr}}"><a href="/changes?window={{$cur}}&attr={{qesc .Attr}}" hx-get="/changes?window={{$cur}}&attr={{qesc .Attr}}" hx-target="#main" hx-push-url="true">{{label .Attr}}</a>{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</td>
+      <td class="mono change__old" title="{{.Old}} (since {{stamp .OldAt}})">{{short .Old 60}}</td>
+      <td class="mono change__new" title="{{.New}}">{{short .New 60}}</td>
+      <td class="small">{{.Collector}}{{if eq .Trigger "schedule"}} <span class="chip chip--sched">schedule</span>{{end}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="6" class="muted">Nothing changed in this window.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{if .Limited}}<p class="muted small">Showing the most recent {{len .Rows}}.</p>{{end}}
+{{end}}

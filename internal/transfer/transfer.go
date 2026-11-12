@@ -45,6 +45,7 @@ var tables = []string{
 	"address", "conn_profile", "check_def", "evidence",
 	"stack", "stack_member",
 	"run", "probe", "audit", "collector_choice",
+	"collector_schedule", "collector_state",
 }
 
 // obsoleteTables were written by earlier builds and hold nothing this build

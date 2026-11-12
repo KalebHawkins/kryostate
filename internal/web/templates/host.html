@@ -14,7 +14,8 @@
   {{range .Facts}}
     <tr>
       <th scope="row" title="{{.Attr}}">{{with index $.Labels .Attr}}{{.}}{{else}}{{label .Attr}}{{end}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</th>
-      <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{template "long-value" .Raw}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}</td>
+      <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{template "long-value" .Raw}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
+        {{with index $.Changed .AssertionID}} <span class="chip chip--changed" title="was {{.Old}} · changed {{stamp .At}}">changed</span>{{end}}</td>
       <td class="mono muted">{{template "long-value" .Raw}}</td>
       <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>
       <td class="mono">{{ago .ObservedAt}}</td>

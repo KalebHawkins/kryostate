@@ -1,23 +1,75 @@
 {{define "home.html"}}
 <h1>Overview</h1>
-<p class="muted">Coverage is counted from probes and collector runs, not from rows in a table.</p>
+<p class="muted">Counted from what happened the last time each host was collected, not from rows in a table.{{with .LastRun}} Last run {{ago .Started}}{{if .Trigger}} ({{.Trigger}}){{end}}: {{.Succeeded}} ok, {{.Failed}} failed. <a href="/runs" hx-get="/runs" hx-target="#main" hx-push-url="true">Runs</a>{{end}}</p>
 
 <div class="stats">
-  <div class="stat"><span class="stat__value">{{.Coverage.Hosts}}</span><span class="stat__label">hosts</span></div>
-  <div class="stat"><span class="stat__value">{{.Coverage.WithProfile}}</span><span class="stat__label">have a way in</span></div>
-  <div class="stat"><span class="stat__value">{{.Coverage.FreshLast24h}}</span><span class="stat__label">collected 24h</span></div>
-  <div class="stat"><span class="stat__value">{{.Coverage.Stale}}</span><span class="stat__label">older than {{.StaleDays}}d</span></div>
-  <div class="stat"><span class="stat__value">{{.Coverage.NeverSeen}}</span><span class="stat__label">never collected</span></div>
-  <div class="stat"><span class="stat__value">{{.Coverage.FailingNow}}</span><span class="stat__label">failing now</span></div>
+  <div class="stat"><span class="stat__value">{{.Health.Hosts}}</span><span class="stat__label">hosts</span></div>
+  <div class="stat stat--ok"><span class="stat__value">{{.Health.OK}}</span><span class="stat__label">collected ok</span></div>
+  <div class="stat{{if .Health.Failing}} stat--bad{{end}}"><span class="stat__value">{{.Health.Failing}}</span><span class="stat__label">failing</span></div>
+  <div class="stat{{if .Health.Stale}} stat--warn{{end}}" title="Last good collection older than twice the built-in collectors' schedule"><span class="stat__value">{{.Health.Stale}}</span><span class="stat__label">stale, over {{.StaleAfter}}</span></div>
+  <div class="stat"><span class="stat__value">{{.Health.Never}}</span><span class="stat__label">never collected</span></div>
+  <div class="stat"><span class="stat__value">{{.Health.NoConnection}}</span><span class="stat__label">no connection</span></div>
 </div>
 
-<div class="card">
-  <h2>Run a collection</h2>
-  <p class="muted">Opens a session to every enabled target and records what each one reports. Progress streams below; nothing in the interface blocks on it.</p>
-  <button class="btn btn--primary" hx-post="/collect" hx-target="#runstatus" hx-swap="innerHTML">Collect now</button>
-  <div id="runstatus"></div>
-  <div id="runlog" hx-ext="sse" sse-connect="/events" sse-swap="progress" hx-swap="afterbegin"></div>
-  {{with .LastRun}}<p class="muted">Last run {{ago .Started}}: {{.Succeeded}} ok, {{.Failed}} failed, status {{.Status}}.</p>{{end}}
-</div>
+<div class="overview">
+  <section class="card">
+    <h2>Failing hosts{{if .Failing}} ({{.Health.Failing}}){{end}}</h2>
+    {{if .Failing}}
+    <ul class="list">
+      {{range .Failing}}
+      <li><a class="mono" href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Label}}</a>
+        <span class="chip chip--bad">{{.Outcome}}</span> <span class="muted">{{ago .At}}</span>
+        {{if .Detail}}<div class="muted small mono" title="{{.Detail}}">{{short .Detail 140}}</div>{{end}}</li>
+      {{end}}
+    </ul>
+    {{if .MoreFailing}}<p class="muted small">Showing the {{len .Failing}} most recent.</p>{{end}}
+    {{else if .Health.OK}}
+    <p class="muted">None. Every host's latest collection succeeded.</p>
+    {{else}}
+    <p class="muted">None failing, but nothing has been collected either. Add a connection to a host, then collect from the <a href="/runs" hx-get="/runs" hx-target="#main" hx-push-url="true">Runs</a> page.</p>
+    {{end}}
+  </section>
 
+  <section class="card">
+    <h2>Changed in the last 24 hours{{if .TotalChanges}} ({{.TotalChanges}}){{end}}</h2>
+    {{if .Changes}}
+    <ul class="list">
+      {{range .Changes}}
+      <li><a class="mono" href="/hosts/{{.CIID}}" hx-get="/hosts/{{.CIID}}" hx-target="#main" hx-push-url="true">{{.Host}}</a>
+        <span title="{{.Attr}}">{{label .Attr}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</span>
+        <div class="change small"><span class="change__old mono" title="{{.Old}}">{{short .Old 40}}</span> <span class="change__arrow" aria-label="changed to">→</span> <span class="change__new mono" title="{{.New}}">{{short .New 40}}</span> <span class="muted">{{ago .At}}</span></div></li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="muted">No collected value changed in the last day.</p>
+    {{end}}
+    <p class="small"><a href="/changes" hx-get="/changes" hx-target="#main" hx-push-url="true">All changes</a> · <a href="/changes?window=7d" hx-get="/changes?window=7d" hx-target="#main" hx-push-url="true">last 7 days</a></p>
+  </section>
+
+  <section class="card">
+    <h2>Coming up</h2>
+    {{if not .Scheduling}}<p class="notice small">Scheduling is off in this server (started with <span class="mono">-no-schedule</span>), so these only run when someone collects.</p>{{end}}
+    {{if .Upcoming}}
+    <ul class="list">
+      {{range .Upcoming}}
+      <li><span>{{.Title}}</span> <span class="muted small">{{.Sched}}</span> <span class="nowrap">{{.When}}</span></li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="muted">Every collector is manual only.</p>
+    {{end}}
+    <p class="small"><a href="/schedules" hx-get="/schedules" hx-target="#main" hx-push-url="true">Schedules</a></p>
+  </section>
+
+  {{if .Families}}
+  <section class="card">
+    <h2>Operating systems</h2>
+    <ul class="list">
+      {{range .Families}}
+      <li>{{if .Unknown}}<span class="muted">{{.Label}}</span>{{else}}<span class="mono">{{.Label}}</span>{{end}} <span class="num">{{.Count}}</span></li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
+</div>
 {{end}}

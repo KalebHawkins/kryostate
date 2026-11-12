@@ -108,8 +108,12 @@ type Assertion struct {
 	SourceID  int64
 	// Scope distinguishes assertions about different instances on one host,
 	// such as two queue managers. Empty means host-wide.
-	Scope      string
-	RunID      string
+	Scope string
+	RunID string
+	// SpecID names the collector command that produced a collected value, so
+	// a change can be traced to the collector that saw it. Empty for claims
+	// that did not come from a collector spec.
+	SpecID     string
 	ObservedAt time.Time
 	ReceivedAt time.Time
 	Retracted  *time.Time

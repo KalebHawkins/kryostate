@@ -92,6 +92,8 @@ func (s *Store) migrate(ctx context.Context) error {
 		{"conn_profile", "bastion_host_key", "TEXT NOT NULL DEFAULT ''"},
 		{"assertion", "confirmed_at", "TEXT NOT NULL DEFAULT ''"},
 		{"evidence", "assertion_id", "INTEGER"},
+		{"assertion", "spec_id", "TEXT NOT NULL DEFAULT ''"},
+		{"run", "trigger", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(ctx, c.table, c.col, c.decl); err != nil {
 			return err
@@ -341,9 +343,9 @@ func (s *Store) Assert(ctx context.Context, a model.Assertion, n *Normalized) (i
 	}
 
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO assertion (ci_id, attr, raw_value, value_type, source_id, scope, run_id, observed_at, received_at, confirmed_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		a.CIID, a.Attr, a.Raw, string(a.ValueType), a.SourceID, a.Scope, a.RunID,
+		`INSERT INTO assertion (ci_id, attr, raw_value, value_type, source_id, scope, run_id, spec_id, observed_at, received_at, confirmed_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		a.CIID, a.Attr, a.Raw, string(a.ValueType), a.SourceID, a.Scope, a.RunID, a.SpecID,
 		ts(a.ObservedAt), ts(time.Now()), ts(a.ObservedAt))
 	if err != nil {
 		return 0, err

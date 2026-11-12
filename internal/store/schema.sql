@@ -301,3 +301,28 @@ CREATE TABLE IF NOT EXISTS collector_choice (
     created_at TEXT NOT NULL,
     UNIQUE (template, param)
 );
+
+-- When a collector runs on its own. A row exists only where somebody chose a
+-- schedule; a collector without one runs on the default for its kind, which
+-- lives in code so that a better default reaches every estate that never
+-- chose. every_sec = 0 means manual only. at_time is HH:MM local time and is
+-- only used with whole-day intervals.
+CREATE TABLE IF NOT EXISTS collector_schedule (
+    collector  TEXT PRIMARY KEY,
+    every_sec  INTEGER NOT NULL,
+    at_time    TEXT NOT NULL DEFAULT '',
+    updated_by TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+
+-- What happened the last time each collector ran, scheduled or not. Kept
+-- apart from collector_schedule so that a collector on its default schedule
+-- still has a history.
+CREATE TABLE IF NOT EXISTS collector_state (
+    collector     TEXT PRIMARY KEY,
+    last_started  TEXT NOT NULL DEFAULT '',
+    last_finished TEXT NOT NULL DEFAULT '',
+    last_outcome  TEXT NOT NULL DEFAULT '',
+    last_detail   TEXT NOT NULL DEFAULT '',
+    last_run_id   TEXT NOT NULL DEFAULT ''
+);
