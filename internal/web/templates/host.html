@@ -4,8 +4,13 @@
   · <a href="#manage">Manage connection, stacks, checks…</a></p>
 {{if not .Profiles}}{{if not .CI.RetiredAt}}<div class="notice">Nothing has been collected from this host because KryoState does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}{{end}}
 
-<h2>Facts</h2>
-<p class="muted">Each value is the one that currently holds for that attribute. What the host reports always wins over what a person or a document says.</p>
+<h2 id="facts">Facts</h2>
+{{with .AsOf}}<div class="notice" role="status">Showing values as they were on {{.Label}} · <a href="/hosts/{{$.CI.ID}}#facts">Back to now</a></div>{{end}}
+<form method="get" action="/hosts/{{.CI.ID}}#facts" class="muted small" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.25rem 0 .5rem">
+  <label>As of <input type="date" name="at" value="{{with .AsOf}}{{.Input}}{{end}}"></label>
+  <button type="submit">Show</button>
+</form>
+<p class="muted">{{if .AsOf}}Each value is the one that held for that attribute then, among what had been reported by that time; a date means the end of that day.{{else}}Each value is the one that currently holds for that attribute.{{end}} What the host reports always wins over what a person or a document says.</p>
 <div class="table-wrap">
 <table>
   <thead><tr><th scope="col">Attribute</th><th scope="col">Value</th><th scope="col">Raw</th><th scope="col">Source</th><th scope="col">Observed</th></tr></thead>
@@ -21,7 +26,7 @@
       <td class="mono">{{ago .ObservedAt}}</td>
     </tr>
   {{else}}
-    <tr><td colspan="5" class="muted">Nothing asserted about this host yet.</td></tr>
+    <tr><td colspan="5" class="muted">{{if .AsOf}}Nothing had been reported about this host by then.{{else}}Nothing asserted about this host yet.{{end}}</td></tr>
   {{end}}
   </tbody>
 </table>
@@ -181,7 +186,7 @@
     <p class="muted">What this host runs, recorded under your name. Its stack and role are set under Stacks; everything else is what the host reports.</p>
     <form class="form" method="post" action="/hosts/{{.CI.ID}}/application">
       <label>Application <input type="text" name="application" required class="mono" placeholder="ledger"
-        value="{{range .Facts}}{{if and (eq .Attr "application") (not .Scope)}}{{.Raw}}{{end}}{{end}}"></label>
+        value="{{range (or .CurrentFacts .Facts)}}{{if and (eq .Attr "application") (not .Scope)}}{{.Raw}}{{end}}{{end}}"></label>
       <div class="form__actions"><button class="btn" type="submit">Record</button></div>
     </form>
   </div>

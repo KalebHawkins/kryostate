@@ -241,7 +241,7 @@ one command.
 | Command | Function |
 |---|---|
 | `hosts` | Lists hosts, with chosen attributes as columns (`-cols`). `-q` filters with a query; `-json` prints the shape `/hosts.json` uses |
-| `show` | Shows the facts, probes and connections for one host |
+| `show` | Shows the facts, probes and connections for one host. `-at 2026-03-01` (or `2026-03-01T15:04`) shows each value as it was then |
 | `refresh` | Runs `collect`, then the checks |
 | `set` | Records a host's application, or its stack and role, with an optional `-reason` note for the audit log. Nothing else can be set by hand |
 | `collectors` | Lists collectors and the catalog (`-catalog`), switches catalog collectors on and off (`-enable`, `-disable`), creates a file for your own (`-init`), prints any collector as it would be written in that file (`-show`), tests any collector without saving (`-try`), and lists or changes schedules (`-schedules`, `-schedule`) |

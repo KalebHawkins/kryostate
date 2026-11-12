@@ -147,9 +147,13 @@ func cmdShow(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("show", flag.ExitOnError)
 	db := dbFlag(fs)
 	asJSON := fs.Bool("json", false, "print JSON instead of text")
+	at := fs.String("at", "", "show each attribute's value as it was at `TIME` (2026-03-01 for the end of that day, or 2026-03-01T15:04)")
 	pos := parseInterspersed(fs, args)
 	if len(pos) != 1 {
-		return errors.New("usage: kryostate show <host> [-json]")
+		return errors.New("usage: kryostate show <host> [-json] [-at 2026-03-01[T15:04]]")
+	}
+	if *at != "" {
+		return showAt(ctx, *db, pos[0], *at, *asJSON)
 	}
 
 	st, err := openStore(*db)

@@ -572,6 +572,19 @@ before. **Changes** lists them for the last 24 hours, 7 days or 30 days; the
 Overview shows the last day, and a host page marks a value that changed in
 the last week with **changed** (hover for the old value).
 
+To see a host as it was on a past day, pick the date in the **As of** box
+above its Facts table, or run:
+
+```sh
+kryostate show web01 -at 2026-03-01          # as at the end of 1 March
+kryostate show web01 -at 2026-03-01T15:04    # as at that minute
+```
+
+Each attribute shows the value that won among what had been reported by
+then, under the same rules as today. An attribute first reported later is
+not listed. The rest of the host page, and anything you change, stays in the
+present.
+
 ### Finding hosts
 
 On the **Inventory** page, type part of a name or a query into the box,
