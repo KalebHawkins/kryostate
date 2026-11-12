@@ -140,3 +140,37 @@ func TestRemovedCatalogChoiceIsShownAndRemovable(t *testing.T) {
 		t.Error("the list stays after the last one is turned off")
 	}
 }
+
+// TestHostPageShowsUnreadableValuesAsUnknown: a value the host could not read
+// last time is shown as unknown with what the host said, not as the old value.
+func TestHostPageShowsUnreadableValuesAsUnknown(t *testing.T) {
+	_, h, st := testServer(t)
+	ctx := context.Background()
+	id := linuxHost(t, st, "web01")
+	c, err := st.PutChoice(ctx, collect.Choice{Template: "file.exists", Param: "/etc/ssh/sshd_config.d/hardening.conf"}, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := st.SourceID(ctx, model.SourceCollector, "builtin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Assert(ctx, model.Assertion{CIID: id, Attr: c.Attr, Raw: "false", SourceID: src,
+		ObservedAt: time.Now().Add(-2 * time.Hour)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordReadFailure(ctx, store.ReadFailure{CIID: id, Attr: c.Attr, SourceID: src,
+		Error: "cannot look inside /etc/ssh/sshd_config.d as this user", LastAt: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	page := get(t, h, "/hosts/"+id, nil).Body.String()
+	for _, want := range []string{">unknown<", "could not read since", "cannot look inside /etc/ssh/sshd_config.d"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("host page lacks %q", want)
+		}
+	}
+	// The query language sees it as missing, so a rule counts it as unknown.
+	if hosts := get(t, h, "/hosts?q="+url.QueryEscape(c.Attr+` == "false"`), nil).Body.String(); strings.Contains(hosts, ">web01<") {
+		t.Error("an unreadable value still matches a query")
+	}
+}

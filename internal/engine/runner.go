@@ -361,6 +361,17 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 			if !optional[r.SpecID] {
 				failures = append(failures, r.SpecID)
 			}
+			// The host was asked and could not say, so whatever it said
+			// last time is no longer known to be true. A reading that never
+			// completed is our failure, not the host's, and changes nothing.
+			if r.Completed {
+				if ferr := e.Store.RecordReadFailure(ctx, store.ReadFailure{
+					CIID: p.CIID, Attr: r.Attr, Scope: r.Scope, SourceID: srcID,
+					SpecID: r.SpecID, Error: readError(r), LastAt: r.ObservedAt,
+				}); ferr != nil && e.Log != nil {
+					e.Log.Warn("failed reading not recorded", "spec", r.SpecID, "err", ferr)
+				}
+			}
 			continue
 		}
 		aid, err := e.assertID(ctx, p.CIID, r, srcID, runID)
@@ -503,4 +514,22 @@ func trimErr(err error) string {
 		return s[:300]
 	}
 	return s
+}
+
+// readError is what a failed reading is remembered by: what the command said
+// on standard error when it said anything, since that names the cause
+// ("cannot look inside /etc/ssh/sshd_config.d as this user"), and otherwise
+// the error itself.
+func readError(r collect.Reading) string {
+	msg := r.Stderr
+	if msg == "" && r.Err != nil {
+		msg = r.Err.Error()
+	}
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		msg = msg[:i]
+	}
+	if len(msg) > 300 {
+		msg = msg[:300] + "…"
+	}
+	return msg
 }

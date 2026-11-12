@@ -9,7 +9,7 @@ func Explain(r Reading) string {
 	if r.Err == nil {
 		return ""
 	}
-	text := strings.ToLower(r.Err.Error() + "\n" + r.Output)
+	text := strings.ToLower(r.Err.Error() + "\n" + r.Output + "\n" + r.Stderr)
 	switch {
 	case !r.Ran && (strings.Contains(text, "exited 127") || strings.Contains(text, "command not found") ||
 		strings.Contains(text, "is not recognized")):
@@ -18,8 +18,11 @@ func Explain(r Reading) string {
 		strings.Contains(text, "does not exist"):
 		return "The file or folder is not there on this host. For a catalog collector this usually just means the application is not installed, and a collection leaves the value blank."
 	case strings.Contains(text, "permission denied") || strings.Contains(text, "access is denied") ||
-		strings.Contains(text, "unauthorizedaccess"):
+		strings.Contains(text, "unauthorizedaccess") || strings.Contains(text, "cannot look inside"):
 		return "The user kryostate logs in as is not allowed to read this. Give that user read access, or leave this collector off for these hosts."
+	case !r.Ran && r.Completed && r.Stderr != "":
+		msg, _, _ := strings.Cut(strings.TrimSpace(r.Stderr), "\n")
+		return "The command reported failure and said why: " + msg
 	case !r.Ran && strings.TrimSpace(r.Output) == "":
 		return "The command printed nothing and reported failure, which usually means it found nothing to report: no matching process, key or package."
 	case !r.Ran:

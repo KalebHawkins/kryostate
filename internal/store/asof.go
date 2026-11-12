@@ -17,6 +17,9 @@ import (
 // made, the one moment it is known to have been said by then. Asked about
 // the present, this is exactly current_fact.
 //
+// A source whose last reading by then had failed counts as having said
+// nothing, as it does in current_fact.
+//
 // Retracted assertions stay out, whenever they were retracted: a retraction
 // marks a reading this tool extracted wrongly, which was never what the
 // source said, so it is not shown as having been true.
@@ -41,6 +44,10 @@ WHERE a.ci_id = :ci
   AND a.observed_at <= :at
   AND a.retracted_at IS NULL
   AND COALESCE(ps.allowed, pd.allowed, 1) = 1
+  AND NOT EXISTS (SELECT 1 FROM read_failure rf
+                  WHERE rf.ci_id = a.ci_id AND rf.attr = a.attr AND rf.scope = a.scope
+                    AND rf.source_id = a.source_id AND rf.since <= :at
+                    AND (rf.cleared_at IS NULL OR rf.cleared_at > :at))
 ), ranked AS (
 SELECT claim.*, ROW_NUMBER() OVER (
         PARTITION BY ci_id, attr, scope

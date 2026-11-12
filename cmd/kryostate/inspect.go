@@ -185,6 +185,10 @@ func cmdShow(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	unread, err := st.ReadFailures(ctx, id)
+	if err != nil {
+		return err
+	}
 
 	if *asJSON {
 		type factJSON struct {
@@ -203,7 +207,7 @@ func cmdShow(ctx context.Context, args []string) error {
 		}
 		return writeJSON(map[string]any{
 			"id": ci.ID, "name": ci.Label, "created_at": ci.CreatedAt, "retired_at": ci.RetiredAt,
-			"identities": idents, "facts": fj, "reachability": reach,
+			"identities": idents, "facts": fj, "reachability": reach, "unknown": unreadJSON(unread),
 		})
 	}
 
@@ -231,6 +235,22 @@ func cmdShow(ctx context.Context, args []string) error {
 				attr += " [" + f.Scope + "]"
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s:%s\t%s\n", attr, factValue(f), f.SourceKind, f.SourceName, agoText(f.ObservedAt))
+		}
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+	}
+	if len(unread) > 0 {
+		// The host was asked and could not say, so these are unknown.
+		fmt.Println()
+		tw := newTable(os.Stdout)
+		fmt.Fprintln(tw, "UNKNOWN\tSINCE\tWHY")
+		for _, u := range unread {
+			attr := u.Attr
+			if u.Scope != "" {
+				attr += " [" + u.Scope + "]"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\n", attr, agoText(u.Since), oneLine(u.Error, 70))
 		}
 		if err := tw.Flush(); err != nil {
 			return err
@@ -526,4 +546,13 @@ func dash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// unreadJSON lists what a host could not report, for show -json.
+func unreadJSON(fs []store.ReadFailure) []map[string]any {
+	out := []map[string]any{}
+	for _, f := range fs {
+		out = append(out, map[string]any{"attr": f.Attr, "scope": f.Scope, "since": f.Since, "last_at": f.LastAt, "error": f.Error})
+	}
+	return out
 }

@@ -37,6 +37,9 @@ type hostValue struct {
 	Scope   string
 	Value   string
 	Changed *store.Change
+	// Unread is set when the last reading failed; the value is then
+	// unknown, and this says since when and what the host said.
+	Unread *store.ReadFailure
 }
 
 // hostCollectors is the whole section.
@@ -91,6 +94,12 @@ func (s *Server) hostCollectorsFor(ctx context.Context, ciID string, facts []mod
 
 	byAttr := map[string][]model.Fact{}
 	bySource := map[string][]model.Fact{}
+	unread := map[string][]store.ReadFailure{}
+	if fs, err := s.Store.ReadFailures(ctx, ciID); err == nil {
+		for _, f := range fs {
+			unread[f.Attr] = append(unread[f.Attr], f)
+		}
+	}
 	for _, f := range facts {
 		byAttr[f.Attr] = append(byAttr[f.Attr], f)
 		bySource[f.SourceName] = append(bySource[f.SourceName], f)
@@ -106,6 +115,7 @@ func (s *Server) hostCollectorsFor(ctx context.Context, ciID string, facts []mod
 		}
 		row.Why, row.Query = runReason(h)
 		var vals []model.Fact
+		var failed []store.ReadFailure
 		if h.External != nil {
 			vals = bySource["external:"+h.External.Name]
 		} else {
@@ -114,11 +124,17 @@ func (s *Server) hostCollectorsFor(ctx context.Context, ciID string, facts []mod
 				if !seen[sp.Attr] {
 					seen[sp.Attr] = true
 					vals = append(vals, byAttr[sp.Attr]...)
+					failed = append(failed, unread[sp.Attr]...)
 				}
 			}
 		}
+		// What could not be read comes first and is never folded into
+		// "more": it is the thing to act on.
+		for i := range failed {
+			row.Values = append(row.Values, hostValue{Attr: failed[i].Attr, Scope: failed[i].Scope, Unread: &failed[i]})
+		}
 		for _, f := range vals {
-			if len(row.Values) == hostValueLimit {
+			if len(row.Values) >= hostValueLimit {
 				row.More++
 				continue
 			}

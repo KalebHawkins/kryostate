@@ -323,6 +323,11 @@ func (s *Store) Assert(ctx context.Context, a model.Assertion, n *Normalized) (i
 	if a.ValueType == "" {
 		a.ValueType = model.TypeText
 	}
+	// A good reading ends any failure to read the same thing, whether or
+	// not the value changed.
+	if err := s.clearReadFailure(ctx, a.CIID, a.Attr, a.Scope, a.SourceID, a.ObservedAt); err != nil {
+		return 0, err
+	}
 
 	var lastRaw string
 	var lastID int64

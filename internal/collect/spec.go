@@ -145,7 +145,15 @@ type Reading struct {
 	// command that failed is not material a parse rule should be replayed
 	// over: an error message that happens to match a pattern would become a
 	// value live collection had already rejected.
-	Ran        bool
+	Ran bool
+	// Completed reports that the host ran the command to the end, whatever
+	// it exited with. A reading that completed and still failed is the host
+	// saying it cannot tell; one that did not complete (the session broke,
+	// the run was cancelled) says nothing about the host at all.
+	Completed bool
+	// Stderr is what the command wrote to standard error, for explaining a
+	// failure.
+	Stderr     string
 	Err        error
 	ObservedAt time.Time
 }
@@ -170,6 +178,8 @@ func Run(ctx context.Context, t Transport, specs []Spec) []Reading {
 			Command: sp.Command, ObservedAt: time.Now()}
 		res, err := t.Run(ctx, sp.Command)
 		r.Output = res.Stdout
+		r.Stderr = strings.TrimSpace(res.Stderr)
+		r.Completed = err == nil
 		switch {
 		case err != nil:
 			r.Err = err

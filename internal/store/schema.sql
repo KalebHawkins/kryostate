@@ -234,6 +234,27 @@ CREATE TABLE IF NOT EXISTS fact_meta (
     updated_at    TEXT NOT NULL DEFAULT ''
 );
 
+-- A reading that failed on a host that answered: the command ran and exited
+-- non-zero, or printed nothing the parse rule could use. While an episode is
+-- open (cleared_at NULL) that source's earlier value for the attribute is not
+-- current: the host was asked again and could not say, so the honest answer
+-- is unknown rather than an old value. The next good reading from the same
+-- source closes the episode. Closed episodes are kept so that a host can be
+-- shown as it was on a past day, unknowns included.
+CREATE TABLE IF NOT EXISTS read_failure (
+    id          INTEGER PRIMARY KEY,
+    ci_id       TEXT NOT NULL REFERENCES ci(id),
+    attr        TEXT NOT NULL,
+    scope       TEXT NOT NULL DEFAULT '',
+    source_id   INTEGER NOT NULL REFERENCES source(id),
+    spec_id     TEXT NOT NULL DEFAULT '',
+    error       TEXT NOT NULL DEFAULT '',
+    since       TEXT NOT NULL,
+    last_at     TEXT NOT NULL,
+    cleared_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS read_failure_key ON read_failure (ci_id, attr, scope, source_id, cleared_at);
+
 -- Resolution. One row per (ci, attr, scope): the winning assertion under the
 -- configured precedence, most recent first within a rank. Sources barred from
 -- an attribute are filtered out before ranking rather than losing on rank, so
@@ -276,7 +297,10 @@ LEFT JOIN assertion_norm n ON n.assertion_id = a.id
 LEFT JOIN precedence ps ON ps.attr = a.attr AND ps.source_kind = s.kind
 LEFT JOIN precedence pd ON pd.attr = '*'    AND pd.source_kind = s.kind
 WHERE a.retracted_at IS NULL
-  AND COALESCE(ps.allowed, pd.allowed, 1) = 1;
+  AND COALESCE(ps.allowed, pd.allowed, 1) = 1
+  AND NOT EXISTS (SELECT 1 FROM read_failure rf
+                  WHERE rf.ci_id = a.ci_id AND rf.attr = a.attr AND rf.scope = a.scope
+                    AND rf.source_id = a.source_id AND rf.cleared_at IS NULL);
 
 CREATE VIEW current_fact AS
 SELECT assertion_id, ci_id, attr, scope, raw_value, value_type,

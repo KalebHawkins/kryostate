@@ -76,6 +76,16 @@ A host with no value for an attribute is put in one of three groups:
 | collection failed | The last attempt failed | Repair the access |
 | not understood | The host answered and no rule read it | Fix or add a rule |
 
+A value the host reported before and **could not read on the last try** is
+unknown too, not the old value. If the command ran and failed (for
+example, the user KryoState logs in as cannot look inside a folder that only
+root can read), the old answer is no longer known to be true. Queries treat
+the value as missing, and rules count the host as **Unknown**. The host page and
+`kryostate show` list it as unknown, with what the host said and since
+when. The next good reading brings the value back. If the connection drops
+partway through, that tells you nothing about the host, so values are left
+as they were.
+
 ## 3. Installation
 
 KryoState is one binary. It contains the web interface and needs no other

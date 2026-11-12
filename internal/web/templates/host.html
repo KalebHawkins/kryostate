@@ -235,7 +235,7 @@
         <td><a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Title}}</a></td>
         <td class="small">{{.Why}}{{with .Query}} <code class="mono">{{.}}</code>{{end}}</td>
         <td class="small nowrap">{{.Schedule}}</td>
-        <td class="small">{{range .Values}}<div><span class="muted" title="{{.Attr}}">{{label .Attr}}{{with .Scope}} [{{.}}]{{end}}:</span> <span class="mono">{{short .Value 60}}</span>{{with .Changed}} <span class="chip chip--changed" title="was {{.Old}} · changed {{stamp .At}}">changed</span>{{end}}</div>{{else}}<span class="muted">nothing yet</span>{{end}}{{if .More}}<div class="muted">and {{.More}} more under Facts</div>{{end}}</td>
+        <td class="small">{{range .Values}}<div><span class="muted" title="{{.Attr}}">{{label .Attr}}{{with .Scope}} [{{.}}]{{end}}:</span> {{with .Unread}}<span class="chip chip--bad" title="{{.Error}}">unknown</span> <span class="muted">could not read since {{stamp .Since}}: {{short .Error 80}}</span>{{else}}<span class="mono">{{short .Value 60}}</span>{{end}}{{with .Changed}} <span class="chip chip--changed" title="was {{.Old}} · changed {{stamp .At}}">changed</span>{{end}}</div>{{else}}<span class="muted">nothing yet</span>{{end}}{{if .More}}<div class="muted">and {{.More}} more under Facts</div>{{end}}</td>
       </tr>
     {{else}}
       <tr><td colspan="4" class="muted">No collector runs on this host.</td></tr>

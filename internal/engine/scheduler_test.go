@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -619,7 +620,10 @@ func TestManualAndScheduledDoNotOverlap(t *testing.T) {
 		t.Errorf("scheduler started %v during a manual run", keys)
 	}
 	gate.EndManual()
-	if keys, _ := fx.s.RunDue(ctx); len(keys) != 1 {
+	// Two hours on, a daily collector whose time fell in that window is due
+	// as well, depending on the time of day the test runs; only this one is
+	// asked about.
+	if keys, _ := fx.s.RunDue(ctx); !slices.Contains(keys, c.Key) {
 		t.Errorf("scheduler did not resume after the manual run: %v", keys)
 	}
 	fx.s.Wait()

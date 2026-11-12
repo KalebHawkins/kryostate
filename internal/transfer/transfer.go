@@ -40,7 +40,7 @@ type Row map[string]any
 // tables lists every table in the order a restore must write them, which is
 // the order foreign keys allow.
 var tables = []string{
-	"source", "ci", "identity", "assertion", "assertion_norm",
+	"source", "ci", "identity", "assertion", "assertion_norm", "read_failure",
 	"precedence", "fact_meta",
 	"address", "conn_profile", "check_def", "evidence",
 	"stack", "stack_member",
