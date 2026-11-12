@@ -329,3 +329,34 @@ CREATE TABLE IF NOT EXISTS collector_state (
     last_detail   TEXT NOT NULL DEFAULT '',
     last_run_id   TEXT NOT NULL DEFAULT ''
 );
+
+-- A rule tracks a rollout: the hosts its scope query chooses should match its
+-- expect query. Both are queries in the inventory's language, evaluated in Go
+-- over current values; neither is ever turned into SQL. Blank scope means
+-- every host.
+CREATE TABLE IF NOT EXISTS rule (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    owner       TEXT NOT NULL DEFAULT '',
+    scope       TEXT NOT NULL DEFAULT '',
+    expect      TEXT NOT NULL,
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+-- How a rule's counts moved: a row whenever they change, and otherwise at
+-- most one a day, taken when a collection run finishes. changed marks rows
+-- whose counts differ from the row before.
+CREATE TABLE IF NOT EXISTS rule_snapshot (
+    id       INTEGER PRIMARY KEY,
+    rule_id  INTEGER NOT NULL REFERENCES rule(id) ON DELETE CASCADE,
+    at       TEXT NOT NULL,
+    in_scope INTEGER NOT NULL,
+    done     INTEGER NOT NULL,
+    not_yet  INTEGER NOT NULL,
+    unknown  INTEGER NOT NULL,
+    changed  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS rule_snapshot_rule_at_idx ON rule_snapshot(rule_id, at);

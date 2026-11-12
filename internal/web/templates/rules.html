@@ -1,0 +1,134 @@
+{{/* rule-bar is a rule's progress bar, given a store.RuleCounts. */}}
+{{define "rule-bar"}}
+<div class="segbar rbar" role="img" aria-label="{{.Done}} done, {{.NotYet}} not yet, {{.Unknown}} unknown of {{.InScope}} hosts">
+  <span class="segbar__seg segbar__seg--ok" style="{{seg .Done .InScope}}"></span>
+  <span class="segbar__seg rbar__notyet" style="{{seg .NotYet .InScope}}"></span>
+  <span class="segbar__seg segbar__seg--never" style="{{seg .Unknown .InScope}}"></span>
+</div>
+{{end}}
+
+{{/* rule-counts is the words under a progress bar. */}}
+{{define "rule-counts"}}<span class="rcounts small">{{.Pct}}% · {{.Done}} done{{if .NotYet}} · <span class="rcounts__notyet">{{.NotYet}} not yet</span>{{end}}{{if .Unknown}} · <span class="muted">{{.Unknown}} unknown</span>{{end}} <span class="muted">of {{.InScope}}</span></span>{{end}}
+
+{{/* rule-form is the new-rule and edit forms, given a ruleForm. */}}
+{{define "rule-form"}}
+<form class="form rform" method="post" action="{{.Action}}">
+  {{if .Err}}<p class="flash flash--error" role="alert">{{if .ErrField}}{{if eq .ErrField "scope"}}Scope{{else}}Expect{{end}}, column {{.Col}}: {{end}}{{.Err}}</p>{{end}}
+  <div class="form__row">
+    <label for="rule-{{.Key}}-name">Name
+      <input type="text" id="rule-{{.Key}}-name" name="name" required maxlength="200" value="{{.Name}}" placeholder="nginx 1.24 on the web tier" autocomplete="off"
+        hx-get="/rules/preview?which=name&amp;id={{.ID}}" hx-trigger="input changed delay:300ms" hx-target="#rule-{{.Key}}-name-preview" hx-sync="this:replace"></label>
+    <label for="rule-{{.Key}}-owner">Owner <span class="hint">Optional.</span>
+      <input type="text" id="rule-{{.Key}}-owner" name="owner" value="{{.Owner}}" placeholder="web-team"></label>
+  </div>
+  <div id="rule-{{.Key}}-name-preview" aria-live="polite"></div>
+  <label for="rule-{{.Key}}-description">Description <span class="hint">Optional: why, a ticket, a deadline.</span>
+    <input type="text" id="rule-{{.Key}}-description" name="description" value="{{.Description}}" placeholder="CVE-2026-1234: every web host on nginx 1.24 or later"></label>
+
+  <label for="rule-{{.Key}}-scope">Scope <span class="hint">The hosts it covers, as a query (<a href="/guide/queries" target="_blank" rel="noopener">query guide</a>). Blank means every host.</span></label>
+  <textarea id="rule-{{.Key}}-scope" name="scope" rows="2" class="mono target__expr" spellcheck="false" autocomplete="off"{{if eq .ErrField "scope"}} aria-invalid="true"{{end}}
+    placeholder='stack == "web"'
+    hx-get="/rules/preview?which=scope" hx-trigger="focus once, input changed delay:300ms" hx-target="#rule-{{.Key}}-scope-preview" hx-sync="this:replace">{{.Scope}}</textarea>
+  <div class="target__preview" id="rule-{{.Key}}-scope-preview" aria-live="polite"><p class="small muted">Type to see which hosts it covers.</p></div>
+
+  <label for="rule-{{.Key}}-expect">Expect <span class="hint">What each host in scope should report once it is done.</span></label>
+  <textarea id="rule-{{.Key}}-expect" name="expect" rows="2" class="mono target__expr" spellcheck="false" autocomplete="off" required{{if eq .ErrField "expect"}} aria-invalid="true"{{end}}
+    placeholder='nginx.version >= "1.24"'
+    hx-get="/rules/preview?which=expect" hx-include="closest form" hx-trigger="focus once, input changed delay:300ms" hx-target="#rule-{{.Key}}-expect-preview" hx-sync="this:replace">{{.Expect}}</textarea>
+  <div class="target__preview" id="rule-{{.Key}}-expect-preview" aria-live="polite">
+    {{if .Caret}}<pre class="target__caret">{{if eq .ErrField "scope"}}{{.Scope}}{{else}}{{.Expect}}{{end}}
+{{.Caret}}</pre>{{else}}<p class="small muted">Type to see how the hosts in scope split into done, not yet and unknown.</p>{{end}}
+  </div>
+  <p class="small muted">Such as <code>nginx.version &gt;= "1.24"</code>, <code>file.exists["/etc/ssh/sshd_config.d/hardening.conf"] == true</code> or <code>conf.app_conf.database.host == "db02"</code>. A host whose answer needs a value it has not reported yet counts as unknown, not as not yet.</p>
+  <div class="form__actions"><button class="btn btn--primary" type="submit">{{if .ID}}Save{{else}}Create rule{{end}}</button></div>
+</form>
+{{end}}
+
+{{define "rule-name-preview"}}{{if .}}<p class="small target__err" role="alert">There is already a rule named {{.}}.</p>{{end}}{{end}}
+
+{{define "rule-preview"}}
+{{if .Err}}
+<p class="target__err" role="alert">Column {{.Col}}: {{.Err}}</p>
+<pre class="target__caret">{{.Expr}}
+{{.Caret}}</pre>
+{{else if .ScopeErr}}
+<p class="small target__err">Fix the scope first: it does not parse.</p>
+{{else if .Expr}}
+{{if .InScope}}
+{{template "rule-bar" .RuleCounts}}
+<p class="small">{{template "rule-counts" .RuleCounts}}</p>
+{{else}}<p class="small muted">The scope covers no host yet.</p>{{end}}
+{{if .Attrs}}<p class="small muted">Reads {{range $i, $a := .Attrs}}{{if $i}}, {{end}}<span class="mono">{{$a}}</span>{{end}}.</p>{{end}}
+{{end}}
+{{end}}
+
+{{/* ov-rollouts is the overview's card of open rules, given rollouts. */}}
+{{define "ov-rollouts"}}
+{{if .Total}}
+<section class="card ov-card" aria-labelledby="ov-rollouts">
+  <h2 id="ov-rollouts">Rollouts</h2>
+  {{if .Rows}}
+  <ul class="ov-rollouts">
+    {{range .Rows}}
+    <li>
+      <a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Name}}</a>
+      {{if .Err}}<span class="chip chip--bad">does not parse</span>{{else}}
+      {{template "rule-bar" .RuleCounts}}
+      {{template "rule-counts" .RuleCounts}}{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{if .More}}<p class="small muted ov-more">and {{.More}} more open</p>{{end}}
+  {{else}}
+  <p class="ov-empty">Every rollout is complete.</p>
+  {{end}}
+  <p class="small ov-foot"><a href="/rules" hx-get="/rules" hx-target="#main" hx-push-url="true">Rules</a></p>
+</section>
+{{end}}
+{{end}}
+
+{{define "rules.html"}}
+<h1>Rules</h1>
+<p class="muted">A rule tracks a rollout. Say which hosts it covers and what each should report once it is done, such as a newer version or a file in place, and as hosts are changed and collected again they move from not yet to done. Nothing here changes a host: the counts come only from what hosts report.</p>
+
+<details class="card disclosure" {{if .FormOpen}}open{{end}}>
+  <summary><strong>New rule</strong></summary>
+  {{template "rule-form" .Form}}
+</details>
+
+{{if .Rows}}
+<p class="muted small">{{len .Rows}} rule{{if ne (len .Rows) 1}}s{{end}}{{if .Open}}, {{.Open}} open{{else}}, all complete{{end}}.</p>
+<div class="table-wrap table-wrap--full">
+<table class="rlist">
+  <caption class="visually-hidden">Rules and how far each rollout has got</caption>
+  <thead>
+    <tr>
+      <th scope="col">Rule</th>
+      <th scope="col">Scope</th>
+      <th scope="col">Progress</th>
+      <th scope="col">Trend</th>
+      <th scope="col">Last change</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{range .Rows}}
+    <tr>
+      <td class="rlist__name"><a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Name}}</a>
+        {{if .Complete}} <span class="chip rchip--done" {{if not .CompleteSince.IsZero}}title="complete since {{stamp .CompleteSince}}"{{end}}>complete{{if not .CompleteSince.IsZero}} {{.CompleteSince.Local.Format "2 Jan"}}{{end}}</span>{{end}}
+        {{with .Rule.Owner}}<div class="muted small">{{.}}</div>{{end}}</td>
+      <td class="small">{{.Scope}}</td>
+      <td class="rlist__progress">
+        {{if .Err}}<span class="chip chip--bad">does not parse</span> <span class="small muted">{{.Err}}</span>
+        {{else}}{{template "rule-bar" .RuleCounts}}{{template "rule-counts" .RuleCounts}}{{end}}</td>
+      <td>{{.Spark}}</td>
+      <td class="small nowrap" title="{{stamp .LastChange}}">{{ago .LastChange}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+<p class="muted">No rules yet. Create one above: the preview under each box shows what it would count before anything is saved.</p>
+{{end}}
+{{template "cli" .CLI}}
+{{end}}

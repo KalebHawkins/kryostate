@@ -572,6 +572,73 @@ before. **Changes** lists them for the last 24 hours, 7 days or 30 days; the
 Overview shows the last day, and a host page marks a value that changed in
 the last week with **changed** (hover for the old value).
 
+### Rules: tracking a rollout
+
+A rule follows a change across many hosts. You write two queries before
+anything is changed: the **scope**, which hosts the rule covers, and the
+**expect**, what each of them should report once it is done. Then, as hosts
+are updated and collected again, they move from **Not yet** to **Done** on
+their own. Nothing is ticked off by hand, and a rule never changes a host: the
+counts come only from what hosts report.
+
+Each host in scope is in one of three lists:
+
+| List | Means |
+|---|---|
+| **Done** | It matches the expect query. |
+| **Not yet** | Its values say it does not match yet, such as nginx 1.20 when 1.24 is expected. |
+| **Unknown** | It has not reported a value the expect query needs, so it cannot be told either way. Usually the collector is not switched on, or has not run on it yet. The list says which value is missing. |
+
+A rule is **complete** when every host in scope is done: none not yet and
+none unknown. The badge says since when. A rule whose scope matches no host
+is never complete.
+
+#### Worked example: roll out the SSH hardening drop-in
+
+Say every Linux host in the web stack should get
+`/etc/ssh/sshd_config.d/hardening.conf`.
+
+1. On **Collectors**, switch on **File exists** with the path
+   `/etc/ssh/sshd_config.d/hardening.conf`. It records true or false on each
+   host it runs on.
+2. On **Rules**, open **New rule** and fill in:
+   - Name: `SSH hardening drop-in`
+   - Scope: `stack == "web" && os.family == "Linux"`
+   - Expect: `file.exists["/etc/ssh/sshd_config.d/hardening.conf"] == true`
+
+   The preview under each box shows how many hosts the scope covers and how
+   they split, and points at the column of a typing mistake. A rule whose
+   query does not parse is not saved.
+3. Before the collector has run, every host is **Unknown**: "no value for
+   file.hardening_conf.exists yet". After the next collection the hosts
+   without the file are **Not yet** and those with it **Done**.
+4. Push the file out with whatever you use for that. Each collection moves
+   hosts into **Done**, and the rule's trend line climbs. The **Not yet** list
+   links to the inventory with exactly those hosts, for the next batch.
+
+The same works for a version (expect `nginx.version >= "1.24"`, scope
+`stack == "web"`) or a setting (expect
+`conf.app_conf.database.host == "db02"`, after switching on **Config file
+value** for that key).
+
+The **Rules** page lists every rule with a progress bar, a small trend line
+and when its counts last moved; the Overview shows open rules under
+**Rollouts**. A rule's own page lists the hosts in each bucket (fifty of each,
+with a link to the inventory for the rest) and a chart of how the counts
+moved. A point is kept whenever a collection run finishes with different
+counts, and once a day otherwise. Changing a rule's queries starts its trend
+again, since the old points answered another question.
+
+From the command line:
+
+```sh
+kryostate rules                                   # every rule, with counts
+kryostate rules -add -name 'nginx 1.24' -scope 'stack == "web"' -expect 'nginx.version >= "1.24"'
+kryostate rules -show 'nginx 1.24'                # the hosts not yet done, and the unknown ones
+kryostate rules -show 'nginx 1.24' -json          # every host in scope, by list
+kryostate rules -delete 'nginx 1.24'
+```
+
 ### Finding hosts
 
 On the **Inventory** page, type part of a name or a query into the box,

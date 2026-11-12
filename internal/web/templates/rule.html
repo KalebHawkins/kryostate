@@ -1,0 +1,87 @@
+{{define "rule.html"}}
+{{$r := .Rule}}
+<p><a href="/rules" hx-get="/rules" hx-target="#main" hx-push-url="true">← Rules</a></p>
+<div class="chead">
+  <h1>{{$r.Name}}</h1>
+  <div class="chead__chips">
+    {{if .Result.Complete}}<span class="chip rchip--done">complete{{if not .Result.CompleteSince.IsZero}} since {{stamp .Result.CompleteSince}}{{end}}</span>{{end}}
+    {{with $r.Owner}}<span class="chip chip--quiet">{{.}}</span>{{end}}
+  </div>
+</div>
+{{with $r.Description}}<p class="chead__desc">{{.}}</p>{{end}}
+
+{{if .Err}}
+<p class="notice" role="alert">This rule cannot be evaluated: {{.Err}}. Edit it below.</p>
+{{else}}
+<div class="rhead">
+  {{template "rule-bar" .Result.RuleCounts}}
+  <p class="rhead__counts">{{template "rule-counts" .Result.RuleCounts}}
+    {{if not .Result.InScope}}<span class="muted small">— the scope covers no host, so there is nothing to roll out to yet.</span>{{end}}</p>
+</div>
+{{end}}
+
+<dl class="rqueries">
+  <dt>Scope</dt>
+  <dd>{{if $r.Scope}}<code class="target__code">{{$r.Scope}}</code>{{else}}<span class="muted">Every host</span>{{end}}
+    · <a href="{{.ScopeHref}}" hx-get="{{.ScopeHref}}" hx-target="#main" hx-push-url="true">open in inventory</a></dd>
+  <dt>Expect</dt>
+  <dd><code class="target__code">{{$r.Expect}}</code>
+    {{if .Attrs}}<div class="small muted">Reads {{range $i, $a := .Attrs}}{{if $i}}, {{end}}<span class="mono">{{$a}}</span>{{end}}.</div>{{end}}</dd>
+</dl>
+
+{{range .Notes}}
+<p class="notice small">No host in scope has a value for <span class="mono">{{.Attr}}</span> yet.
+  {{if .Recorded}}A collector records it: the hosts will move out of unknown once it has run on them.
+  {{else}}Nothing switched on collects it: switch on a collector that records it on the <a href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">Collectors</a> page, or check the spelling of the name.{{end}}</p>
+{{end}}
+
+{{if .Lists}}
+<div class="rlists">
+{{range .Lists}}
+<section class="card rlistcard rlistcard--{{.Key}}" aria-labelledby="rl-{{.Key}}">
+  <h2 id="rl-{{.Key}}">{{.Title}} <span class="ov-sub">{{.Count}}</span></h2>
+  {{if .Hosts}}
+  <p class="small muted">{{.Note}}</p>
+  <ul class="rhosts">
+    {{range .Hosts}}
+    <li><a class="mono" href="/hosts/{{.ID}}" hx-get="/hosts/{{.ID}}" hx-target="#main" hx-push-url="true">{{.Name}}</a>
+      {{if .Missing}}<span class="small muted">no value for {{range $i, $a := .Missing}}{{if $i}}, {{end}}<span class="mono">{{$a}}</span>{{end}} yet</span>{{end}}
+      {{if .Values}}<span class="small muted">{{range $i, $v := .Values}}{{if $i}}, {{end}}<span class="mono">{{$v.Attr}}</span> is <span class="mono">{{short $v.Value 60}}</span>{{end}}</span>{{end}}</li>
+    {{end}}
+  </ul>
+  {{if .More}}<p class="small">and {{.More}} more — <a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">open in inventory</a></p>
+  {{else}}<p class="small"><a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">Open in inventory</a></p>{{end}}
+  {{else}}
+  <p class="ov-empty">{{.Empty}}</p>
+  {{end}}
+</section>
+{{end}}
+</div>
+
+<section class="card rtrendcard" aria-labelledby="h-trend">
+  <h2 id="h-trend">Trend {{if not .Since.IsZero}}<span class="ov-sub">since {{stamp .Since}}</span>{{end}}</h2>
+  {{.Trend}}
+  <p class="small muted rtrend__key"><span class="rkey rkey--done"></span> done <span class="rkey rkey--unknown"></span> unknown <span class="rkey rkey--notyet"></span> not yet.
+    A point is kept whenever the counts change, and once a day otherwise, when a collection run finishes.</p>
+</section>
+{{end}}
+
+<section class="card" aria-labelledby="h-rule-details">
+  <h2 id="h-rule-details">Details</h2>
+  <p class="small muted">Created by {{if $r.CreatedBy}}{{$r.CreatedBy}}{{else}}someone{{end}} {{ago $r.Created}}{{if ne ($r.Updated.Unix) ($r.Created.Unix)}}, changed {{ago $r.Updated}}{{end}}.</p>
+  <details class="disclosure" {{if .EditOpen}}open{{end}}>
+    <summary>Edit rule</summary>
+    <p class="small muted">Changing the scope or expect query starts its trend again.</p>
+    {{template "rule-form" .Edit}}
+  </details>
+  <details class="disclosure">
+    <summary>Delete rule</summary>
+    <p class="small muted">Only the rule and its history go. No host is changed.</p>
+    <form method="post" action="/rules/{{$r.ID}}/delete" onsubmit="return confirm('Delete the rule {{$r.Name}}?')">
+      <button class="btn btn--danger" type="submit">Delete {{$r.Name}}</button>
+    </form>
+  </details>
+</section>
+
+{{template "cli" .CLI}}
+{{end}}

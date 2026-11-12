@@ -25,7 +25,8 @@ chosen:
 | **Charts** | Clicking a slice or a bar opens the inventory filtered to those hosts, with the query written out so you can change it. |
 | Where a collector runs | On a collector's page, **Change where it runs** takes a query. A live preview under the box counts the hosts it matches and names the first few. |
 | Your own collectors | `"where"` in `collectors.json` (see the [collector guide](collectors.md)). |
-| Command line | `kryostate hosts -q '...'`, `kryostate hosts -q '...' -json` and `kryostate collectors -enable <id> -where '...'`. |
+| **Rules** | A rule's scope chooses the hosts a rollout covers, and its expect query says what each should report once done, such as `nginx.version >= "1.24"`. A host whose answer needs a value it has not reported counts as unknown rather than not done. See [Rules: tracking a rollout](user-guide.md#rules-tracking-a-rollout). |
+| Command line | `kryostate hosts -q '...'`, `kryostate hosts -q '...' -json`, `kryostate collectors -enable <id> -where '...'` and `kryostate rules -add -scope '...' -expect '...'`. |
 
 So a query that lists the right hosts on the Inventory page is exactly the one
 to give a collector.
