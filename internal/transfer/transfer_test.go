@@ -102,13 +102,6 @@ func populate(t *testing.T, s *store.Store) {
 		t.Fatal(err)
 	}
 
-	if err := s.RaiseDiscrepancy(ctx, model.Discrepancy{
-		CIID: id, Attr: "os.version", Kind: model.DiscValueConflict,
-		Summary: "document and collector disagree", Claimed: "RHEL 7.9", ClaimedBy: "inventory.md",
-		Observed: "RHEL 8.6", ObservedBy: "ssh", DetectedAt: at,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if err := s.Audit(ctx, "test", "populate", "transfer", "fixture"); err != nil {
 		t.Fatal(err)
 	}
@@ -178,12 +171,13 @@ func TestRoundTripKeepsLosingAssertions(t *testing.T) {
 	if len(hosts) != 1 {
 		t.Fatalf("restored %d hosts named appnode1", len(hosts))
 	}
-	history, err := dst.Conflicts(ctx, hosts[0].CI.ID, "os.version", "")
-	if err != nil {
+	var history int
+	if err := dst.DB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM assertion WHERE ci_id=? AND attr='os.version'`, hosts[0].CI.ID).Scan(&history); err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 2 {
-		t.Fatalf("restored %d assertions for os.version, want both the claim and the collected value", len(history))
+	if history != 2 {
+		t.Fatalf("restored %d assertions for os.version, want both the claim and the collected value", history)
 	}
 
 	addrs, err := dst.Addresses(ctx, hosts[0].CI.ID)
@@ -230,6 +224,40 @@ func TestRestoreRefusesAStoreThatHoldsAnything(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "empty") {
 		t.Errorf("error %q does not tell the operator what to do instead", err)
+	}
+}
+
+// TestAnOlderDumpStillRestores: a dump taken before disagreements were removed
+// carries their table, the staleness budgets and the assertion column that
+// recorded decisions. None of it is read any more, and none of it may stop the
+// rest of the inventory coming back.
+func TestAnOlderDumpStillRestores(t *testing.T) {
+	ctx := context.Background()
+	src := open(t, "source.db")
+	populate(t, src)
+	d, err := Read(bytes.NewReader(export(t, src)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range d.Tables["assertion"] {
+		r["decided"] = 0
+	}
+	d.Tables["discrepancy"] = []Row{{"id": 1, "fingerprint": "x", "kind": "value_conflict"}}
+	d.Tables["freshness_budget"] = []Row{{"attr": "*", "max_age_sec": 3600}}
+
+	dst := open(t, "restored.db")
+	if err := Restore(ctx, dst, d); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(d.Tables["assertion"]); got == 0 {
+		t.Fatal("fixture holds no assertions")
+	}
+	again, err := Export(ctx, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Counts["assertion"] != len(d.Tables["assertion"]) {
+		t.Errorf("restored %d assertions of %d", again.Counts["assertion"], len(d.Tables["assertion"]))
 	}
 }
 

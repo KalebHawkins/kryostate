@@ -35,7 +35,7 @@ left blank, not counted as a failure.
 | Splunk home, from the running splunkd | `splunk.home` | Linux, AIX, Windows |
 | Java, Python, OpenSSL, nginx, Apache httpd and Docker versions | `java.version` and so on | varies |
 | Installed package version, for a package you name | `pkg.<name>.version` | Linux, AIX, Windows |
-| File exists, for a path you give | `file.<name>.exists` | Linux, AIX, Windows |
+| File exists, for a path you give; records `true` or `false` | `file.<name>.exists` | Linux, AIX, Windows |
 | File contents, for a path you give | `file.<name>.contents` | Linux, AIX, Windows |
 | Setting in a config file, for a file, key and optional section you give | `conf.<file>.<section>.<key>` | Linux, AIX, Windows |
 | Environment variable, for a name you give | `env.<name>` | Linux, AIX, Windows |
@@ -50,15 +50,13 @@ A group switches on several related collectors in one step.
 | Group | Switches on |
 |---|---|
 | Host basics (`group.basics`) | CPU cores, memory total, time zone, DNS servers |
-| Splunk forwarder (`group.splunk.forwarder`) | Universal Forwarder version, Splunk home |
-| Splunk Enterprise (`group.splunk.enterprise`) | Splunk Enterprise version, Splunk home |
 | Language runtimes (`group.runtimes`) | Java, Python and OpenSSL versions |
 | Web servers (`group.web`) | nginx and Apache httpd versions |
 
 A group only adds. If CPU cores already runs on every host, switching on Host
-basics for one stack leaves it running on every host. If the Splunk
-forwarder group already runs on one stack, switching it on for a second stack
-runs it on both.
+basics for one stack leaves it running on every host. If the Web servers
+group already runs on one stack, switching it on for a second stack runs it on
+both.
 
 ### Switching one on in the web interface
 
@@ -96,7 +94,7 @@ kryostate collectors -enable memory.total                      # switch it on ev
 kryostate collectors -enable splunk.uf.version -stacks splunk-prod
 kryostate collectors -enable file.exists -param /etc/resolv.conf
 kryostate collectors -enable env.var -param SPLUNK_HOME
-kryostate collectors -enable group.splunk.forwarder -stacks splunk-prod
+kryostate collectors -enable group.web -stacks web-prod
 kryostate collectors -enable config.value \
     -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName
 kryostate collectors                                           # what is switched on
@@ -530,7 +528,7 @@ the ones you list in `env`.
 | `os` | yes | List of `linux`, `aix`, `windows` |
 | `command` | yes | Command to run. Read-only |
 | `parse` | yes | How to read the output: `kind`, plus `pattern`, `key`, `marker` and `field`, or `path` |
-| `type` | no | `text` (default), `version`, `path`, `number`, `flag` or `list` |
+| `type` | no | `text` (default), `version`, `path`, `number`, `bool` (a `true` or `false` answer; `flag` is read as `bool`) or `list` |
 | `optional` | no | `true` when some hosts legitimately lack the value |
 | `stacks` | no | Only run on hosts in these stacks |
 | `scope` | no | Separates several instances on one host |

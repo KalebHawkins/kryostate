@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/KalebHawkins/kryostate/internal/model"
-	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // TestCSVExportMatchesTheView: the export takes the same query string as the
@@ -33,7 +32,7 @@ func TestCSVExportMatchesTheView(t *testing.T) {
 	if len(recs) != 2 {
 		t.Fatalf("got %d records, want a header and appnode1", len(recs))
 	}
-	if recs[0][2] != "os.version" || len(recs[0]) != 7 {
+	if recs[0][2] != "os.version" || len(recs[0]) != 6 {
 		t.Errorf("header %v does not carry exactly the chosen column", recs[0])
 	}
 	if recs[1][0] != "appnode1" || recs[1][2] != "RHEL 8.6" {
@@ -46,10 +45,10 @@ func TestCSVExportMatchesTheView(t *testing.T) {
 func TestCSVExportDefusesFormulas(t *testing.T) {
 	_, h, st := testServer(t)
 	id := seed(t, st)
-	if err := st.Claim(context.Background(), id, "app.name", "", `=HYPERLINK("http://x.invalid")`, "op", "test"); err != nil {
+	if err := st.SetApplication(context.Background(), id, `=HYPERLINK("http://x.invalid")`, "op", "test"); err != nil {
 		t.Fatal(err)
 	}
-	rec := get(t, h, "/hosts.csv?col=app.name", nil)
+	rec := get(t, h, "/hosts.csv?col=application", nil)
 	if strings.Contains(rec.Body.String(), "\n=") || strings.Contains(rec.Body.String(), ",=") {
 		t.Errorf("a formula reached the export unescaped:\n%s", rec.Body.String())
 	}
@@ -62,80 +61,56 @@ func TestColumnsAreChosenInTheURL(t *testing.T) {
 	if !strings.Contains(body, "<th scope=\"col\">"+attrLabel("os.version")+"</th>") {
 		t.Error("the chosen column is not in the table")
 	}
-	if strings.Contains(body, "<th scope=\"col\">"+attrLabel("site")+"</th>") {
+	if strings.Contains(body, "<th scope=\"col\">"+attrLabel("application")+"</th>") {
 		t.Error("a default column is still shown after choosing others")
 	}
 }
 
-// TestDisagreementsFilterToOneHost: the inventory's open count links here, and
-// the link is useless if it shows every host's findings.
-func TestDisagreementsFilterToOneHost(t *testing.T) {
-	_, h, st := testServer(t)
-	disputed := seed(t, st)
-	other, _, err := st.ResolveCI(context.Background(), model.KindHost, "otherhost",
-		[]model.Identity{{Scheme: model.IdentHostname, Value: "otherhost"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.RaiseDiscrepancy(context.Background(), model.Discrepancy{
-		CIID: other, Kind: model.DiscUndocumented, Summary: "nobody wrote this one down",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	body := get(t, h, "/discrepancies?ci="+disputed, nil).Body.String()
-	if !strings.Contains(body, "appnode1") || strings.Contains(body, "nobody wrote this one down") {
-		t.Error("the per-host view does not show exactly that host's findings")
-	}
-	if !strings.Contains(get(t, h, "/hosts", nil).Body.String(), "/discrepancies?ci="+disputed) {
-		t.Error("the inventory's open count does not link to that host's findings")
-	}
-	if rec := get(t, h, "/discrepancies?ci=nonexistent", nil); rec.Code != http.StatusNotFound {
-		t.Errorf("an unknown host returned %d", rec.Code)
-	}
-}
-
-// TestHostPageListsOnlyOpenFindings: the heading says "open".
-func TestHostPageListsOnlyOpenFindings(t *testing.T) {
-	_, h, st := testServer(t)
-	id := seed(t, st)
-	ctx := context.Background()
-	open, err := st.Discrepancies(ctx, store.DiscrepancyFilter{CIID: id}, 0)
-	if err != nil || len(open) != 1 {
-		t.Fatalf("seed: %v, %d", err, len(open))
-	}
-	if err := st.Dispose(ctx, open[0].ID, model.DispAccepted, "op", "fine"); err != nil {
-		t.Fatal(err)
-	}
-	if body := get(t, h, "/hosts/"+id, nil).Body.String(); strings.Contains(body, "Open against this host") {
-		t.Error("a settled disagreement is listed as open on the host page")
-	}
-}
-
-func TestClaimFromTheHostPage(t *testing.T) {
+// TestApplicationFromTheHostPage: the application is the one attribute the
+// host page lets a person state, and it carries their name and reason.
+func TestApplicationFromTheHostPage(t *testing.T) {
 	_, h, st := testServer(t)
 	id := seed(t, st)
 
-	claim := func(form url.Values) *httptest.ResponseRecorder {
-		return post(t, h, "/hosts/"+id+"/claim", form)
+	set := func(form url.Values) *httptest.ResponseRecorder {
+		return post(t, h, "/hosts/"+id+"/application", form)
 	}
-	if _, msg := followFlash(t, h, claim(url.Values{"attr": {"env"}, "value": {"production"}})); !strings.Contains(msg, "reason") {
-		t.Errorf("a claim with no reason gave %q", msg)
+	if _, msg := followFlash(t, h, set(url.Values{"application": {"ledger"}})); !strings.Contains(msg, "reason") {
+		t.Errorf("an application with no reason gave %q", msg)
 	}
-	if _, msg := followFlash(t, h, claim(url.Values{"attr": {"env"}, "value": {"production"}, "reason": {"ticket 7"}})); !strings.Contains(msg, "Recorded env = production") {
-		t.Fatalf("claim gave %q", msg)
+	if _, msg := followFlash(t, h, set(url.Values{"application": {"ledger"}, "reason": {"ticket 7"}})); !strings.Contains(msg, "ledger") {
+		t.Fatalf("setting the application gave %q", msg)
 	}
 	facts, err := st.Facts(context.Background(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
+	found := false
 	for _, f := range facts {
-		if f.Attr == "env" {
-			if f.Raw != "production" || f.SourceName != "operator@example.invalid" {
-				t.Errorf("env is %q from %q", f.Raw, f.SourceName)
+		if f.Attr == model.AttrApplication {
+			found = true
+			if f.Raw != "ledger" || f.SourceName != "operator@example.invalid" {
+				t.Errorf("application is %q from %q", f.Raw, f.SourceName)
 			}
-			return
 		}
 	}
-	t.Error("the claim was not recorded")
+	if !found {
+		t.Error("the application was not recorded")
+	}
+}
+
+// TestNoArbitraryAttributesFromTheWeb: the form that let a person state any
+// attribute is gone, and nothing answers in its place.
+func TestNoArbitraryAttributesFromTheWeb(t *testing.T) {
+	_, h, st := testServer(t)
+	id := seed(t, st)
+	rec := post(t, h, "/hosts/"+id+"/claim", url.Values{"attr": {"env"}, "value": {"production"}, "reason": {"r"}})
+	if rec.Code == http.StatusSeeOther || rec.Code == http.StatusOK {
+		t.Errorf("POST /hosts/{id}/claim answered %d", rec.Code)
+	}
+	for _, path := range []string{"/discrepancies"} {
+		if rec := get(t, h, path, nil); rec.Code != http.StatusNotFound {
+			t.Errorf("%s answered %d, want 404", path, rec.Code)
+		}
+	}
 }

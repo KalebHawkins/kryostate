@@ -24,7 +24,6 @@ func funcs() template.FuncMap {
 		"join":        strings.Join,
 		"hasPrefix":   strings.HasPrefix,
 		"short":       short,
-		"kindText":    kindText,
 		"dict":        dict,
 		"has":         contains,
 		"slug":        func(s string) string { return slug(s, map[string]int{}) },
@@ -145,25 +144,6 @@ func short(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
-}
-
-func kindText(k model.DiscrepancyKind) string {
-	switch k {
-	case model.DiscValueConflict:
-		return "sources disagree"
-	case model.DiscUnresolved:
-		return "name does not resolve"
-	case model.DiscMultiAddress:
-		return "several addresses, none chosen"
-	case model.DiscUndocumented:
-		return "answers but undocumented"
-	case model.DiscStale:
-		return "value past its freshness budget"
-	case model.DiscUnparsed:
-		return "collected but not understood"
-	default:
-		return string(k)
-	}
 }
 
 func dict(kv ...any) map[string]any {

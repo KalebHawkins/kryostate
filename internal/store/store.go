@@ -2,8 +2,8 @@
 // the resolution policy, and exposes queries in terms of the model types.
 //
 // Assertions are append-only. Nothing in this package updates a value in
-// place, because the disagreement between two values is the thing the tool
-// exists to show.
+// place: the history of what each source said, and when, is kept so that
+// changes over time can be shown.
 package store
 
 import (
@@ -91,8 +91,6 @@ func (s *Store) migrate(ctx context.Context) error {
 	for _, c := range []struct{ table, col, decl string }{
 		{"conn_profile", "bastion_host_key", "TEXT NOT NULL DEFAULT ''"},
 		{"assertion", "confirmed_at", "TEXT NOT NULL DEFAULT ''"},
-		{"assertion", "decided", "INTEGER NOT NULL DEFAULT 0"},
-		{"discrepancy", "scope", "TEXT NOT NULL DEFAULT ''"},
 		{"evidence", "assertion_id", "INTEGER"},
 	} {
 		if err := s.ensureColumn(ctx, c.table, c.col, c.decl); err != nil {
@@ -136,8 +134,11 @@ func (s *Store) seedPolicy(ctx context.Context) error {
 		allowed bool
 	}
 	rows := []row{
-		// Default order: the machine outranks a person, who outranks a
-		// document, which outranks a guess from a hostname.
+		// Default order among the sources that are not the machine: a person
+		// outranks a document, which outranks a guess from a hostname. What a
+		// host reports outranks all of them on every attribute; the view
+		// enforces that whatever this table says, so an edited or older table
+		// cannot put a person above the machine.
 		{"*", model.SourceCollector, 10, true},
 		{"*", model.SourceHuman, 20, true},
 		{"*", model.SourceDNS, 30, true},
@@ -146,21 +147,9 @@ func (s *Store) seedPolicy(ctx context.Context) error {
 
 		// Environment and site cannot be read off a hostname. Ten hosts named
 		// for production can be a test rig, and two plants can produce names
-		// that slice identically. A decoder may suggest a role; it may not
-		// decide where a machine is or what it is for.
-		{"env", model.SourceHuman, 10, true},
-		{"env", model.SourceCollector, 20, true},
-		{"env", model.SourceDocument, 30, true},
+		// that slice identically.
 		{"env", model.SourceDerived, 99, false},
-		{"site", model.SourceHuman, 10, true},
-		{"site", model.SourceDocument, 20, true},
-		{"site", model.SourceCollector, 30, true},
 		{"site", model.SourceDerived, 99, false},
-
-		// Ownership and purpose are not observable from a machine.
-		{"owner", model.SourceHuman, 10, true},
-		{"owner", model.SourceDocument, 20, true},
-		{"owner", model.SourceCollector, 80, true},
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -180,17 +169,6 @@ func (s *Store) seedPolicy(ctx context.Context) error {
 			a = 1
 		}
 		if _, err := st.ExecContext(ctx, r.attr, string(r.kind), r.rank, a); err != nil {
-			return err
-		}
-	}
-	budgets := map[string]int{
-		"*":          14 * 24 * 3600,
-		"os.version": 7 * 24 * 3600,
-	}
-	for attr, sec := range budgets {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO freshness_budget (attr, max_age_sec) VALUES (?,?)
-			 ON CONFLICT(attr) DO NOTHING`, attr, sec); err != nil {
 			return err
 		}
 	}
@@ -362,15 +340,11 @@ func (s *Store) Assert(ctx context.Context, a model.Assertion, n *Normalized) (i
 		return lastID, nil
 	}
 
-	dec := 0
-	if a.Decided {
-		dec = 1
-	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO assertion (ci_id, attr, raw_value, value_type, source_id, scope, run_id, observed_at, received_at, confirmed_at, decided)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO assertion (ci_id, attr, raw_value, value_type, source_id, scope, run_id, observed_at, received_at, confirmed_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		a.CIID, a.Attr, a.Raw, string(a.ValueType), a.SourceID, a.Scope, a.RunID,
-		ts(a.ObservedAt), ts(time.Now()), ts(a.ObservedAt), dec)
+		ts(a.ObservedAt), ts(time.Now()), ts(a.ObservedAt))
 	if err != nil {
 		return 0, err
 	}
@@ -444,13 +418,12 @@ func (s *Store) Assertion(ctx context.Context, id int64) (model.Assertion, error
 	var vt, observed, received string
 	var scope, runID sql.NullString
 	var retracted sql.NullString
-	var decided int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, ci_id, attr, raw_value, value_type, source_id, scope, run_id,
-		        observed_at, received_at, decided, retracted_at
+		        observed_at, received_at, retracted_at
 		 FROM assertion WHERE id=?`, id).
 		Scan(&a.ID, &a.CIID, &a.Attr, &a.Raw, &vt, &a.SourceID, &scope, &runID,
-			&observed, &received, &decided, &retracted)
+			&observed, &received, &retracted)
 	if err != nil {
 		return model.Assertion{}, err
 	}
@@ -459,7 +432,6 @@ func (s *Store) Assertion(ctx context.Context, id int64) (model.Assertion, error
 	a.RunID = runID.String
 	a.ObservedAt = parseTS(observed)
 	a.ReceivedAt = parseTS(received)
-	a.Decided = decided != 0
 	if retracted.Valid && retracted.String != "" {
 		t := parseTS(retracted.String)
 		a.Retracted = &t
@@ -487,7 +459,7 @@ func (s *Store) RetractAssertion(ctx context.Context, id int64, at time.Time) er
 func (s *Store) Facts(ctx context.Context, ciID string) ([]model.Fact, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT assertion_id, ci_id, attr, scope, raw_value, value_type, norm_value,
-		        source_kind, source_name, observed_at, confirmed_at, decided, normalizer_version
+		        source_kind, source_name, observed_at, confirmed_at, normalizer_version
 		 FROM current_fact WHERE ci_id=? ORDER BY attr, scope`, ciID)
 	if err != nil {
 		return nil, err
@@ -504,7 +476,7 @@ func (s *Store) Facts(ctx context.Context, ciID string) ([]model.Fact, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return s.markContested(ctx, out)
+	return out, nil
 }
 
 type scanner interface{ Scan(...any) error }
@@ -512,9 +484,8 @@ type scanner interface{ Scan(...any) error }
 func scanFact(rows scanner) (model.Fact, error) {
 	var f model.Fact
 	var vt, sk, obs, conf string
-	var decided int
 	if err := rows.Scan(&f.AssertionID, &f.CIID, &f.Attr, &f.Scope, &f.Raw, &vt,
-		&f.Norm, &sk, &f.SourceName, &obs, &conf, &decided, &f.Normalizer); err != nil {
+		&f.Norm, &sk, &f.SourceName, &obs, &conf, &f.Normalizer); err != nil {
 		return f, err
 	}
 	f.ValueType = model.ValueType(vt)
@@ -524,60 +495,7 @@ func scanFact(rows scanner) (model.Fact, error) {
 	if f.ConfirmedAt.IsZero() {
 		f.ConfirmedAt = f.ObservedAt
 	}
-	f.Decided = decided == 1
 	return f, nil
-}
-
-// markContested flags facts where another source's current claim differs.
-//
-// Only each source's latest claim counts. A collector that read 7.9 last year
-// and 8.6 today has not contradicted anyone: that is an upgrade, and treating
-// history as a live disagreement would fill the queue with every change the
-// estate has ever made.
-func (s *Store) markContested(ctx context.Context, facts []model.Fact) ([]model.Fact, error) {
-	for i, f := range facts {
-		var n int
-		err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM (
-			   SELECT raw_value, ROW_NUMBER() OVER (
-			     PARTITION BY source_id ORDER BY `+freshness+` DESC, observed_at DESC, assertion_id DESC) AS sn
-			   FROM ranked_assertion WHERE ci_id=? AND attr=? AND scope=?
-			 ) WHERE sn=1 AND raw_value<>?`,
-			f.CIID, f.Attr, f.Scope, f.Raw).Scan(&n)
-		if err != nil {
-			return nil, err
-		}
-		facts[i].Contested = n > 0
-	}
-	return facts, nil
-}
-
-// Conflicts returns what each source currently says about one attribute of one
-// CI, winner first. Superseded claims from the same source are left out: they
-// are history, available through the assertion table, not disagreement.
-func (s *Store) Conflicts(ctx context.Context, ciID, attr, scope string) ([]model.Fact, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT assertion_id, ci_id, attr, scope, raw_value, value_type, norm_value,
-		        source_kind, source_name, observed_at, confirmed_at, decided, normalizer_version
-		 FROM (
-		   SELECT *, ROW_NUMBER() OVER (
-		     PARTITION BY source_id ORDER BY `+freshness+` DESC, observed_at DESC, assertion_id DESC) AS sn
-		   FROM ranked_assertion WHERE ci_id=? AND attr=? AND scope=?
-		 ) WHERE sn=1 ORDER BY rn`,
-		ciID, attr, scope)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []model.Fact
-	for rows.Next() {
-		f, err := scanFact(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
 }
 
 // Bucket is one bar of a chart: a value, how many items hold it, and whether
@@ -733,10 +651,9 @@ func (s *Store) Distribution(ctx context.Context, attr string) ([]Bucket, error)
 // alone dates the first sighting and would rank a value confirmed this morning
 // below one abandoned last week.
 //
-// Ranking, per-source deduplication and the conflict queries must all use
-// this. If one of them ranks on observed_at instead, the winning value and the
-// list of competing values can disagree about what a single source currently
-// claims, which shows a source contradicting itself.
+// Ranking and the repeat check in Assert must both use this. If one of them
+// ranks on observed_at instead, the two can disagree about what a single
+// source currently claims.
 const freshness = `MAX(observed_at, COALESCE(NULLIF(confirmed_at, ''), observed_at))`
 
 // lastCollectorRunFailed is true for a host whose most recent collector run
@@ -758,7 +675,7 @@ func (s *Store) unknownBreakdown(ctx context.Context, attr string, missing, unpa
 	failed, never := 0, 0
 	if missing > 0 {
 		// Only the collector run counts here. A name that fails to resolve is
-		// a different finding and has its own discrepancy; folding it in
+		// a different finding with its own probe; folding it in
 		// would make "collection failed" mean two things.
 		err := s.db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM ci c
@@ -828,24 +745,21 @@ func (s *Store) Reachability(ctx context.Context, ciID string) (Reachability, er
 type HostRow struct {
 	CI           model.CI
 	Values       map[string]string
-	Contested    map[string]bool
 	LastCollect  time.Time
 	CollectOK    bool
 	HasCollected bool
 	Stacks       []string
-	OpenDiscreps int
 }
 
 // HostFilter narrows the inventory listing. Every field maps to a URL
 // parameter so a filtered view can be pasted into a chat message and open the
 // same thing for the next person.
 type HostFilter struct {
-	Attr      string // attribute to match on
-	Value     string // required normalised value of Attr
-	Stack     string
-	Search    string
-	Contested bool
-	Unknown   string // attribute that must have no value at all
+	Attr    string // attribute to match on
+	Value   string // required normalised value of Attr
+	Stack   string
+	Search  string
+	Unknown string // attribute that must have no value at all
 	// Because narrows Unknown to one of the three causes: never_collected,
 	// collection_failed, or unparsed.
 	Because  string
@@ -923,7 +837,6 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 		r.CI.Kind = model.CIKind(kind)
 		r.CI.CreatedAt = parseTS(created)
 		r.Values = map[string]string{}
-		r.Contested = map[string]bool{}
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -944,23 +857,10 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 				v = fct.Raw
 			}
 			out[i].Values[fct.Attr] = v
-			out[i].Contested[fct.Attr] = fct.Contested
 		}
 		if err := s.fillCollection(ctx, &out[i]); err != nil {
 			return nil, err
 		}
-	}
-	if f.Contested {
-		kept := out[:0]
-		for _, r := range out {
-			for _, c := range r.Contested {
-				if c {
-					kept = append(kept, r)
-					break
-				}
-			}
-		}
-		out = kept
 	}
 	return out, nil
 }
@@ -991,43 +891,7 @@ func (s *Store) fillCollection(ctx context.Context, r *HostRow) error {
 		}
 		r.Stacks = append(r.Stacks, n)
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	return s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM discrepancy WHERE ci_id=? AND disposition='open'`,
-		r.CI.ID).Scan(&r.OpenDiscreps)
-}
-
-// DocumentedAttrs returns the attributes some document asserts somewhere in
-// the estate, and, per CI, the attribute and scope pairs a document covers.
-//
-// The pair answers "is this attribute one we track, and did anyone write this
-// host's value down". Without the first half every collected attribute would
-// be undocumented and the finding would be noise.
-func (s *Store) DocumentedAttrs(ctx context.Context) (tracked map[string]bool, byCI map[string]map[string]bool, err error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT DISTINCT a.ci_id, a.attr, a.scope
-		 FROM assertion a JOIN source s ON s.id=a.source_id
-		 WHERE s.kind='document' AND a.retracted_at IS NULL`)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rows.Close()
-	tracked = map[string]bool{}
-	byCI = map[string]map[string]bool{}
-	for rows.Next() {
-		var ci, attr, scope string
-		if err := rows.Scan(&ci, &attr, &scope); err != nil {
-			return nil, nil, err
-		}
-		tracked[attr] = true
-		if byCI[ci] == nil {
-			byCI[ci] = map[string]bool{}
-		}
-		byCI[ci][attr+"\x00"+scope] = true
-	}
-	return tracked, byCI, rows.Err()
+	return rows.Err()
 }
 
 // Retire marks a CI as gone without deleting it. The history stays: a machine

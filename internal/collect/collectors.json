@@ -33,7 +33,7 @@
       "comment": "Non-zero means the commands above describe a workload partition, not the machine hosting it. Without this the same frame is counted several times.",
       "command": "uname -W",
       "parse": { "kind": "first_line" },
-      "type": "flag"
+      "type": "number"
     },
     {
       "id": "aix.hw.model",

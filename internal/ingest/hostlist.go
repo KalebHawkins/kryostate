@@ -78,7 +78,10 @@ type BulkOptions struct {
 	// User, when set, gives every host without an ssh connection one that
 	// logs in as this user through ssh-agent.
 	User string
-	By   string
+	// Application, when set, is recorded as the application every listed
+	// host runs.
+	Application string
+	By          string
 }
 
 // BulkResult counts what AddHostsToStack did.
@@ -126,6 +129,12 @@ func AddHostsToStack(ctx context.Context, st *store.Store, stack string, hosts [
 			return res, err
 		}
 		res.Added++
+
+		if app := strings.TrimSpace(opt.Application); app != "" {
+			if err := st.SetApplication(ctx, id, app, opt.By, "added to "+stack); err != nil {
+				return res, err
+			}
+		}
 
 		if opt.User != "" {
 			profiles, err := st.ConnProfiles(ctx, id)

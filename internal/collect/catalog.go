@@ -246,12 +246,12 @@ var Catalog = []Template{
 
 	// ---- templates that read a path or a variable ----
 	{
-		ID: "file.exists", Title: "File exists", Category: "Files & config", Type: model.TypeFlag,
-		Description: "Records yes or no.",
+		ID: "file.exists", Title: "File exists", Category: "Files & config", Type: model.TypeBool,
+		Description: "Records true or false.",
 		Param:       &Param{Kind: ParamPath, Label: "Path", Placeholder: "/etc/resolv.conf", Help: "A full path. On Windows, such as C:\\app\\config.xml."},
 		Variants: []Variant{
-			{Name: "unix", OS: unix, Command: "if [ -e {{param}} ]; then echo yes; else echo no; fi", Parse: first()},
-			{Name: "windows", OS: windows, Command: "if (Test-Path -LiteralPath {{param}}) { 'yes' } else { 'no' }", Parse: first()},
+			{Name: "unix", OS: unix, Command: "if [ -e {{param}} ]; then echo true; else echo false; fi", Parse: first()},
+			{Name: "windows", OS: windows, Command: "if (Test-Path -LiteralPath {{param}}) { 'true' } else { 'false' }", Parse: first()},
 		},
 	},
 	{
@@ -540,7 +540,7 @@ func (c Choice) ParamText() string {
 }
 
 // Group is a set of fixed catalog entries switched on together, such as
-// everything worth knowing about a Splunk forwarder.
+// the language runtimes.
 type Group struct {
 	ID          string
 	Title       string
@@ -552,10 +552,6 @@ type Group struct {
 var Groups = []Group{
 	{ID: "group.basics", Title: "Host basics", Description: "CPU cores, memory, time zone and DNS servers.",
 		Entries: []string{"cpu.cores", "memory.total", "timezone", "dns.servers"}},
-	{ID: "group.splunk.forwarder", Title: "Splunk forwarder", Description: "The Universal Forwarder's version and where it is installed.",
-		Entries: []string{"splunk.uf.version", "splunk.home"}},
-	{ID: "group.splunk.enterprise", Title: "Splunk Enterprise", Description: "The Splunk Enterprise version and where it is installed.",
-		Entries: []string{"splunk.enterprise.version", "splunk.home"}},
 	{ID: "group.runtimes", Title: "Language runtimes", Description: "Java, Python and OpenSSL versions.",
 		Entries: []string{"java.version", "python.version", "openssl.version"}},
 	{ID: "group.web", Title: "Web servers", Description: "nginx and Apache httpd versions.",

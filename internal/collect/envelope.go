@@ -95,6 +95,11 @@ func (e *Envelope) Validate() error {
 			return fmt.Errorf("fact %d: %q is reported twice for the same scope", i, f.Key)
 		}
 		seen[id] = true
+		// "flag" is what this type was called before it was named for what
+		// it holds; collectors written then still say it.
+		if f.Type == "flag" {
+			e.Facts[i].Type, f.Type = model.TypeBool, model.TypeBool
+		}
 		if f.Type != "" && !knownType(f.Type) {
 			return fmt.Errorf("fact %d (%s): unknown type %q", i, f.Key, f.Type)
 		}
@@ -105,7 +110,7 @@ func (e *Envelope) Validate() error {
 func knownType(t model.ValueType) bool {
 	switch t {
 	case model.TypeText, model.TypeVersion, model.TypePath,
-		model.TypeNumber, model.TypeFlag, model.TypeList:
+		model.TypeNumber, model.TypeBool, model.TypeList:
 		return true
 	}
 	return false

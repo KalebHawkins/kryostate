@@ -41,10 +41,21 @@ type Row map[string]any
 // the order foreign keys allow.
 var tables = []string{
 	"source", "ci", "identity", "assertion", "assertion_norm",
-	"precedence", "freshness_budget", "fact_meta",
+	"precedence", "fact_meta",
 	"address", "conn_profile", "check_def", "evidence",
 	"stack", "stack_member",
-	"run", "probe", "discrepancy", "audit", "collector_choice",
+	"run", "probe", "audit", "collector_choice",
+}
+
+// obsoleteTables were written by earlier builds and hold nothing this build
+// reads: disagreements and the staleness budgets that raised them. A dump that
+// carries them still restores, without them.
+var obsoleteTables = map[string]bool{"discrepancy": true, "freshness_budget": true}
+
+// obsoleteColumns are columns an older database still has and this build no
+// longer reads. They are left out of an export and skipped on restore.
+var obsoleteColumns = map[string]map[string]bool{
+	"assertion": {"decided": true},
 }
 
 // Export reads every table into a dump.
@@ -106,10 +117,8 @@ func Restore(ctx context.Context, st *store.Store, d *Dump) error {
 
 	// Policy rows are seeded when the store is opened and would collide with
 	// the dump's own, so the seeded ones give way to what was exported.
-	for _, t := range []string{"precedence", "freshness_budget"} {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM `+t); err != nil {
-			return err
-		}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM precedence`); err != nil {
+		return err
 	}
 
 	// The dump's own "order" is not trusted to name tables: it would put a
@@ -117,7 +126,7 @@ func Restore(ctx context.Context, st *store.Store, d *Dump) error {
 	// package's, and anything the file names that this build does not know is
 	// an error rather than something to skip quietly.
 	for t := range d.Tables {
-		if !known(t) {
+		if !known(t) && !obsoleteTables[t] {
 			return fmt.Errorf("dump holds unknown table %q", t)
 		}
 	}
@@ -129,6 +138,9 @@ func Restore(ctx context.Context, st *store.Store, d *Dump) error {
 		for _, row := range d.Tables[t] {
 			cols := make([]string, 0, len(row))
 			for c := range row {
+				if obsoleteColumns[t][c] {
+					continue
+				}
 				if !allowed[c] {
 					return fmt.Errorf("restore %s: unknown column %q", t, c)
 				}
@@ -206,6 +218,9 @@ func readTable(ctx context.Context, db *sql.DB, table string) ([]Row, error) {
 		}
 		r := Row{}
 		for i, c := range cols {
+			if obsoleteColumns[table][c] {
+				continue
+			}
 			if b, ok := vals[i].([]byte); ok {
 				r[c] = string(b)
 				continue

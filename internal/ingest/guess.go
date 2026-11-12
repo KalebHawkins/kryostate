@@ -10,23 +10,14 @@ import (
 // hand-kept inventories. Matching ignores case, spaces, dashes and
 // underscores, so "Host Name", "host_name" and "HOSTNAME" are one header.
 var commonColumns = struct {
-	host, fqdn, stack, address []string
-	attrs                      map[string]string
+	host, fqdn, stack, address, role, application []string
 }{
-	host:    []string{"host", "hostname", "server", "name", "servername", "machine"},
-	fqdn:    []string{"fqdn", "dnsname", "fullname"},
-	stack:   []string{"stack", "system", "service"},
-	address: []string{"address", "ip", "ipaddress", "ipv4"},
-	attrs: map[string]string{
-		"role": "role", "function": "role",
-		"os": "os.version", "operatingsystem": "os.version", "osversion": "os.version",
-		"application": "app.name", "app": "app.name", "appname": "app.name",
-		"appversion": "app.version", "version": "app.version",
-		"environment": "env", "env": "env",
-		"owner": "owner", "team": "owner",
-		"site": "site", "location": "site", "datacenter": "site",
-		"model": "hw.model", "serial": "hw.serial", "serialnumber": "hw.serial",
-	},
+	host:        []string{"host", "hostname", "server", "name", "servername", "machine"},
+	fqdn:        []string{"fqdn", "dnsname", "fullname"},
+	stack:       []string{"stack", "system", "service"},
+	address:     []string{"address", "ip", "ipaddress", "ipv4"},
+	role:        []string{"role", "function"},
+	application: []string{"application", "app", "appname"},
 }
 
 func squash(h string) string {
@@ -37,8 +28,11 @@ func squash(h string) string {
 // GuessMapping works out a mapping from the tables' headers, for a document
 // imported without a mapping file. It returns lines describing each decision
 // so the person can see what was understood, and the headers it ignored.
+// Only the host, its names and address, its stack and role, and its
+// application are read from a document; any other column is listed as not
+// imported.
 func GuessMapping(tables []Table) (Mapping, []string, error) {
-	m := Mapping{Attrs: map[string]string{}}
+	var m Mapping
 	seen := map[string]bool{}
 	var headers []string
 	for _, t := range tables {
@@ -72,13 +66,14 @@ func GuessMapping(tables []Table) (Mapping, []string, error) {
 		case m.AddressColumn == "" && pick(commonColumns.address, h):
 			m.AddressColumn = h
 			notes = append(notes, fmt.Sprintf("%q is its address", h))
+		case m.RoleColumn == "" && pick(commonColumns.role, h):
+			m.RoleColumn = h
+			notes = append(notes, fmt.Sprintf("%q is its role in the stack", h))
+		case m.ApplicationColumn == "" && pick(commonColumns.application, h):
+			m.ApplicationColumn = h
+			notes = append(notes, fmt.Sprintf("%q is the application it runs", h))
 		default:
-			if attr, ok := commonColumns.attrs[squash(h)]; ok {
-				m.Attrs[h] = attr
-				notes = append(notes, fmt.Sprintf("%q is recorded as %s", h, attr))
-			} else {
-				ignored = append(ignored, h)
-			}
+			ignored = append(ignored, h)
 		}
 	}
 	if m.HostColumn == "" {
@@ -87,7 +82,8 @@ func GuessMapping(tables []Table) (Mapping, []string, error) {
 	}
 	if len(ignored) > 0 {
 		sort.Strings(ignored)
-		notes = append(notes, "not imported: "+strings.Join(ignored, ", ")+" (write a mapping file to include them)")
+		notes = append(notes, "not imported: "+strings.Join(ignored, ", ")+
+			" (an inventory supplies hosts, addresses, stacks, roles and applications; everything else is collected from the host)")
 	}
 	return m, notes, nil
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/model"
-	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // TestLookupFailureIsNotAMissingRecord covers the distinction the tool exists
@@ -80,23 +79,13 @@ func TestLookupAnyReportsWhyItGotNothing(t *testing.T) {
 	}
 }
 
-// TestAResolverOutageDoesNotCloseFindings is the end-to-end form of the rule
-// above. A pass that could not ask the question must not answer it: lapsing a
-// finding because the resolver was down reports an outage as a recovery, and
-// the host silently leaves the queue nobody is now looking at.
-func TestAResolverOutageDoesNotCloseFindings(t *testing.T) {
+// TestAResolverOutageIsNotAnAnswer is the end-to-end form of the rule above. A
+// pass that could not ask the question must not answer it: a host whose lookup
+// failed is counted as failed, never as resolving nowhere.
+func TestAResolverOutageIsNotAnAnswer(t *testing.T) {
 	ctx := context.Background()
 	e, st := testEngine(t)
-	id := host(t, st, "node-outage")
-
-	// An earlier pass found the name missing.
-	if err := st.RaiseDiscrepancy(ctx, model.Discrepancy{
-		CIID: id, Kind: model.DiscUnresolved,
-		Summary:    "node-outage resolves in no zone that was tried",
-		DetectedAt: time.Now().Add(-24 * time.Hour),
-	}); err != nil {
-		t.Fatal(err)
-	}
+	host(t, st, "node-outage")
 
 	// Today's pass cannot reach a resolver at all.
 	sum, err := e.Resolve(ctx, ResolveOptions{
@@ -105,17 +94,7 @@ func TestAResolverOutageDoesNotCloseFindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sum.Failed != 1 {
+	if sum.Failed != 1 || sum.Unresolved != 0 {
 		t.Fatalf("a dead resolver was not counted as a failed lookup: %+v", sum)
-	}
-
-	open, err := st.Discrepancies(ctx, store.DiscrepancyFilter{
-		Kind: model.DiscUnresolved, Disposition: model.DispOpen,
-	}, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(open) != 1 {
-		t.Errorf("the resolver outage closed %d open findings it learned nothing about", 1-len(open))
 	}
 }

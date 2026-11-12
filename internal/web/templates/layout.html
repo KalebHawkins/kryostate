@@ -14,7 +14,6 @@
 <nav class="nav">
   <a class="nav__brand" href="/">KryoState</a>
   <a href="/" {{if eq .Nav "home"}}aria-current="page"{{end}} hx-get="/" hx-target="#main" hx-push-url="true">Overview</a>
-  <a href="/discrepancies" {{if eq .Nav "discrepancies"}}aria-current="page"{{end}} hx-get="/discrepancies" hx-target="#main" hx-push-url="true">Disagreements{{if .OpenDisc}} <span class="chip chip--contested">{{.OpenDisc}}</span>{{end}}</a>
   <a href="/hosts" {{if eq .Nav "hosts"}}aria-current="page"{{end}} hx-get="/hosts" hx-target="#main" hx-push-url="true">Inventory</a>
   <a href="/stacks" {{if eq .Nav "stacks"}}aria-current="page"{{end}} hx-get="/stacks" hx-target="#main" hx-push-url="true">Stacks</a>
   <a href="/charts" {{if eq .Nav "charts"}}aria-current="page"{{end}} hx-get="/charts" hx-target="#main" hx-push-url="true">Charts</a>

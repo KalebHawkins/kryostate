@@ -12,12 +12,11 @@ For the reasoning behind each design decision, read the files in
 
 Most estates have a written inventory: a wiki page, a spreadsheet, or a
 Markdown table. Over time it drifts away from what is really installed.
-KryoState records what your documents claim about each host, connects to each
-host to read what the host itself reports, and shows you where the two do not
-agree.
-
-KryoState does not trust either side by default. It keeps both statements and
-lets you decide.
+KryoState takes from you, or from such a document, only what a machine cannot
+say about itself: which hosts exist, which stacks they belong to, the role each
+plays there and the application it runs. It connects to each host to read
+everything else from the host itself. What a host reports is the truth for
+that attribute.
 
 ## 2. Five ideas to know first
 
@@ -31,40 +30,31 @@ KryoState stores no "current value" for anything. Each value is a **claim**
 | Host | `web01` |
 | Attribute | `os.version` |
 | Value | `RHEL 8.6` |
-| Source | `inventory.md` (a document) or `ssh` (a collector) |
+| Source | `ssh` (a collector), or for an application a person or `inventory.md` |
 | Time | when the source said it |
 
-Claims are never overwritten. When a document and a host disagree, both
-claims stay in the database.
+Claims are never overwritten. When a value changes, the old claim stays in the
+database beside the new one, so the history of each host is kept.
 
-### 2.2 Sources have a rank
+### 2.2 The host always wins
 
-When sources disagree, the value with the best rank is shown. A lower number
-wins.
+What a host reports wins over every other source, on every attribute. Where no
+collector has said anything, the value with the best rank is shown. A lower
+number wins.
 
 | Source kind | Rank | Where it comes from |
 |---|---|---|
-| collector | 10 | A command run on the host |
-| human | 20 | A person, with `kryostate set` or the host page |
+| collector | first | A command run on the host |
+| human | 20 | A person, with `kryostate set` or the host page (application only) |
 | dns | 30 | A DNS lookup |
-| document | 40 | An imported document |
+| document | 40 | An imported document (application only) |
 | derived | 90 | Inferred from another value |
 
-For `env`, `site` and `owner`, a person ranks first, because a machine cannot
-know what environment it belongs to.
+### 2.3 What a person may state
 
-### 2.3 A disagreement is a finding
-
-When two sources disagree, `kryostate detect` raises a **disagreement**. You
-settle each one with one of three decisions:
-
-- **Machine wins**: the document is out of date. The host's value stands.
-- **Document wins**: the collector read the wrong thing. The document's value
-  stands.
-- **Accept**: the difference is known and tolerated.
-
-Other kinds of finding are also raised: a value no rule understood, a value
-that is too old, and a value that the documents never mention.
+A person or a document may state a host's **application**, and put it in
+**stacks** with a **role** in each. Nothing else is entered by hand: the
+operating system, versions and every other attribute come from the host.
 
 ### 2.4 Hosts have an opaque id
 
@@ -180,7 +170,7 @@ another machine from the web page.
 
 The database stores a credential **reference**, never the key or password.
 
-### Step 3: collect and compare
+### Step 3: collect
 
 **In the web interface:** open **Overview** and select **Collect now**.
 Progress appears for each host as it finishes.
@@ -192,7 +182,7 @@ kryostate refresh -only web01
 ```
 
 Both connect to the host, run the built-in read-only commands for its
-operating system, run any health checks, and then compare the sources. Leave
+operating system, and run any health checks. Leave
 out `-only` to do every host.
 
 If the connection fails, the reason is shown. The most common causes are an
@@ -209,21 +199,22 @@ every value, where it came from, and when.
 kryostate show web01
 ```
 
-Where sources disagree, every competing claim is listed under the value that
-currently wins.
-
 ### Step 5: state what a machine cannot know
 
-A host cannot report its environment or owner. You can.
+A host cannot say what application it runs. You can. This is the only
+attribute you enter by hand; its stacks and role are covered in section 5.
 
-**In the web interface:** on the host's page, use **State a value**. Enter the
-attribute (such as `env`), the value, and a reason.
+**In the web interface:** on the host's page, use **Application**. Enter the
+application and a reason.
 
 **On the command line:**
 
 ```sh
-kryostate set web01 env=production owner=payments-team -reason "per CHG-1042"
+kryostate set web01 application=payments -reason "per CHG-1042"
+kryostate set web01 stack=payments-prod role=app -reason "per CHG-1042"
 ```
+
+Anything else, such as `env=production`, is refused.
 
 The reason is required. It goes into the audit log with your name.
 
@@ -270,8 +261,9 @@ A name with dots in it is taken as the fully qualified name, and may come
 first or last. Words may be separated by spaces, tabs or commas, so columns
 copied from a spreadsheet work. Hosts that KryoState does not know yet are
 added. Fill in **Connect new hosts as user** to give each new host a
-connection that logs in as that user with your ssh-agent. Select **Create
-stack**.
+connection that logs in as that user with your ssh-agent. Fill in
+**Application** to record the application every listed host runs. Select
+**Create stack**.
 
 To add more hosts later, use **Add several hosts** in the stack's card.
 
@@ -279,7 +271,7 @@ To add more hosts later, use **Add several hosts** in the stack's card.
 
 ```sh
 kryostate stack -name payments-prod -environment production \
-    -owner payments-team -file hosts.txt -create -user svc-ro
+    -owner payments-team -file hosts.txt -create -user svc-ro -application payments
 ```
 
 `-create` adds hosts that are not recorded yet; without it, an unknown name is
@@ -304,13 +296,13 @@ kryostate stack -name payments-prod -add web01 -role app
 ### Look at it
 
 The **Stacks** page shows each stack with its members, each member's role, and
-counts: collected, failed, never collected, and open disagreements. **Collected
+counts: collected, failed and never collected. **Collected
 here** lists what is read from the stack's hosts. **Open in inventory** lists
 the members with their values.
 
 To collect something more from just this stack, pick it under **Also collect
-on**, for example the **Splunk forwarder** group on your Splunk stack, and
-select **Switch on**. That only ever adds the stack: anything already
+on**, for example **Splunk Universal Forwarder version** on your Splunk
+stack, and select **Switch on**. That only ever adds the stack: anything already
 collected on other hosts keeps running there.
 
 On the command line, `kryostate stack` lists the stacks and
@@ -340,22 +332,24 @@ for you:
 kryostate import -name inventory.md inventory.md
 ```
 
+An inventory supplies the hosts, their names and addresses, the stack each
+belongs to, its role there, and the application it runs. Nothing else is
+imported: the operating system, versions and the rest come from the hosts.
+
 KryoState reads the column headings and prints what it understood. It
-recognises common names: Host or Hostname, FQDN, Stack, Address or IP, Role,
-OS, Application, Version, Environment, Owner and Site. It names any column it
-left out. To import a column with another name, write a mapping file that says
-which column means what:
+recognises common names: Host or Hostname, FQDN, Address or IP, Stack, Role and
+Application. It lists every other column as not imported, so a column such as
+OS or Owner is named rather than dropped without a word. If your headings use
+other names, write a mapping file that says which column means what:
 
 ```json
 {
-  "host_column": "Host",
-  "stack_column": "Stack",
-  "address_column": "Address",
-  "attrs": {
-    "OS": "os.version",
-    "Application": "app.name",
-    "Role": "role"
-  }
+  "host_column": "Server",
+  "fqdn_column": "DNS name",
+  "address_column": "IP",
+  "stack_column": "System",
+  "role_column": "Function",
+  "application_column": "Product"
 }
 ```
 
@@ -365,8 +359,8 @@ and pass it with `-map`:
 kryostate import -name inventory.md -map mapping.json inventory.md
 ```
 
-The `-name` is the source name shown beside every claim from this file.
-Import the same file again after you edit it; unchanged claims are not
+The `-name` is the source name shown beside every application from this
+file. Import the same file again after you edit it; unchanged values are not
 duplicated, and stack details you set by hand are kept. A CSV file works the
 same way.
 
@@ -387,8 +381,8 @@ OpenSSL, nginx, Apache httpd and Docker. It also has fill-in-the-blank ones:
 `SPLUNK_HOME`, and **an installed package's version**.
 
 **Groups** switch on several at once: **Host basics** (CPU, memory, time zone,
-DNS), **Splunk forwarder**, **Splunk Enterprise**, **Language runtimes** and
-**Web servers**.
+DNS), **Language runtimes** and **Web servers**. The Splunk collectors are
+switched on one by one.
 
 **In the web interface:** open **Collectors**. Search or filter the list,
 select a collector, and under **Where it runs** open **Switch on**, choose
@@ -404,7 +398,7 @@ stack from its card on the **Stacks** page.
 kryostate collectors -catalog
 kryostate collectors -try memory.total -host web01
 kryostate collectors -enable memory.total
-kryostate collectors -enable group.splunk.forwarder -stacks splunk-prod
+kryostate collectors -enable splunk.uf.version -stacks splunk-prod
 kryostate collectors -enable file.exists -param /etc/resolv.conf
 kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
     -section general -key serverName
@@ -441,20 +435,13 @@ when something does not work.
 
 ### The daily loop
 
-**In the web interface:** **Overview**, then **Collect now**. Then open
-**Disagreements** and decide each one with **Machine wins**, **Document
-wins** or **Accept**.
+**In the web interface:** **Overview**, then **Collect now**.
 
 **On the command line:**
 
 ```sh
-kryostate refresh            # collect, check and compare
-kryostate disagreements      # what needs a decision
-kryostate disagreements -decide 12 -as machine -note "rebuilt in May"
+kryostate refresh            # collect and check
 ```
-
-The `-as` values are `machine`, `document` and `accept`. You can settle
-several at once: `-decide 12,13,14`.
 
 ### Finding hosts
 
@@ -464,8 +451,7 @@ columns, and download the view as CSV. On the command line:
 ```sh
 kryostate hosts                          # every host
 kryostate hosts pay                      # names that contain "pay"
-kryostate hosts -disagrees               # hosts with a disputed value
-kryostate hosts -cols os.version,env,owner
+kryostate hosts -cols os.version,application
 kryostate hosts -json                    # for scripts
 ```
 
@@ -497,10 +483,9 @@ kryostate restore -db new.db -in backup.json
 
 | Page | What it shows | What you can change |
 |---|---|---|
-| Overview | Coverage counts and the newest disagreements | Start a collection |
-| Disagreements | One card for each disagreement | Decide each one |
+| Overview | Coverage counts | Start a collection |
 | Inventory | One row for each host | Add a host; choose columns; download CSV |
-| Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, stated values, retire and restore, chosen address; test any collector on it |
+| Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, application, retire and restore, chosen address; test any collector on it |
 | Stacks | One card for each stack, with roles and what is collected there | Create, edit and delete stacks; add and remove members; switch collectors on for one stack |
 | Charts | One chart for each attribute; each bar links to its hosts | |
 | Runs | The collection history | |
@@ -573,9 +558,6 @@ different name than the proxy forwards. Start it with
 rewrites arguments that start with `/`. Run `export MSYS_NO_PATHCONV=1`
 first, or use PowerShell or the web page.
 
-**Nothing in the disagreements list after a collect**: run `kryostate detect`,
-or use `kryostate refresh`, which runs it for you.
-
 ## 10. Glossary
 
 | Term | Meaning |
@@ -585,7 +567,6 @@ or use `kryostate refresh`, which runs it for you.
 | CI | Configuration item. A host is one kind |
 | Collector | Something that reads a value from a host |
 | Connection profile | How to reach a host: transport, address, user, credential reference |
-| Disagreement | A finding that needs a person to decide |
 | Evidence | The stored output of a collector command |
 | Normaliser | A rule that turns a raw string into a comparable value |
 | Scope | Separates several instances of the same thing on one host |

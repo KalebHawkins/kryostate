@@ -1,6 +1,8 @@
 {{define "host-list-fields"}}
 <label>Hosts <span class="hint">One per line: the name, then its role. A fully qualified name may go first or after the role. Hosts not recorded yet are added.</span>
   <textarea name="hosts" rows="5" class="mono" placeholder="web01 app&#10;web02 app&#10;db01.example.com database"></textarea></label>
+<label>Application <span class="hint">Optional. Recorded as the application every listed host runs.</span>
+  <input type="text" name="application" class="mono" placeholder="ledger"></label>
 <label>Connect new hosts as user <span class="hint">Optional. Hosts without a connection get one that logs in as this user with your ssh-agent.</span>
   <input type="text" name="user" class="mono" placeholder="svc-readonly"></label>
 {{end}}
@@ -35,7 +37,7 @@
     <span class="segbar__seg segbar__seg--failed" style="{{seg $h.Failed $h.Members}}"></span>
     <span class="segbar__seg segbar__seg--never" style="{{seg $h.NeverSeen $h.Members}}"></span>
   </div>
-  <p class="muted">{{$h.Collected}} collected · {{$h.Failed}} failed · {{$h.NeverSeen}} never · {{$h.Members}} members{{if $h.Discrepancy}} · {{$h.Discrepancy}} open disagreements{{end}}</p>
+  <p class="muted">{{$h.Collected}} collected · {{$h.Failed}} failed · {{$h.NeverSeen}} never · {{$h.Members}} members</p>
 
   <h3>Members</h3>
   <ul class="list">

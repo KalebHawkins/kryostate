@@ -4,39 +4,21 @@
   · <a href="#manage">Manage connection, stacks, checks…</a></p>
 {{if not .Profiles}}{{if not .CI.RetiredAt}}<div class="notice">Nothing has been collected from this host because KryoState does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}{{end}}
 
-{{if .Discs}}
-<h2>Open against this host</h2>
-{{range .Discs}}{{template "disc-row" .}}{{end}}
-{{end}}
-
 <h2>Facts</h2>
-<p class="muted">Each value is the assertion that currently wins for that attribute. Where sources disagree, every claim is listed.</p>
+<p class="muted">Each value is the one that currently holds for that attribute. What the host reports always wins over what a person or a document says.</p>
 <div class="table-wrap">
 <table>
   <thead><tr><th scope="col">Attribute</th><th scope="col">Value</th><th scope="col">Raw</th><th scope="col">Source</th><th scope="col">Observed</th></tr></thead>
   <tbody>
-  {{$conf := .Conflicts}}
   {{$free := .FreeText}}
   {{range .Facts}}
     <tr>
       <th scope="row" title="{{.Attr}}">{{with index $.Labels .Attr}}{{.}}{{else}}{{label .Attr}}{{end}}{{if .Scope}} <span class="muted mono">[{{.Scope}}]</span>{{end}}</th>
-      <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{template "long-value" .Raw}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}
-        {{if .Contested}}<span class="chip chip--contested">disagrees</span>{{end}}</td>
+      <td class="mono">{{if .Norm}}{{.Norm}}{{else if index $free .Attr}}{{template "long-value" .Raw}}{{else}}<span class="chip chip--unknown">not understood</span>{{end}}</td>
       <td class="mono muted">{{template "long-value" .Raw}}</td>
       <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>
       <td class="mono">{{ago .ObservedAt}}</td>
     </tr>
-    {{with index $conf .Attr}}
-      {{range .}}
-      <tr>
-        <th scope="row"></th>
-        <td class="mono muted">also claimed: {{if .Norm}}{{.Norm}}{{else}}{{.Raw}}{{end}}</td>
-        <td class="mono muted">{{template "long-value" .Raw}}</td>
-        <td><span class="{{chip .SourceKind}}">{{.SourceName}}</span></td>
-        <td class="mono muted">{{ago .ObservedAt}}</td>
-      </tr>
-      {{end}}
-    {{end}}
   {{else}}
     <tr><td colspan="5" class="muted">Nothing asserted about this host yet.</td></tr>
   {{end}}
@@ -191,15 +173,12 @@
     </form>
   </div>
 
-  <div class="card" id="claim">
-    <h2>State a value</h2>
-    <p class="muted">Recorded as your claim, with your reason, beside every other source. For env, site and owner a person outranks the machine.</p>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/claim">
-      <div class="form__row">
-        <label>Attribute <input type="text" name="attr" list="claim-attrs" required placeholder="env" class="mono"></label>
-        <label>Value <input type="text" name="value" required class="mono" placeholder="production"></label>
-      </div>
-      <datalist id="claim-attrs">{{range .Facts}}<option value="{{.Attr}}">{{end}}<option value="env"><option value="site"><option value="owner"></datalist>
+  <div class="card" id="application">
+    <h2>Application</h2>
+    <p class="muted">What this host runs, recorded under your name with your reason. Its stack and role are set under Stacks; everything else is what the host reports.</p>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/application">
+      <label>Application <input type="text" name="application" required class="mono" placeholder="ledger"
+        value="{{range .Facts}}{{if and (eq .Attr "application") (not .Scope)}}{{.Raw}}{{end}}{{end}}"></label>
       <label>Reason <input type="text" name="reason" required placeholder="why you know this, such as a ticket number"></label>
       <div class="form__actions"><button class="btn" type="submit">Record</button></div>
     </form>
@@ -223,7 +202,6 @@
     {{end}}
   </div>
 </div>
-<p class="muted" style="margin-top:1rem"><a href="/discrepancies?ci={{.CI.ID}}&amp;disposition=all" hx-get="/discrepancies?ci={{.CI.ID}}&amp;disposition=all" hx-target="#main" hx-push-url="true">Every disagreement about this host, settled ones included</a></p>
 {{end}}
 
 {{define "long-value"}}{{if multiline .}}<details class="fact-full"><summary>{{short . 40}}</summary><pre>{{.}}</pre></details>{{else}}{{.}}{{end}}{{end}}

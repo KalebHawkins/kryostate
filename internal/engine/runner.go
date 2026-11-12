@@ -45,10 +45,8 @@ type Engine struct {
 	Log *slog.Logger
 }
 
-// Wire gives the store the rules it needs to normalise a value a person chose
-// while settling a disagreement. Without it a decided value is charted as one
-// no rule understood, which is an odd thing to tell someone about a value the
-// tool asked them to pick.
+// Wire gives the store the rules it needs to normalise an application a person
+// states. Without it the stated value is charted as one no rule understood.
 func (e *Engine) Wire() {
 	if e.Store != nil && e.Norm != nil {
 		e.Store.SetNormalizer(normAdapter{e.Norm})

@@ -10,8 +10,8 @@ import (
 )
 
 // Address records one answer a resolver gave for a CI. Every answer is kept.
-// When a name returns several addresses, the tool refuses to guess which one a
-// collector should use and raises it for a person instead.
+// When a name returns several addresses, the tool does not guess which one a
+// collector should use; a person chooses.
 type Address struct {
 	Addr       string
 	Family     string
@@ -378,12 +378,6 @@ func (s *Store) stackHealth(ctx context.Context, stackID int64) (model.StackHeal
 		) last ON last.ci_id=m.ci_id
 		WHERE m.stack_id=?`, stackID).
 		Scan(&h.Members, &h.Collected, &h.Failed, &h.NeverSeen)
-	if err != nil {
-		return h, err
-	}
-	err = s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM discrepancy d JOIN stack_member m ON m.ci_id=d.ci_id
-		 WHERE m.stack_id=? AND d.disposition='open'`, stackID).Scan(&h.Discrepancy)
 	return h, err
 }
 

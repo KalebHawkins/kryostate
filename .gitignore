@@ -29,3 +29,4 @@ testdata/fuzz/
 *.swp
 .DS_Store
 Thumbs.db
+.claude/

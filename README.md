@@ -4,13 +4,14 @@ New to the tool? Start with the [user guide](docs/user-guide.md). It has
 tutorials for adding a host, building a stack and adding a collector, and the
 web interface serves it at `/guide`.
 
-KryoState is a configuration management database for servers. It records what
-your documents claim about each host. It connects to each host over SSH or
-WinRM and records what the host reports. It then shows you where the two do
-not agree.
+KryoState is a configuration management database for servers. You, or an
+inventory document, say which hosts exist, which stacks they belong to, the
+role each plays there and the application it runs. KryoState connects to each
+host over SSH or WinRM and records everything else from what the host
+reports. What a host reports is the truth for that attribute.
 
-The tool does not assume that a document is correct. It stores the document
-claim and the machine report as separate statements, and keeps both.
+Every value is kept with its source and time, so the history of what changed
+stays in the database.
 
 ## 1. Limitations
 
@@ -41,32 +42,32 @@ The database holds no current value. Each value is an assertion with five
 parts: the item, the attribute, the value, the source, and the time of
 observation. Assertions are append-only.
 
-A document that claims one release and a host that reports another produce two
-assertions. Neither one overwrites the other. A SQL view ranks the assertions
-and selects the value to show. The other assertions stay in the database and
-stay queryable.
+A value that changes produces a second assertion. Neither one overwrites the
+other. A SQL view ranks the assertions and selects the value to show. The
+other assertions stay in the database and stay queryable.
 
 ### 2.2 Precedence
 
-Precedence is set for each attribute, in the `precedence` table. The default
-ranks are:
+What a host reports always wins. A collected value outranks every other kind
+of source on every attribute, whatever the `precedence` table says. Among the
+other sources the default ranks are:
 
 | Source kind | Rank |
 |---|---|
-| collector | 10 |
 | human | 20 |
 | dns | 30 |
 | document | 40 |
 | derived | 90 |
 
-A lower rank wins. Three attributes have different defaults, because a machine
-cannot report them: `env`, `site` and `owner` rank a human first. A derived
-source is barred from `env` and `site`. To record a human claim, use
-`kryostate set <host> env=production -reason "..."` or the form on the host
-page.
+A lower rank wins. A derived source is barred from `env` and `site`.
 
-When two sources of equal rank disagree, the source that confirmed its value
-most recently wins.
+A person or a document may state only a host's application, and its stacks
+with its role in each. Use `kryostate set <host> application=ledger -reason
+"..."`, the form on the host page, or an imported inventory. Every other
+attribute comes from the host.
+
+When two sources of equal rank give different values, the source that
+confirmed its value most recently wins.
 
 ### 2.3 Collectors
 
@@ -182,13 +183,13 @@ the files and process the catalog reads are there; no Splunk is installed.
 
 ```sh
 deploy/lab/lab.sh up      # build and start; kryostate is on http://localhost:8099
-deploy/lab/lab.sh seed    # add the hosts as stacks, import a document, collect
+deploy/lab/lab.sh seed    # import the inventory, connect the hosts, collect
 deploy/lab/lab.sh down    # stop (keeps data); reset also deletes it
 ```
 
-The seeded lab has a hand-written inventory (`deploy/lab/inventory.md`) that is
-wrong about two hosts and lists one that was never built, so the overview opens
-on real disagreements. The screens in section 8 are of this lab.
+The seeded lab imports a short inventory (`deploy/lab/inventory.md`) that
+names the hosts, their stacks and roles, and the application each runs;
+everything else is collected. The screens in section 8 are of this lab.
 
 ## 5. Operation
 
@@ -202,21 +203,21 @@ on real disagreements. The screens in section 8 are of this lab.
 #    the credential defaults to agent:.
 ./kryostate target -host appnode1 -user svc-ro
 
-# 3. Or import a document you already have. Columns named Host, OS, Role,
-#    Stack, Environment, Owner and the like are recognised; -map names others.
+# 3. Or import a document you already have. Columns named Host, FQDN,
+#    Address, Stack, Role and Application are recognised; any other column is
+#    listed as not imported.
 ./kryostate import -name inventory.md inventory.md
 
 # 4. Define a health check.
 ./kryostate check -host appnode1 -name https \
     -http https://appnode1.example.invalid/health
 
-# 5. Collect, run the checks, and compare the sources, in one command.
+# 5. Collect and run the checks, in one command.
 ./kryostate refresh
 
 # 6. Read the results.
 ./kryostate hosts
 ./kryostate show appnode1
-./kryostate disagreements
 ./kryostate serve -addr 127.0.0.1:8099
 ```
 
@@ -233,12 +234,11 @@ one command.
 | Command | Function |
 |---|---|
 | `hosts` | Lists hosts, with chosen attributes as columns. `-json` for scripts |
-| `show` | Shows the facts, claims, probes and open disagreements for one host |
-| `disagreements` | Lists disagreements. `-decide <id> -as machine\|document\|accept` settles them |
-| `refresh` | Runs `collect`, then the checks, then `detect` |
-| `set` | Records a value that you state, with `-reason`, as a human claim |
+| `show` | Shows the facts, probes and connections for one host |
+| `refresh` | Runs `collect`, then the checks |
+| `set` | Records a host's application, or its stack and role, with `-reason`. Nothing else can be set by hand |
 | `collectors` | Lists collectors and the catalog (`-catalog`), switches catalog collectors on and off (`-enable`, `-disable`), creates a file for your own (`-init`), and tests any collector without saving (`-try`) |
-| `import` | Reads a Markdown or CSV document and records its claims. Common column names are recognised; `-map` names the rest |
+| `import` | Reads hosts, addresses, stacks, roles and applications from a Markdown or CSV document. Common column names are recognised; `-map` names them otherwise. Other columns are reported as not imported |
 | `host` | Adds a host. `-retire` marks one gone and keeps its history |
 | `target` | Adds or lists a connection profile. `-forget-host-key` clears a pinned key after a host is rebuilt |
 | `stack` | Defines a stack, and adds or removes members, singly or from a list with roles (`-file`, `-create`, `-user`). Lists stacks with no `-name` |
@@ -246,7 +246,6 @@ one command.
 | `collect` | Connects to each enabled target and records what it reports |
 | `check` | Defines and runs liveness checks |
 | `resolve` | Records the DNS answer for each host |
-| `detect` | Compares the sources and raises disagreements |
 | `reparse` | Applies current parse rules to stored command output |
 | `renormalize` | Applies current normaliser rules to collected values |
 | `evidence` | Lists or deletes stored command output |
@@ -260,14 +259,14 @@ time zone, DNS servers, SELinux mode, Splunk forwarder and Enterprise
 versions and install location, Java, Python, OpenSSL, nginx, httpd and Docker
 versions, and templates for a file's existence, a file's contents, one
 setting in a config file, an environment variable, and an installed package's
-version. Groups switch several on together: host basics, Splunk forwarder,
-Splunk Enterprise, language runtimes, web servers. Switch them on in the web
+version. Groups switch several on together: host basics, language runtimes, web
+servers. The Splunk collectors are switched on one by one. Switch them on in the web
 interface on the Collectors page or from a stack's card, or:
 
 ```sh
 ./kryostate collectors -catalog
 ./kryostate collectors -enable memory.total
-./kryostate collectors -enable group.splunk.forwarder -stacks splunk-prod
+./kryostate collectors -enable splunk.uf.version -stacks splunk-prod
 ./kryostate collectors -enable file.exists -param /etc/resolv.conf
 ./kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
     -section general -key serverName
@@ -391,18 +390,12 @@ view.
 The screens below are of the lab in section 4.2, after `lab.sh seed`.
 
 The overview shows coverage counted from probes and collector runs, a button
-that starts a collection, and the open disagreements.
+that starts a collection.
 
 ![Overview](docs/images/overview.png)
 
-The disagreements page shows one card for each open disagreement. A card names
-the attribute, states both claims with their sources, and offers the three
-decisions: the machine wins, the document wins, or the value is accepted.
-
-![Disagreements](docs/images/disagreements.png)
-
 The inventory shows one row for each host. You can filter by name or by stack,
-and choose the attribute columns (`?col=os.version,env`). The CSV link
+and choose the attribute columns (`?col=os.version,application`). The CSV link
 downloads the same view. A value that no source claims is marked unknown, not
 left blank. In the CSV, a value that starts with `=`, `+`, `-` or `@` gets a
 leading apostrophe, so that a spreadsheet does not run it as a formula.
@@ -417,15 +410,15 @@ close to one value per host are listed instead of charted.
 ![Charts](docs/images/charts.png)
 
 The stacks page shows one card for each stack, with its collection coverage,
-its open disagreements, each member's role, and what is collected there. A
+each member's role, and what is collected there. A
 host that serves two stacks appears in both. A new stack takes a pasted list
 of hosts and roles; a card switches a collector or a group on for that stack.
 
 ![Stacks](docs/images/stacks.png)
 
 The host page shows the value that currently wins for each attribute, with the
-raw string, the source, and the time of observation. Where sources disagree,
-every claim is listed. Reachability, identity evidence and addresses are
+raw string, the source, and the time of observation. What the host reports
+wins over anything a person or a document said. Reachability, identity evidence and addresses are
 separate cards. Below them, the host's connection, its stacks and its checks
 can be changed, and any collector can be tested on it without saving.
 

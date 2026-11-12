@@ -2,8 +2,11 @@ package collect
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 func TestConfigParamRoundTrip(t *testing.T) {
@@ -154,5 +157,41 @@ func TestShortLabels(t *testing.T) {
 	}
 	if FixedTitles()["hw.memory.total_mb"] != "Memory total (MB)" {
 		t.Error("fixed titles")
+	}
+}
+
+// TestYesNoAnswersAreTrueFalse: an entry that answers a yes or no question
+// records true or false on every operating system, and says it is boolean.
+func TestYesNoAnswersAreTrueFalse(t *testing.T) {
+	yesNo := regexp.MustCompile(`(?i)(echo|')\s*(yes|no|present|absent)\b`)
+	for _, tpl := range Catalog {
+		for _, v := range tpl.Variants {
+			if yesNo.MatchString(v.Command) {
+				t.Errorf("%s (%s) prints yes or no: %s", tpl.ID, v.Name, v.Command)
+			}
+		}
+	}
+	tpl, _ := Lookup("file.exists")
+	if tpl.Type != model.TypeBool {
+		t.Errorf("file.exists records a %q, want bool", tpl.Type)
+	}
+	for _, v := range tpl.Variants {
+		if !strings.Contains(v.Command, "true") || !strings.Contains(v.Command, "false") {
+			t.Errorf("file.exists (%s) does not print true and false: %s", v.Name, v.Command)
+		}
+	}
+}
+
+// TestNoSplunkGroups: the Splunk collectors are switched on one at a time.
+func TestNoSplunkGroups(t *testing.T) {
+	for _, g := range Groups {
+		if strings.Contains(g.ID, "splunk") {
+			t.Errorf("group %s is still offered", g.ID)
+		}
+	}
+	for _, id := range []string{"splunk.uf.version", "splunk.enterprise.version", "splunk.home"} {
+		if _, ok := Lookup(id); !ok {
+			t.Errorf("catalog entry %s is gone", id)
+		}
 	}
 }
