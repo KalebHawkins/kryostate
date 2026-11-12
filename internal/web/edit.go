@@ -27,14 +27,14 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // webCredential is the only credential reference the browser may assign.
 const webCredential = "agent:"
 
-const flashCookie = "hearsay_flash"
+const flashCookie = "kryostate_flash"
 
 type flash struct {
 	Kind string // "ok" or "error"
@@ -138,7 +138,7 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r, "create host", id, name)
-	done(w, r, hostURL(id), name+" added. Next, tell hearsay how to reach it under Connection.")
+	done(w, r, hostURL(id), name+" added. Next, tell kryostate how to reach it under Connection.")
 }
 
 func (s *Server) handleRetire(w http.ResponseWriter, r *http.Request) {

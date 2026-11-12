@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/KalebHawkins/hearsay/docs"
-	"github.com/KalebHawkins/hearsay/internal/collect"
+	"github.com/KalebHawkins/kryostate/docs"
+	"github.com/KalebHawkins/kryostate/internal/collect"
 )
 
 // ConfigFiles says where this process looks for the files a person writes,

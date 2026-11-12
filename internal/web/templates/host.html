@@ -2,7 +2,7 @@
 <h1 class="mono">{{.CI.Label}}</h1>
 <p class="muted">Internal id <span class="mono">{{.CI.ID}}</span> · first recorded {{stamp .CI.CreatedAt}}{{if .CI.RetiredAt}} · <span class="chip chip--unknown">retired {{stamp .CI.RetiredAt}}</span>{{end}}
   · <a href="#manage">Manage connection, stacks, checks…</a></p>
-{{if not .Profiles}}{{if not .CI.RetiredAt}}<div class="notice">Nothing has been collected from this host because hearsay does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}{{end}}
+{{if not .Profiles}}{{if not .CI.RetiredAt}}<div class="notice">Nothing has been collected from this host because KryoState does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}{{end}}
 
 {{if .Discs}}
 <h2>Open against this host</h2>
@@ -91,13 +91,13 @@
 
   <div class="card" id="connection">
     <h2>Connection</h2>
-    <p class="muted">How hearsay logs in to read this host. Without one, nothing is ever collected from it.</p>
+    <p class="muted">How KryoState logs in to read this host. Without one, nothing is ever collected from it.</p>
     {{range .Profiles}}{{if or (ne .Transport "ssh") $.SSHLocked}}
       <p><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}{{if .Port}}:{{.Port}}{{end}}
         <span class="chip chip--human">{{.CredentialRef}}</span>
         {{if .BastionRef}}<span class="muted">via bastion</span>{{end}}
         {{if not .Enabled}}<span class="chip chip--unknown">disabled</span>{{end}}</p>
-      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it with <span class="mono">hearsay target -host {{$.CI.Label}} …</span></p>
+      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it with <span class="mono">kryostate target -host {{$.CI.Label}} …</span></p>
     {{end}}{{end}}
     {{if not .SSHLocked}}
     {{$p := .SSH}}

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 func okEnvelope() Envelope {
@@ -37,7 +37,7 @@ func TestValidateIsAllOrNothing(t *testing.T) {
 		want string
 	}{
 		{"good", func(*Envelope) {}, ""},
-		{"wrong schema", func(e *Envelope) { e.Schema = "hearsay.facts/v2" }, "schema"},
+		{"wrong schema", func(e *Envelope) { e.Schema = "kryostate.facts/v2" }, "schema"},
 		{"no schema", func(e *Envelope) { e.Schema = "" }, "schema"},
 		{"unnamed collector", func(e *Envelope) { e.Collector = "" }, "collector"},
 		{"invented status", func(e *Envelope) { e.Status = "partial" }, "status"},
@@ -106,13 +106,13 @@ func TestFailedEnvelopeNeedsNoFacts(t *testing.T) {
 // contributed script from reading this process's secrets out of its own
 // environment.
 func TestExternalCollectorGetsNoInheritedEnvironment(t *testing.T) {
-	t.Setenv("HEARSAY_TEST_SECRET", "do-not-leak")
+	t.Setenv("KRYOSTATE_TEST_SECRET", "do-not-leak")
 
 	script := writeReporter(t, `
 import json, os
-facts = [{"key": "env.leaked", "value": os.environ.get("HEARSAY_TEST_SECRET", "")},
-         {"key": "env.target", "value": os.environ.get("HEARSAY_TARGET", "")}]
-print(json.dumps({"schema": os.environ["HEARSAY_SCHEMA"], "collector": "probe",
+facts = [{"key": "env.leaked", "value": os.environ.get("KRYOSTATE_TEST_SECRET", "")},
+         {"key": "env.target", "value": os.environ.get("KRYOSTATE_TARGET", "")}]
+print(json.dumps({"schema": os.environ["KRYOSTATE_SCHEMA"], "collector": "probe",
                   "status": "ok", "facts": facts}))
 `)
 
@@ -139,8 +139,8 @@ print(json.dumps({"schema": os.environ["HEARSAY_SCHEMA"], "collector": "probe",
 func TestExternalCollectorOutputIsRejectedWhole(t *testing.T) {
 	cases := map[string]string{
 		"not json":      `print("everything is fine")`,
-		"unknown field": `print('{"schema": "hearsay.facts/v1", "collector": "p", "status": "ok", "facts": [], "extra": 1}')`,
-		"bad fact":      `print('{"schema": "hearsay.facts/v1", "collector": "p", "status": "ok", "facts": [{"key": "ok.one", "value": "1"}, {"key": "two", "value": "2"}]}')`,
+		"unknown field": `print('{"schema": "kryostate.facts/v1", "collector": "p", "status": "ok", "facts": [], "extra": 1}')`,
+		"bad fact":      `print('{"schema": "kryostate.facts/v1", "collector": "p", "status": "ok", "facts": [{"key": "ok.one", "value": "1"}, {"key": "two", "value": "2"}]}')`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestExternalCollectorThatHangsIsGivenUpOn(t *testing.T) {
 func FuzzEnvelope(f *testing.F) {
 	ok, _ := json.Marshal(okEnvelope())
 	f.Add(string(ok))
-	f.Add(`{"schema":"hearsay.facts/v1","collector":"c","status":"ok","facts":null}`)
+	f.Add(`{"schema":"kryostate.facts/v1","collector":"c","status":"ok","facts":null}`)
 	f.Add(`{"facts":[{"key":"","value":"","type":"","scope":""}]}`)
 	f.Add("")
 	f.Add("{")

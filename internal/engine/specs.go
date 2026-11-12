@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/collect"
 )
 
 // AllSpecs is every spec that may run: the built-in ones, any from a spec

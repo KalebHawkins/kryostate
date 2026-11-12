@@ -1,4 +1,4 @@
-module github.com/KalebHawkins/hearsay
+module github.com/KalebHawkins/kryostate
 
 go 1.27.1
 

@@ -1,6 +1,6 @@
-# hearsay user guide
+# KryoState user guide
 
-This guide is for people who are new to hearsay. It explains the ideas the
+This guide is for people who are new to KryoState. It explains the ideas the
 tool is built on, then walks through adding a host, putting hosts in a stack,
 and adding a collector of your own. The guide is also served by the web
 interface at `/guide`.
@@ -8,22 +8,22 @@ interface at `/guide`.
 For the reasoning behind each design decision, read the files in
 `docs/adr/`. For the security assumptions, read `docs/threat-model.md`.
 
-## 1. What hearsay does
+## 1. What KryoState does
 
 Most estates have a written inventory: a wiki page, a spreadsheet, or a
 Markdown table. Over time it drifts away from what is really installed.
-hearsay records what your documents claim about each host, connects to each
+KryoState records what your documents claim about each host, connects to each
 host to read what the host itself reports, and shows you where the two do not
 agree.
 
-hearsay does not trust either side by default. It keeps both statements and
+KryoState does not trust either side by default. It keeps both statements and
 lets you decide.
 
 ## 2. Five ideas to know first
 
 ### 2.1 Every value is a claim
 
-hearsay stores no "current value" for anything. Each value is a **claim**
+KryoState stores no "current value" for anything. Each value is a **claim**
 (the code calls it an assertion) with five parts:
 
 | Part | Example |
@@ -45,7 +45,7 @@ wins.
 | Source kind | Rank | Where it comes from |
 |---|---|---|
 | collector | 10 | A command run on the host |
-| human | 20 | A person, with `hearsay set` or the host page |
+| human | 20 | A person, with `kryostate set` or the host page |
 | dns | 30 | A DNS lookup |
 | document | 40 | An imported document |
 | derived | 90 | Inferred from another value |
@@ -55,7 +55,7 @@ know what environment it belongs to.
 
 ### 2.3 A disagreement is a finding
 
-When two sources disagree, `hearsay detect` raises a **disagreement**. You
+When two sources disagree, `kryostate detect` raises a **disagreement**. You
 settle each one with one of three decisions:
 
 - **Machine wins**: the document is out of date. The host's value stands.
@@ -71,7 +71,7 @@ that is too old, and a value that the documents never mention.
 Each host has a random id. Its name is evidence of who it is, not its key,
 because names are reused. On the command line you can still name a host by
 its name, its fqdn, or the first six characters of its id. If a name matches
-two hosts, hearsay stops and lists both.
+two hosts, KryoState stops and lists both.
 
 ### 2.5 Unknown is not blank
 
@@ -88,36 +88,36 @@ A host with no value for an attribute is put in one of three groups:
 You need Go 1.27.1 or later (1.27.2 or later is better).
 
 ```sh
-go build ./cmd/hearsay
+go build ./cmd/kryostate
 ```
 
 The result is one binary. It contains the web interface and needs no other
 files.
 
 The database is a single SQLite file. By default it is in your user
-configuration directory. To use a different file, set `HEARSAY_DB` or pass
+configuration directory. To use a different file, set `KRYOSTATE_DB` or pass
 `-db` to any command:
 
 ```sh
-export HEARSAY_DB=$HOME/hearsay/estate.db
+export KRYOSTATE_DB=$HOME/kryostate/estate.db
 ```
 
-Your name is written to the audit trail. hearsay reads it from
-`HEARSAY_ACTOR`, then `USER`, then `USERNAME`.
+Your name is written to the audit trail. KryoState reads it from
+`KRYOSTATE_ACTOR`, then `USER`, then `USERNAME`.
 
 ### Trying it without your own servers
 
 If you have Podman (or Docker with `docker` in place of `podman`), the repository
-has a lab: hearsay, an ssh-agent, and four small Linux hosts to collect from.
+has a lab: KryoState, an ssh-agent, and four small Linux hosts to collect from.
 
 ```sh
-deploy/lab/lab.sh up      # hearsay is then on http://localhost:8099
+deploy/lab/lab.sh up      # kryostate is then on http://localhost:8099
 ```
 
 Follow the tutorials below against it. Add the hosts `uf01`, `uf02`, `idx01`
-and `web01`, and use `hearsay` as the user. Or run `deploy/lab/lab.sh seed` to
+and `web01`, and use `kryostate` as the user. Or run `deploy/lab/lab.sh seed` to
 have everything set up for you, and look around. Run commands inside the
-container with `podman exec -i hearsay-lab hearsay <command>`.
+container with `podman exec -i kryostate-lab kryostate <command>`.
 
 ## 4. Tutorial: add your first host
 
@@ -129,7 +129,7 @@ real read-only account.
 ### Step 0: start the web interface
 
 ```sh
-hearsay serve -addr 127.0.0.1:8099
+kryostate serve -addr 127.0.0.1:8099
 ```
 
 Open `http://127.0.0.1:8099` in a browser. The web interface has no login of
@@ -145,15 +145,15 @@ are taken to the host's page.
 **On the command line:**
 
 ```sh
-hearsay host web01 -fqdn web01.example.com
+kryostate host web01 -fqdn web01.example.com
 ```
 
 Give the fully qualified name when you know it. It is stronger evidence of
 which machine this is than a short name, which may repeat between sites.
 
-### Step 2: tell hearsay how to reach it
+### Step 2: tell KryoState how to reach it
 
-hearsay logs in to a host over SSH to read it. It needs an address, a user
+KryoState logs in to a host over SSH to read it. It needs an address, a user
 name, and a credential.
 
 **In the web interface:** on the host's page, find **Manage this host**, then
@@ -163,12 +163,12 @@ the user and select **Add connection**.
 The web interface always uses your **ssh-agent** as the credential. The
 private key never leaves the agent, so it cannot be exposed through the web
 page. Make sure the agent is running and holds the key, on the machine that
-runs `hearsay serve`.
+runs `kryostate serve`.
 
 **On the command line:**
 
 ```sh
-hearsay target -host web01 -user svc-ro
+kryostate target -host web01 -user svc-ro
 ```
 
 The command line can also use other credentials: `keyring:service/account`
@@ -188,7 +188,7 @@ Progress appears for each host as it finishes.
 **On the command line:**
 
 ```sh
-hearsay refresh -only web01
+kryostate refresh -only web01
 ```
 
 Both connect to the host, run the built-in read-only commands for its
@@ -206,7 +206,7 @@ every value, where it came from, and when.
 **On the command line:**
 
 ```sh
-hearsay show web01
+kryostate show web01
 ```
 
 Where sources disagree, every competing claim is listed under the value that
@@ -222,7 +222,7 @@ attribute (such as `env`), the value, and a reason.
 **On the command line:**
 
 ```sh
-hearsay set web01 env=production owner=payments-team -reason "per CHG-1042"
+kryostate set web01 env=production owner=payments-team -reason "per CHG-1042"
 ```
 
 The reason is required. It goes into the audit log with your name.
@@ -230,7 +230,7 @@ The reason is required. It goes into the audit log with your name.
 ### Step 6 (optional): add a health check
 
 A health check asks whether a service answers, separately from whether
-hearsay can log in.
+KryoState can log in.
 
 **In the web interface:** on the host's page, use **Health checks**. Choose
 HTTP and enter a URL, or TCP and enter `host:port`.
@@ -238,7 +238,7 @@ HTTP and enter a URL, or TCP and enter `host:port`.
 **On the command line:**
 
 ```sh
-hearsay check -host web01 -name https -http https://web01.example.com/health -expect 2xx
+kryostate check -host web01 -name https -http https://web01.example.com/health -expect 2xx
 ```
 
 Checks run with every collection.
@@ -247,7 +247,7 @@ Checks run with every collection.
 
 A **stack** is a deployed system, such as "the payments service in
 production". A host can belong to more than one stack, and plays a **role**
-in each, such as `app` or `database`. hearsay does not discover stacks; you
+in each, such as `app` or `database`. KryoState does not discover stacks; you
 say which hosts belong.
 
 ### The fast way: paste the list
@@ -268,7 +268,7 @@ lb01 loadbalancer lb01.example.com
 
 A name with dots in it is taken as the fully qualified name, and may come
 first or last. Words may be separated by spaces, tabs or commas, so columns
-copied from a spreadsheet work. Hosts that hearsay does not know yet are
+copied from a spreadsheet work. Hosts that KryoState does not know yet are
 added. Fill in **Connect new hosts as user** to give each new host a
 connection that logs in as that user with your ssh-agent. Select **Create
 stack**.
@@ -278,7 +278,7 @@ To add more hosts later, use **Add several hosts** in the stack's card.
 **On the command line:** put the same lines in a file, then:
 
 ```sh
-hearsay stack -name payments-prod -environment production \
+kryostate stack -name payments-prod -environment production \
     -owner payments-team -file hosts.txt -create -user svc-ro
 ```
 
@@ -298,7 +298,7 @@ reported and skipped. A short list can go straight on the command line:
 **On the command line:**
 
 ```sh
-hearsay stack -name payments-prod -add web01 -role app
+kryostate stack -name payments-prod -add web01 -role app
 ```
 
 ### Look at it
@@ -313,8 +313,8 @@ on**, for example the **Splunk forwarder** group on your Splunk stack, and
 select **Switch on**. That only ever adds the stack: anything already
 collected on other hosts keeps running there.
 
-On the command line, `hearsay stack` lists the stacks and
-`hearsay hosts -stack payments-prod` lists the members.
+On the command line, `kryostate stack` lists the stacks and
+`kryostate hosts -stack payments-prod` lists the members.
 
 ### Changing a stack
 
@@ -325,8 +325,8 @@ stack**. Deleting a stack does not change its hosts.
 **On the command line:**
 
 ```sh
-hearsay stack -name payments-prod -remove lb01
-hearsay stack -name payments-prod -owner platform-team
+kryostate stack -name payments-prod -remove lb01
+kryostate stack -name payments-prod -owner platform-team
 ```
 
 Flags you leave out keep their current values.
@@ -337,10 +337,10 @@ If your inventory already has a stack column, the importer creates the stacks
 for you:
 
 ```sh
-hearsay import -name inventory.md inventory.md
+kryostate import -name inventory.md inventory.md
 ```
 
-hearsay reads the column headings and prints what it understood. It
+KryoState reads the column headings and prints what it understood. It
 recognises common names: Host or Hostname, FQDN, Stack, Address or IP, Role,
 OS, Application, Version, Environment, Owner and Site. It names any column it
 left out. To import a column with another name, write a mapping file that says
@@ -362,7 +362,7 @@ which column means what:
 and pass it with `-map`:
 
 ```sh
-hearsay import -name inventory.md -map mapping.json inventory.md
+kryostate import -name inventory.md -map mapping.json inventory.md
 ```
 
 The `-name` is the source name shown beside every claim from this file.
@@ -372,7 +372,7 @@ same way.
 
 ## 6. Tutorial: choose what to collect
 
-hearsay always reads the operating system, its version, the kernel, the
+KryoState always reads the operating system, its version, the kernel, the
 hardware model and the serial number. Anything else, you switch on. A
 **collector** reads one value from each host.
 
@@ -400,12 +400,12 @@ stack from its card on the **Stacks** page.
 **On the command line:**
 
 ```sh
-hearsay collectors -catalog
-hearsay collectors -try memory.total -host web01
-hearsay collectors -enable memory.total
-hearsay collectors -enable group.splunk.forwarder -stacks splunk-prod
-hearsay collectors -enable file.exists -param /etc/resolv.conf
-hearsay collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
+kryostate collectors -catalog
+kryostate collectors -try memory.total -host web01
+kryostate collectors -enable memory.total
+kryostate collectors -enable group.splunk.forwarder -stacks splunk-prod
+kryostate collectors -enable file.exists -param /etc/resolv.conf
+kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
     -section general -key serverName
 ```
 
@@ -413,23 +413,23 @@ The values come back on each host's page with readable names, such as
 **Splunk Universal Forwarder version** or **serverName in server.conf
 [general]**. A version is grouped by its first two numbers, so the charts put
 9.4.1 and 9.4.3 together. The full version is in the **Raw** column, and
-`hearsay show` prints it in brackets.
+`kryostate show` prints it in brackets.
 
 ### Step 2: collect
 
-Select **Collect now** on the **Overview** page, or run `hearsay refresh`.
+Select **Collect now** on the **Overview** page, or run `kryostate refresh`.
 The new values appear on each host's page. To see one for every host, open
 **Inventory**, then **Columns**, and tick it.
 
 ### Step 3 (only if nothing fits): write your own
 
 Any read-only command can become a collector. You write the command, a rule
-for which part of its output to keep, and a name, in a file on the hearsay
+for which part of its output to keep, and a name, in a file on the KryoState
 server. You do not need to write a program.
 
 ```sh
-hearsay collectors -init                                  # create the file
-hearsay collectors -try example.nodename -host web01      # test, saves nothing
+kryostate collectors -init                                  # create the file
+kryostate collectors -try example.nodename -host web01      # test, saves nothing
 ```
 
 The **[collector guide](collectors.md)** explains the catalog in more detail
@@ -447,9 +447,9 @@ wins** or **Accept**.
 **On the command line:**
 
 ```sh
-hearsay refresh            # collect, check and compare
-hearsay disagreements      # what needs a decision
-hearsay disagreements -decide 12 -as machine -note "rebuilt in May"
+kryostate refresh            # collect, check and compare
+kryostate disagreements      # what needs a decision
+kryostate disagreements -decide 12 -as machine -note "rebuilt in May"
 ```
 
 The `-as` values are `machine`, `document` and `accept`. You can settle
@@ -461,11 +461,11 @@ On the **Inventory** page, type in the search box, filter by stack, choose
 columns, and download the view as CSV. On the command line:
 
 ```sh
-hearsay hosts                          # every host
-hearsay hosts pay                      # names that contain "pay"
-hearsay hosts -disagrees               # hosts with a disputed value
-hearsay hosts -cols os.version,env,owner
-hearsay hosts -json                    # for scripts
+kryostate hosts                          # every host
+kryostate hosts pay                      # names that contain "pay"
+kryostate hosts -disagrees               # hosts with a disputed value
+kryostate hosts -cols os.version,env,owner
+kryostate hosts -json                    # for scripts
 ```
 
 ### Retiring a host
@@ -479,15 +479,15 @@ find it again, use **Retired hosts** on the Inventory page; its page has
 **On the command line:**
 
 ```sh
-hearsay host -retire web01 -reason "decommissioned, CHG-2210"
-hearsay host -unretire web01
+kryostate host -retire web01 -reason "decommissioned, CHG-2210"
+kryostate host -unretire web01
 ```
 
 ### Backing up
 
 ```sh
-hearsay export -out backup.json
-hearsay restore -db new.db -in backup.json
+kryostate export -out backup.json
+kryostate restore -db new.db -in backup.json
 ```
 
 `restore` needs an empty database.
@@ -517,15 +517,15 @@ see.
 
 The web interface has no login of its own. Either keep it on `127.0.0.1`, or
 put it behind a proxy that authenticates people and passes their name in the
-`X-Forwarded-User` header; hearsay records that name.
+`X-Forwarded-User` header; KryoState records that name.
 
-Forms only accept submissions from the hearsay page itself, so another web
-site cannot make changes through your browser. If a proxy serves hearsay
+Forms only accept submissions from the KryoState page itself, so another web
+site cannot make changes through your browser. If a proxy serves KryoState
 under a different name than the one it forwards, list that name when
 starting:
 
 ```sh
-hearsay serve -trusted-origin https://cmdb.example.com
+kryostate serve -trusted-origin https://cmdb.example.com
 ```
 
 ## 9. Troubleshooting
@@ -534,14 +534,14 @@ hearsay serve -trusted-origin https://cmdb.example.com
 start the "OpenSSH Authentication Agent" service.
 
 **"host key does not match the recorded key"**: the host presented a
-different key from the one hearsay pinned the first time. Either the host was
-rebuilt, or something is pretending to be it. hearsay will not connect until
+different key from the one KryoState pinned the first time. Either the host was
+rebuilt, or something is pretending to be it. KryoState will not connect until
 you decide. Compare the fingerprint in the message with the host's own (on
 the host: `ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub`). If they match,
 clear the old key, and the next collection pins the new one:
 
 ```sh
-hearsay target -host web01 -forget-host-key
+kryostate target -host web01 -forget-host-key
 ```
 
 This is on the command line only, and is written to the audit log.
@@ -550,11 +550,11 @@ This is on the command line only, and is written to the audit log.
 the error lists.
 
 **A value shows "not understood"**: the host answered, but no rule read the
-answer. Look at the raw output with `hearsay evidence -host <name> -show`,
+answer. Look at the raw output with `kryostate evidence -host <name> -show`,
 then fix the parse rule (`reparse`) or the normaliser rule (`renormalize`).
 
-**My collector did not run**: run `hearsay collectors` and check that it is
-listed, then test it with `hearsay collectors -try <id> -host <name>`. The
+**My collector did not run**: run `kryostate collectors` and check that it is
+listed, then test it with `kryostate collectors -try <id> -host <name>`. The
 [collector guide](collectors.md#when-it-does-not-work) lists the common causes.
 
 **A host shows "never" collected**: it has no enabled connection. Add one on
@@ -562,9 +562,9 @@ the host's page, under **Connection**.
 
 **"Not saved: this connection uses a credential the web interface cannot
 change"**: the connection uses a password or a helper program. Change it with
-`hearsay target`.
+`kryostate target`.
 
-**A form answers "403 Forbidden"**: the browser reached hearsay under a
+**A form answers "403 Forbidden"**: the browser reached KryoState under a
 different name than the proxy forwards. Start it with
 `-trusted-origin https://<the name in the address bar>`.
 
@@ -572,8 +572,8 @@ different name than the proxy forwards. Start it with
 rewrites arguments that start with `/`. Run `export MSYS_NO_PATHCONV=1`
 first, or use PowerShell or the web page.
 
-**Nothing in the disagreements list after a collect**: run `hearsay detect`,
-or use `hearsay refresh`, which runs it for you.
+**Nothing in the disagreements list after a collect**: run `kryostate detect`,
+or use `kryostate refresh`, which runs it for you.
 
 ## 10. Glossary
 

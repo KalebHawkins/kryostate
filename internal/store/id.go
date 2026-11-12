@@ -13,7 +13,7 @@ import (
 func newID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		panic("hearsay: no entropy available for identifiers: " + err.Error())
+		panic("kryostate: no entropy available for identifiers: " + err.Error())
 	}
 	return hex.EncodeToString(b)
 }

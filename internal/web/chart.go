@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // Chart data is rendered as inline SVG on the server.

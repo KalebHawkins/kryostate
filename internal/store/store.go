@@ -18,7 +18,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 //go:embed schema.sql

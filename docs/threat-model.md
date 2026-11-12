@@ -65,7 +65,7 @@ not hand over access to the hosts the inventory describes.
 
 It also gives them up to 8 KB of output per host and collector spec.
 The shipped commands read release files and version strings, but a site that
-adds its own decides what ends up there. `hearsay evidence -show` is how you
+adds its own decides what ends up there. `kryostate evidence -show` is how you
 find out, `-forget` is how you remove it, and `collect -no-evidence` is how you
 never store it. The cost of that last option is that fixing a parse rule then
 requires connecting to every host again.
@@ -116,8 +116,8 @@ a visible disagreement rather than a silent correction.
 ## External collectors
 
 An operator-supplied collector runs **on the machine hosting this tool**, not
-on the target. Its environment holds `HEARSAY_TARGET`, `HEARSAY_ADDRESS`,
-`HEARSAY_SCHEMA`, `PATH`, and any variables its own definition lists — nothing
+on the target. Its environment holds `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
+`KRYOSTATE_SCHEMA`, `PATH`, and any variables its own definition lists — nothing
 inherited from this process. On Windows the Go runtime also passes
 `SystemRoot`, which cannot be suppressed: a process without it cannot load a
 DLL. A test asserts this boundary rather than assuming it.
@@ -186,7 +186,7 @@ that cannot turn it into a way to run commands or to take credentials.
 - **Connections it creates or edits use `agent:` only, without a bastion.** A
   page that could change a password-bearing connection's address could send
   that password to a machine of the attacker's choosing.
-- **It cannot clear a pinned host key.** `hearsay target -forget-host-key`
+- **It cannot clear a pinned host key.** `kryostate target -forget-host-key`
   does that, on the command line, and the old key is written to the audit
   log. Otherwise a visitor could clear a pin and let an impersonating host
   answer the next collection.

@@ -23,10 +23,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/engine"
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/engine"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 //go:embed templates/*.html
@@ -128,7 +128,7 @@ func (s *Server) Routes() http.Handler {
 
 	// Every POST here changes the inventory, and the interface has no login
 	// of its own. Without this, any web page the operator visits could submit
-	// those forms to a hearsay running on localhost. The check uses the
+	// those forms to a kryostate running on localhost. The check uses the
 	// Sec-Fetch-Site and Origin headers browsers send, so it needs no token
 	// in the forms and leaves non-browser clients alone.
 	cop := http.NewCrossOriginProtection()
@@ -309,7 +309,7 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	cols := columnsFrom(q)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="hearsay-inventory.csv"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="kryostate-inventory.csv"`)
 	cw := csv.NewWriter(w)
 	header := append([]string{"host", "id"}, cols...)
 	header = append(header, "stacks", "last_collected", "collect_ok", "open_disagreements")

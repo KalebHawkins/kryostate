@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/engine"
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/normalize"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/engine"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/normalize"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 func testServer(t *testing.T) (*Server, http.Handler, *store.Store) {

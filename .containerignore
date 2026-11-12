@@ -2,9 +2,9 @@
 *.db
 *.db-wal
 *.db-shm
-*.hearsay.json
+*.kryostate.json
 bin/
-hearsay
-hearsay.exe
+kryostate
+kryostate.exe
 deploy/lab/
 docs/images/

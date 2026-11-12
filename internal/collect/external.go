@@ -41,9 +41,9 @@ func RunExternal(ctx context.Context, ex External, targetLabel, targetAddress st
 
 	cmd := exec.CommandContext(ctx, ex.Path, ex.Args...)
 	cmd.Env = append([]string{
-		"HEARSAY_TARGET=" + targetLabel,
-		"HEARSAY_ADDRESS=" + targetAddress,
-		"HEARSAY_SCHEMA=" + EnvelopeSchema,
+		"KRYOSTATE_TARGET=" + targetLabel,
+		"KRYOSTATE_ADDRESS=" + targetAddress,
+		"KRYOSTATE_SCHEMA=" + EnvelopeSchema,
 		"PATH=" + os.Getenv("PATH"),
 	}, ex.Env...)
 

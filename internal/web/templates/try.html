@@ -5,7 +5,7 @@
 
 {{if .Err}}
 <div class="flash flash--error">{{.Err}}</div>
-<p class="muted">hearsay could not run the command. Check the host's connection on <a href="/hosts/{{.HostID}}#connection">its page</a>.</p>
+<p class="muted">KryoState could not run the command. Check the host's connection on <a href="/hosts/{{.HostID}}#connection">its page</a>.</p>
 {{else}}
 {{with .Result}}
 {{if not .OSMatches}}<div class="notice">The host says it runs <span class="mono">{{.OS}}</span>, and this collector has no command for it, so a real collection will skip this host. The command below was run anyway because you asked.</div>{{end}}

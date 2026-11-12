@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 func open(t *testing.T, name string) *store.Store {

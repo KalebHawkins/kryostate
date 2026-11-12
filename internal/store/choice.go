@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/collect"
 )
 
 // PutChoice switches a catalog collector on, or changes where an existing one

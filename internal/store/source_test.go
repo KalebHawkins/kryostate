@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // TestSourceIDUnderConcurrency is the first collection on a new database:

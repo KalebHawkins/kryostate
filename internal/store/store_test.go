@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 func testStore(t *testing.T) *Store {

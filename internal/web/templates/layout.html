@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} — hearsay</title>
+<title>{{.Title}} — KryoState</title>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js" defer></script>
 <script src="/static/sse.js" defer></script>
@@ -12,7 +12,7 @@
 <body hx-indicator="#spinner">
 <a class="skip-link" href="#main">Skip to content</a>
 <nav class="nav">
-  <a class="nav__brand" href="/">hearsay</a>
+  <a class="nav__brand" href="/">KryoState</a>
   <a href="/" {{if eq .Nav "home"}}aria-current="page"{{end}} hx-get="/" hx-target="#main" hx-push-url="true">Overview</a>
   <a href="/discrepancies" {{if eq .Nav "discrepancies"}}aria-current="page"{{end}} hx-get="/discrepancies" hx-target="#main" hx-push-url="true">Disagreements{{if .OpenDisc}} <span class="chip chip--contested">{{.OpenDisc}}</span>{{end}}</a>
   <a href="/hosts" {{if eq .Nav "hosts"}}aria-current="page"{{end}} hx-get="/hosts" hx-target="#main" hx-push-url="true">Inventory</a>

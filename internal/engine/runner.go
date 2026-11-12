@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/normalize"
-	"github.com/KalebHawkins/hearsay/internal/secret"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/normalize"
+	"github.com/KalebHawkins/kryostate/internal/secret"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // Engine holds the pieces a collection run needs.

@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // EnvelopeSchema is the contract an external collector writes to standard
 // output. It is versioned in the document itself so that a collector written
 // against an older shape fails loudly instead of being half-understood.
-const EnvelopeSchema = "hearsay.facts/v1"
+const EnvelopeSchema = "kryostate.facts/v1"
 
 // Envelope is what an external collector prints.
 type Envelope struct {

@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/KalebHawkins/hearsay/internal/secret"
+	"github.com/KalebHawkins/kryostate/internal/secret"
 )
 
 // SSHConfig describes one connection. The credential is a reference, resolved
@@ -122,7 +122,7 @@ func pinningCallback(known string, captured *string, require bool) ssh.HostKeyCa
 			return nil
 		}
 		if presented != known {
-			return fmt.Errorf("%w: %s presented %s %s. If the host was rebuilt, compare that with its own key (ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub on the host), then clear the old one with: hearsay target -host <name> -forget-host-key",
+			return fmt.Errorf("%w: %s presented %s %s. If the host was rebuilt, compare that with its own key (ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub on the host), then clear the old one with: kryostate target -host <name> -forget-host-key",
 				ErrHostKeyChanged, hostname, key.Type(), ssh.FingerprintSHA256(key))
 		}
 		return nil

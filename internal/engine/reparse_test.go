@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // osRelease is the sort of output a parse rule gets wrong: the value wanted is

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // post submits a form the way a browser on the same origin does.
@@ -115,7 +115,7 @@ func TestConnectionEditableOnlyForAgent(t *testing.T) {
 	// the browser.
 	other, _, _ := st.ResolveCI(ctx, model.KindHost, "locked", []model.Identity{{Scheme: model.IdentHostname, Value: "locked"}})
 	if err := st.PutConnProfile(ctx, store.ConnProfile{CIID: other, Transport: "ssh", Address: "real.invalid",
-		Username: "svc", CredentialRef: "keyring:hearsay/svc", Enabled: true}); err != nil {
+		Username: "svc", CredentialRef: "keyring:kryostate/svc", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	for _, target := range []string{"/hosts/" + other + "/connection", "/hosts/" + other + "/connection/delete"} {
@@ -224,7 +224,7 @@ func TestRetireAndRestoreFromTheBrowser(t *testing.T) {
 func TestCollectorsPageOffersOnlyTheCatalog(t *testing.T) {
 	_, h, _ := testServer(t)
 	body := get(t, h, "/collectors", nil).Body.String()
-	for _, want := range []string{"linux.os.version", "hearsay collectors -init", "CPU cores", "Splunk Universal Forwarder version", `id="cat-file-exists"`} {
+	for _, want := range []string{"linux.os.version", "kryostate collectors -init", "CPU cores", "Splunk Universal Forwarder version", `id="cat-file-exists"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the collectors page is missing %q", want)
 		}
@@ -238,7 +238,7 @@ func TestCollectorsPageOffersOnlyTheCatalog(t *testing.T) {
 		t.Fatal("file contents entry missing")
 	}
 	card := body[i : i+strings.Index(body[i:], `class="card catalog__item"`)+1]
-	if strings.Contains(card, `action="/collectors/choose"`) || !strings.Contains(card, "hearsay collectors -enable file.contents") {
+	if strings.Contains(card, `action="/collectors/choose"`) || !strings.Contains(card, "kryostate collectors -enable file.contents") {
 		t.Error("the file contents collector is offered from the page without permission")
 	}
 	guide := get(t, h, "/guide/collectors", nil)

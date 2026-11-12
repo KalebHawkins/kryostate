@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# A small lab for trying hearsay against real Linux hosts, in Podman.
+# A small lab for trying kryostate against real Linux hosts, in Podman.
 #
 #   deploy/lab/lab.sh up      build the images and start everything
 #   deploy/lab/lab.sh seed    add the lab hosts as a stack and collect once
 #   deploy/lab/lab.sh down    stop and remove the containers (keeps data)
 #   deploy/lab/lab.sh reset   down, and delete the data and the lab key
 #
-# It starts hearsay on http://localhost:8099, an ssh-agent holding a key made
+# It starts kryostate on http://localhost:8099, an ssh-agent holding a key made
 # for the lab, and four hosts that trust that key:
 #
 #   uf01   Debian      a pretend Splunk Universal Forwarder
@@ -23,8 +23,8 @@ set -euo pipefail
 # Windows podman.exe understands.
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && { pwd -W 2>/dev/null || pwd; })"
 root="$(cd "$here/../.." && { pwd -W 2>/dev/null || pwd; })"
-net=hearsay-lab
-port="${HEARSAY_PORT:-8099}"
+net=kryostate-lab
+port="${KRYOSTATE_PORT:-8099}"
 # Git Bash rewrites arguments that look like Unix paths; Podman needs them as
 # written.
 export MSYS_NO_PATHCONV=1
@@ -37,33 +37,33 @@ hosts=(
 )
 
 up() {
-	podman build -q -t hearsay:latest -f "$root/deploy/Containerfile" "$root"
-	podman build -q -t hearsay-lab-agent -f "$here/agent.Containerfile" "$here"
-	podman build -q -t hearsay-lab-debian -f "$here/target-debian.Containerfile" "$here"
-	podman build -q -t hearsay-lab-alma -f "$here/target-alma.Containerfile" "$here"
+	podman build -q -t kryostate:latest -f "$root/deploy/Containerfile" "$root"
+	podman build -q -t kryostate-lab-agent -f "$here/agent.Containerfile" "$here"
+	podman build -q -t kryostate-lab-debian -f "$here/target-debian.Containerfile" "$here"
+	podman build -q -t kryostate-lab-alma -f "$here/target-alma.Containerfile" "$here"
 
 	podman network exists "$net" || podman network create "$net" >/dev/null
-	start hearsay-lab-agent --network "$net" \
-		-v hearsay-lab-keys:/keys -v hearsay-lab-agent:/agent hearsay-lab-agent
+	start kryostate-lab-agent --network "$net" \
+		-v kryostate-lab-keys:/keys -v kryostate-lab-agent:/agent kryostate-lab-agent
 
 	for h in "${hosts[@]}"; do
 		read -r name distro splunk <<<"$h"
 		local env=()
 		[ "$splunk" != - ] && env=(-e "FAKE_SPLUNK=$splunk")
-		start "hearsay-lab-$name" --network "$net" --network-alias "$name" \
-			--hostname "$name" -v hearsay-lab-keys:/keys:ro "${env[@]}" \
-			-v "hearsay-lab-$name-ssh:/etc/ssh" \
-			"hearsay-lab-$distro"
+		start "kryostate-lab-$name" --network "$net" --network-alias "$name" \
+			--hostname "$name" -v kryostate-lab-keys:/keys:ro "${env[@]}" \
+			-v "kryostate-lab-$name-ssh:/etc/ssh" \
+			"kryostate-lab-$distro"
 	done
 
-	start hearsay-lab --network "$net" -p "127.0.0.1:$port:8099" \
-		-v hearsay-lab-data:/data -v hearsay-lab-agent:/agent \
-		-e SSH_AUTH_SOCK=/agent/agent.sock -e HEARSAY_ACTOR=lab \
-		hearsay:latest serve -addr 0.0.0.0:8099 -allow-content-collectors
+	start kryostate-lab --network "$net" -p "127.0.0.1:$port:8099" \
+		-v kryostate-lab-data:/data -v kryostate-lab-agent:/agent \
+		-e SSH_AUTH_SOCK=/agent/agent.sock -e KRYOSTATE_ACTOR=lab \
+		kryostate:latest serve -addr 0.0.0.0:8099 -allow-content-collectors
 
 	echo
-	echo "hearsay is on http://localhost:$port"
-	echo "Add the hosts on the Stacks page with user 'hearsay', or run: $0 seed"
+	echo "kryostate is on http://localhost:$port"
+	echo "Add the hosts on the Stacks page with user 'kryostate', or run: $0 seed"
 }
 
 # start runs a container in the background, replacing one of the same name.
@@ -71,21 +71,21 @@ start() {
 	local name="$1"
 	shift
 	podman rm -f "$name" >/dev/null 2>&1 || true
-	podman run -d --name "$name" --label hearsay-lab=1 "$@" >/dev/null
+	podman run -d --name "$name" --label kryostate-lab=1 "$@" >/dev/null
 	echo "started $name"
 }
 
-hs() { podman exec -i hearsay-lab hearsay "$@"; }
+hs() { podman exec -i kryostate-lab kryostate "$@"; }
 
 seed() {
 	# The stacks and their hosts, the way the Stacks page's paste box takes
 	# them: name, then role. New hosts get a connection as the lab user.
 	printf '%s\n' "uf01 forwarder" "uf02 forwarder" "idx01 indexer" \
-		| hs stack -name splunk-lab -create -user hearsay -file -
-	printf '%s\n' "web01 web" | hs stack -name web -create -user hearsay -file -
+		| hs stack -name splunk-lab -create -user kryostate -file -
+	printf '%s\n' "web01 web" | hs stack -name web -create -user kryostate -file -
 
 	# A hand-kept inventory to check the hosts against.
-	podman cp "$here/inventory.md" hearsay-lab:/data/inventory.md
+	podman cp "$here/inventory.md" kryostate-lab:/data/inventory.md
 	hs import -name inventory.md /data/inventory.md
 
 	# What to collect beyond the operating system.
@@ -101,16 +101,16 @@ seed() {
 
 down() {
 	local ids
-	ids="$(podman ps -aq --filter label=hearsay-lab=1)"
+	ids="$(podman ps -aq --filter label=kryostate-lab=1)"
 	[ -n "$ids" ] && podman rm -f $ids >/dev/null
 	echo "lab stopped; the database, key and host keys are kept in volumes"
 }
 
 reset() {
 	down
-	podman volume rm -f hearsay-lab-data hearsay-lab-keys hearsay-lab-agent >/dev/null 2>&1 || true
+	podman volume rm -f kryostate-lab-data kryostate-lab-keys kryostate-lab-agent >/dev/null 2>&1 || true
 	for h in "${hosts[@]}"; do
-		podman volume rm -f "hearsay-lab-${h%% *}-ssh" >/dev/null 2>&1 || true
+		podman volume rm -f "kryostate-lab-${h%% *}-ssh" >/dev/null 2>&1 || true
 	done
 	podman network rm -f "$net" >/dev/null 2>&1 || true
 	echo "lab data, key and network removed"

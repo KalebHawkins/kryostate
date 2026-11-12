@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // TestLookupFindsAHostByWhatAPersonTypes covers each way a person names a
@@ -84,7 +84,7 @@ func TestLookupOfNothingSuggestsSomething(t *testing.T) {
 	}
 }
 
-// TestClaimCompetesUnderPrecedence: a value stated with hearsay set is an
+// TestClaimCompetesUnderPrecedence: a value stated with kryostate set is an
 // ordinary human assertion, so it wins env over a collector but not
 // os.version, where the machine ranks first.
 func TestClaimCompetesUnderPrecedence(t *testing.T) {

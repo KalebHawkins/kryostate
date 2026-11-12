@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // Fingerprint identifies a disagreement across detection runs, so that finding

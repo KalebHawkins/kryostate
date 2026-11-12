@@ -1,6 +1,6 @@
 # The binary.
-/hearsay
-/hearsay.exe
+/kryostate
+/kryostate.exe
 /bin/
 
 # Inventory databases. These hold hostnames, addresses and credential
@@ -10,7 +10,7 @@
 *.db-shm
 
 # Exports, for the same reason.
-*.hearsay.json
+*.kryostate.json
 
 # Key material should never be here, and a mistake should fail to commit
 # rather than be caught in review.

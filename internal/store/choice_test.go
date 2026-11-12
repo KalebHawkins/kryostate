@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/collect"
 )
 
 func TestEnableChoiceNeverNarrows(t *testing.T) {

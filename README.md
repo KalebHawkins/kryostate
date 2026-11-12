@@ -1,10 +1,10 @@
-# hearsay
+# KryoState
 
 New to the tool? Start with the [user guide](docs/user-guide.md). It has
 tutorials for adding a host, building a stack and adding a collector, and the
 web interface serves it at `/guide`.
 
-hearsay is a configuration management database for servers. It records what
+KryoState is a configuration management database for servers. It records what
 your documents claim about each host. It connects to each host over SSH or
 WinRM and records what the host reports. It then shows you where the two do
 not agree.
@@ -62,7 +62,7 @@ ranks are:
 A lower rank wins. Three attributes have different defaults, because a machine
 cannot report them: `env`, `site` and `owner` rank a human first. A derived
 source is barred from `env` and `site`. To record a human claim, use
-`hearsay set <host> env=production -reason "..."` or the form on the host
+`kryostate set <host> env=production -reason "..."` or the form on the host
 page.
 
 When two sources of equal rank disagree, the source that confirmed its value
@@ -145,7 +145,7 @@ The tool needs Go 1.27.1 or later. Use Go 1.27.2 or later if you can: earlier
 `docs/threat-model.md` for the findings and how to check them yourself.
 
 ```sh
-go build ./cmd/hearsay
+go build ./cmd/kryostate
 ```
 
 The SQLite driver is pure Go, so cgo is not necessary. The HTML templates, the
@@ -159,9 +159,9 @@ unprivileged user. The database, and any `collectors.json`, `rules.json` or
 `externals.json` placed beside it, live in the `/data` volume.
 
 ```sh
-podman build -t hearsay -f deploy/Containerfile .
-podman run -d --name hearsay -p 127.0.0.1:8099:8099 -v hearsay-data:/data hearsay
-podman exec hearsay hearsay hosts        # the command line, inside the container
+podman build -t kryostate -f deploy/Containerfile .
+podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data kryostate
+podman exec kryostate kryostate hosts        # the command line, inside the container
 ```
 
 The page has no login, so publish the port to `127.0.0.1` or put it behind a
@@ -175,13 +175,13 @@ socket through a volume (`deploy/lab/agent.Containerfile`).
 
 ### 4.2 A lab to try it on
 
-`deploy/lab/lab.sh` starts hearsay with four real Linux hosts to collect from:
+`deploy/lab/lab.sh` starts KryoState with four real Linux hosts to collect from:
 two pretend Splunk forwarders (Debian and AlmaLinux), a pretend indexer and an
 nginx host, plus an ssh-agent holding a key made for the lab. "Pretend" means
 the files and process the catalog reads are there; no Splunk is installed.
 
 ```sh
-deploy/lab/lab.sh up      # build and start; hearsay is on http://localhost:8099
+deploy/lab/lab.sh up      # build and start; kryostate is on http://localhost:8099
 deploy/lab/lab.sh seed    # add the hosts as stacks, import a document, collect
 deploy/lab/lab.sh down    # stop (keeps data); reset also deletes it
 ```
@@ -196,28 +196,28 @@ on real disagreements. The screens in section 8 are of this lab.
 
 ```sh
 # 1. Record a host.
-./hearsay host appnode1 -fqdn appnode1.example.invalid
+./kryostate host appnode1 -fqdn appnode1.example.invalid
 
 # 2. Tell the tool how to reach it. The address defaults to the fqdn, and
 #    the credential defaults to agent:.
-./hearsay target -host appnode1 -user svc-ro
+./kryostate target -host appnode1 -user svc-ro
 
 # 3. Or import a document you already have. Columns named Host, OS, Role,
 #    Stack, Environment, Owner and the like are recognised; -map names others.
-./hearsay import -name inventory.md inventory.md
+./kryostate import -name inventory.md inventory.md
 
 # 4. Define a health check.
-./hearsay check -host appnode1 -name https \
+./kryostate check -host appnode1 -name https \
     -http https://appnode1.example.invalid/health
 
 # 5. Collect, run the checks, and compare the sources, in one command.
-./hearsay refresh
+./kryostate refresh
 
 # 6. Read the results.
-./hearsay hosts
-./hearsay show appnode1
-./hearsay disagreements
-./hearsay serve -addr 127.0.0.1:8099
+./kryostate hosts
+./kryostate show appnode1
+./kryostate disagreements
+./kryostate serve -addr 127.0.0.1:8099
 ```
 
 Every command that takes a host accepts its name, its fqdn, any other
@@ -227,7 +227,7 @@ does not choose one. The `-ci` flag still works as an alias of `-host`.
 
 ### 5.2 Commands
 
-Run `hearsay -h` for the full list, and `hearsay <command> -h` for the flags of
+Run `kryostate -h` for the full list, and `kryostate <command> -h` for the flags of
 one command.
 
 | Command | Function |
@@ -265,11 +265,11 @@ Splunk Enterprise, language runtimes, web servers. Switch them on in the web
 interface on the Collectors page or from a stack's card, or:
 
 ```sh
-./hearsay collectors -catalog
-./hearsay collectors -enable memory.total
-./hearsay collectors -enable group.splunk.forwarder -stacks splunk-prod
-./hearsay collectors -enable file.exists -param /etc/resolv.conf
-./hearsay collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
+./kryostate collectors -catalog
+./kryostate collectors -enable memory.total
+./kryostate collectors -enable group.splunk.forwarder -stacks splunk-prod
+./kryostate collectors -enable file.exists -param /etc/resolv.conf
+./kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf \
     -section general -key serverName
 ```
 
@@ -292,8 +292,8 @@ command, a parse rule and an attribute name. The [collector
 guide](docs/collectors.md) explains how to write one, step by step.
 
 ```sh
-./hearsay collectors -init                       # creates collectors.json next to the database
-./hearsay collectors -try <id> -host appnode1    # runs it once and saves nothing
+./kryostate collectors -init                       # creates collectors.json next to the database
+./kryostate collectors -try <id> -host appnode1    # runs it once and saves nothing
 ```
 
 Every command reads `collectors.json`, `rules.json` and `externals.json` from
@@ -303,12 +303,12 @@ the folder that holds the database. The `-collectors`, `-rules` and
 An external collector is a program that you supply:
 
 ```sh
-./hearsay collect -externals ./my-externals.json
+./kryostate collect -externals ./my-externals.json
 ```
 
-The tool runs the external program on the machine that runs hearsay, once for
-each host. The program receives `HEARSAY_TARGET`, `HEARSAY_ADDRESS`,
-`HEARSAY_SCHEMA`, `PATH`, and the variables that its own definition lists. It
+The tool runs the external program on the machine that runs KryoState, once for
+each host. The program receives `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
+`KRYOSTATE_SCHEMA`, `PATH`, and the variables that its own definition lists. It
 receives nothing else, and it receives no credential. On Windows the Go
 runtime also supplies `SystemRoot`, because a process without that variable
 cannot load a DLL.
@@ -317,7 +317,7 @@ The program writes one JSON envelope to standard output:
 
 ```json
 {
-  "schema": "hearsay.facts/v1",
+  "schema": "kryostate.facts/v1",
   "collector": "example",
   "status": "ok",
   "facts": [
@@ -351,10 +351,10 @@ An `agent:` reference with no address uses `SSH_AUTH_SOCK`. On Windows it uses
 the named pipe of the OpenSSH agent, because Windows sets no such variable. To
 use a different agent, give its address: `agent:/path/to/socket`.
 
-To open an age file, set `HEARSAY_AGE_IDENTITY` to the path of the identity.
+To open an age file, set `KRYOSTATE_AGE_IDENTITY` to the path of the identity.
 Keep that identity in a different place from the file it opens.
 
-`hearsay secret -set service/account` reads the secret from standard input. It
+`kryostate secret -set service/account` reads the secret from standard input. It
 has no flag that accepts a secret, so the secret stays out of the shell history
 and out of the process list.
 
@@ -375,8 +375,8 @@ command that failed.
 The supplied commands read release files and version strings. They run on your
 hosts, so confirm what their output contains:
 
-- `hearsay evidence -show` prints the stored output.
-- `hearsay evidence -forget` deletes it.
+- `kryostate evidence -show` prints the stored output.
+- `kryostate evidence -forget` deletes it.
 - `collect -no-evidence` does not store it. A later parse rule correction then
   needs a second pass over the estate.
 

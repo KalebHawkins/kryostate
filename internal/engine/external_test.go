@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/normalize"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/normalize"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // TestHelperCollector is not a test. It is the external collector the tests
@@ -28,7 +28,7 @@ func TestHelperCollector(t *testing.T) {
 	case "ok":
 		json.NewEncoder(os.Stdout).Encode(collect.Envelope{
 			Schema: collect.EnvelopeSchema, Collector: "helper", Status: "ok",
-			Target: os.Getenv("HEARSAY_TARGET"),
+			Target: os.Getenv("KRYOSTATE_TARGET"),
 			Facts: []collect.FactItem{
 				{Key: "search.home", Value: "/opt/search", Type: model.TypePath},
 				{Key: "search.version", Value: "9.1.2", Type: model.TypeVersion},
@@ -164,14 +164,14 @@ func TestExternalFailureIsRecordedNotSwallowed(t *testing.T) {
 // design rests on: a contributed program must not be handed this process's
 // credentials by accident.
 func TestExternalCollectorGetsNoInheritedEnvironment(t *testing.T) {
-	t.Setenv("HEARSAY_TEST_SECRET", "do-not-leak")
+	t.Setenv("KRYOSTATE_TEST_SECRET", "do-not-leak")
 	env, err := collect.RunExternal(context.Background(), helper("leak"), "node-x", "192.0.2.1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"HEARSAY_TARGET": true, "HEARSAY_ADDRESS": true,
-		"HEARSAY_SCHEMA": true, "PATH": true, "HELPER_MODE": true,
+		"KRYOSTATE_TARGET": true, "KRYOSTATE_ADDRESS": true,
+		"KRYOSTATE_SCHEMA": true, "PATH": true, "HELPER_MODE": true,
 		// Go adds this on Windows when it is absent, because a process
 		// without it cannot load a DLL.
 		"SYSTEMROOT": true,

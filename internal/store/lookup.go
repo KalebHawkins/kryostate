@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // ErrNoSuchHost is returned when a reference matches nothing.
@@ -71,7 +71,7 @@ func (s *Store) LookupCI(ctx context.Context, ref string) (string, error) {
 		if hint != "" {
 			return "", fmt.Errorf("%w %q; did you mean %s?", ErrNoSuchHost, ref, hint)
 		}
-		return "", fmt.Errorf("%w %q; list hosts with: hearsay hosts", ErrNoSuchHost, ref)
+		return "", fmt.Errorf("%w %q; list hosts with: kryostate hosts", ErrNoSuchHost, ref)
 	default:
 		sort.Strings(ids)
 		var b strings.Builder

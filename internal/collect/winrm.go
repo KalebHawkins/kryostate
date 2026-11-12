@@ -8,7 +8,7 @@ import (
 
 	"github.com/masterzen/winrm"
 
-	"github.com/KalebHawkins/hearsay/internal/secret"
+	"github.com/KalebHawkins/kryostate/internal/secret"
 )
 
 // WinRMConfig describes a Windows connection. Commands are PowerShell, so the

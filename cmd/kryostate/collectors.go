@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/engine"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/engine"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
-// starterCollectors is what "hearsay collectors -init" writes. It holds one
+// starterCollectors is what "kryostate collectors -init" writes. It holds one
 // working, read-only example, so a new user edits something that already runs
 // rather than starting from a blank file and a schema.
 const starterCollectors = `{
@@ -80,9 +80,9 @@ func cmdCollectors(ctx context.Context, args []string) error {
 		}
 		fmt.Printf("created %s with one example collector.\n\n", path)
 		fmt.Println("next:")
-		fmt.Printf("  1. edit it (the user guide explains each field: hearsay serve, then open /guide/collectors)\n")
-		fmt.Printf("  2. test it:   hearsay collectors -try example.nodename -host <name>\n")
-		fmt.Printf("  3. collect:   hearsay refresh\n")
+		fmt.Printf("  1. edit it (the user guide explains each field: kryostate serve, then open /guide/collectors)\n")
+		fmt.Printf("  2. test it:   kryostate collectors -try example.nodename -host <name>\n")
+		fmt.Printf("  3. collect:   kryostate refresh\n")
 		return nil
 
 	case *catalog:
@@ -96,7 +96,7 @@ func cmdCollectors(ctx context.Context, args []string) error {
 			Stacks: splitIDs(*stacks)}, actor())
 		if err != nil {
 			if _, ok := collect.Lookup(*enable); !ok {
-				return fmt.Errorf("%w; list the catalog with: hearsay collectors -catalog", err)
+				return fmt.Errorf("%w; list the catalog with: kryostate collectors -catalog", err)
 			}
 			return err
 		}
@@ -105,8 +105,8 @@ func cmdCollectors(ctx context.Context, args []string) error {
 			where = "hosts in " + strings.Join(c.Stacks, ", ")
 		}
 		fmt.Printf("%s is on for %s, recorded as %s.\n", c.Label(), where, c.Attr)
-		fmt.Printf("try it now:  hearsay collectors -try %s%s -host <name>\n", c.Template, paramFlag(c.Param))
-		fmt.Println("collect:     hearsay refresh")
+		fmt.Printf("try it now:  kryostate collectors -try %s%s -host <name>\n", c.Template, paramFlag(c.Param))
+		fmt.Println("collect:     kryostate refresh")
 		return nil
 
 	case *disable != "":
@@ -133,7 +133,7 @@ func cmdCollectors(ctx context.Context, args []string) error {
 		}
 		hint := ""
 		if _, ok := collect.Lookup(*try); ok {
-			hint = "hearsay collectors -enable " + *try + paramFlag(*param)
+			hint = "kryostate collectors -enable " + *try + paramFlag(*param)
 		}
 		return tryCollector(ctx, eng, st, specs, *host, *sample, hint)
 	}
@@ -171,7 +171,7 @@ func enableGroup(ctx context.Context, st *store.Store, g collect.Group, stacks [
 		}
 		fmt.Printf("  %-40s %-11s runs on %s\n", c.Label(), state, runs)
 	}
-	fmt.Println("collect:     hearsay refresh")
+	fmt.Println("collect:     kryostate refresh")
 	return nil
 }
 
@@ -199,9 +199,9 @@ func findChoice(ctx context.Context, st *store.Store, ref, param string) (collec
 	case 1:
 		return match[0], nil
 	case 0:
-		return collect.Choice{}, fmt.Errorf("%s is not switched on; see what is with: hearsay collectors", ref)
+		return collect.Choice{}, fmt.Errorf("%s is not switched on; see what is with: kryostate collectors", ref)
 	default:
-		return collect.Choice{}, fmt.Errorf("%s is switched on for %d values; name one with -param, or use its number from: hearsay collectors", ref, len(match))
+		return collect.Choice{}, fmt.Errorf("%s is switched on for %d values; name one with -param, or use its number from: kryostate collectors", ref, len(match))
 	}
 }
 
@@ -222,7 +222,7 @@ func specsToTry(ctx context.Context, eng *engine.Engine, ref, param string) ([]c
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no collector named %q; see them with: hearsay collectors, and the catalog with: hearsay collectors -catalog", ref)
+		return nil, fmt.Errorf("no collector named %q; see them with: kryostate collectors, and the catalog with: kryostate collectors -catalog", ref)
 	}
 	return out, nil
 }
@@ -270,12 +270,12 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Println("\nswitch one on:   hearsay collectors -enable cpu.cores")
-	fmt.Println("a whole group:   hearsay collectors -enable group.splunk.forwarder -stacks splunk-prod")
-	fmt.Println("a config value:  hearsay collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName")
-	fmt.Println("with a value:    hearsay collectors -enable file.exists -param /etc/resolv.conf")
-	fmt.Println("for some stacks: hearsay collectors -enable splunk.uf.version -stacks splunk-prod")
-	fmt.Println("try first:       hearsay collectors -try memory.total -host <name>")
+	fmt.Println("\nswitch one on:   kryostate collectors -enable cpu.cores")
+	fmt.Println("a whole group:   kryostate collectors -enable group.splunk.forwarder -stacks splunk-prod")
+	fmt.Println("a config value:  kryostate collectors -enable config.value -param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName")
+	fmt.Println("with a value:    kryostate collectors -enable file.exists -param /etc/resolv.conf")
+	fmt.Println("for some stacks: kryostate collectors -enable splunk.uf.version -stacks splunk-prod")
+	fmt.Println("try first:       kryostate collectors -try memory.total -host <name>")
 	return nil
 }
 
@@ -285,7 +285,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 		return err
 	}
 	if len(choices) == 0 {
-		fmt.Println("No catalog collectors are switched on. See what is available with: hearsay collectors -catalog")
+		fmt.Println("No catalog collectors are switched on. See what is available with: kryostate collectors -catalog")
 	} else {
 		fmt.Println("Switched on from the catalog:")
 		tw := newTable(os.Stdout)
@@ -300,7 +300,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 		if err := tw.Flush(); err != nil {
 			return err
 		}
-		fmt.Println("  switch one off: hearsay collectors -disable <#>")
+		fmt.Println("  switch one off: kryostate collectors -disable <#>")
 	}
 
 	builtin, err := collect.BuiltinSpecs()
@@ -319,7 +319,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 	}
 	fmt.Println()
 	if _, err := os.Stat(path); err != nil {
-		fmt.Println("When nothing in the catalog fits, write your own: hearsay collectors -init")
+		fmt.Println("When nothing in the catalog fits, write your own: kryostate collectors -init")
 	} else {
 		fmt.Printf("Your own, from %s:\n", path)
 		tw := newTable(os.Stdout)
@@ -361,7 +361,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Println("\nTest any collector with: hearsay collectors -try <name> -host <host>")
+	fmt.Println("\nTest any collector with: kryostate collectors -try <name> -host <host>")
 	return nil
 }
 
@@ -414,7 +414,7 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 			}
 		}
 		if prof == nil {
-			return fmt.Errorf("%s has no enabled connection; add one on its page in the web interface, or with: hearsay target -host %s -user <user>", host, host)
+			return fmt.Errorf("%s has no enabled connection; add one on its page in the web interface, or with: kryostate target -host %s -user <user>", host, host)
 		}
 		res, err := eng.TrySpecs(ctx, *prof, specs)
 		if err != nil {
@@ -464,7 +464,7 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 		fmt.Println("The command ran, so the rule needs changing. Compare the rule with the output above.")
 		if sample == "" {
 			fmt.Println("Save the output to a file and test changes without a host:")
-			fmt.Printf("  hearsay collectors -try %s -sample output.txt\n", spec.ID)
+			fmt.Printf("  kryostate collectors -try %s -sample output.txt\n", spec.ID)
 		} else {
 			fmt.Println("Edit the rule in your collectors file and run this command again.")
 		}
@@ -477,9 +477,9 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 	}
 	fmt.Println("\nThis is what a collection would record. Nothing was saved.")
 	if enableHint != "" {
-		fmt.Printf("Switch it on with: %s, then run hearsay refresh.\n", enableHint)
+		fmt.Printf("Switch it on with: %s, then run kryostate refresh.\n", enableHint)
 	} else {
-		fmt.Println("Run hearsay refresh to collect for real.")
+		fmt.Println("Run kryostate refresh to collect for real.")
 	}
 	return nil
 }

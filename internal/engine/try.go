@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // TryResult is what one collector produced against one host, for a person

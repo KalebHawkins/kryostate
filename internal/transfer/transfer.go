@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // Format is bumped when the shape changes, so a dump taken by an older build

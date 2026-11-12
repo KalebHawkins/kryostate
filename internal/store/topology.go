@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // Address records one answer a resolver gave for a CI. Every answer is kept.

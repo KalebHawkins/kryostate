@@ -75,7 +75,7 @@
       <td class="num">{{if .OpenDiscreps}}<a href="/discrepancies?ci={{.CI.ID}}" hx-get="/discrepancies?ci={{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.OpenDiscreps}}</a>{{else}}0{{end}}</td>
     </tr>
   {{else}}
-    <tr><td colspan="{{add (len .Columns) 4}}" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">hearsay import</span>, or add one with <span class="mono">hearsay host -name &lt;name&gt;</span>.</td></tr>
+    <tr><td colspan="{{add (len .Columns) 4}}" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">kryostate import</span>, or add one with <span class="mono">kryostate host -name &lt;name&gt;</span>.</td></tr>
   {{end}}
   </tbody>
 </table>

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KalebHawkins/hearsay/docs"
+	"github.com/KalebHawkins/kryostate/docs"
 )
 
 func TestMarkdownRendersTheSubsetTheGuideUses(t *testing.T) {

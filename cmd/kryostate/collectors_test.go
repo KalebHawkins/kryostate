@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // TestStarterFileWorks: the file -init writes is the first thing a new user

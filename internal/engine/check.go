@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // CheckResult is one check's outcome, returned so a caller can print it.
@@ -124,7 +124,7 @@ func checkHTTP(ctx context.Context, target, expect string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "hearsay")
+	req.Header.Set("User-Agent", "kryostate")
 	resp, err := checkClient.Do(req)
 	if err != nil {
 		return "", err

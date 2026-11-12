@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/engine"
-	"github.com/KalebHawkins/hearsay/internal/ingest"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/engine"
+	"github.com/KalebHawkins/kryostate/internal/ingest"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // catalogRow is one catalog entry as the collectors page shows it.

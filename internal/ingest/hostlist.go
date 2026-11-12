@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // HostLine is one host typed or pasted into a list.

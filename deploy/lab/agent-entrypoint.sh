@@ -2,7 +2,7 @@
 set -eu
 umask 077
 if [ ! -s /keys/id_ed25519 ]; then
-	ssh-keygen -q -t ed25519 -N '' -C hearsay-lab -f /keys/id_ed25519
+	ssh-keygen -q -t ed25519 -N '' -C kryostate-lab -f /keys/id_ed25519
 fi
 chmod 644 /keys/id_ed25519.pub
 rm -f /agent/agent.sock

@@ -47,7 +47,7 @@ func DeleteKeyring(service, account string) error {
 // identity used to open local encrypted files. Keeping the identity outside
 // the data directory is the point: an identity file sitting beside the
 // ciphertext it opens is decoration, not encryption.
-const identityEnv = "HEARSAY_AGE_IDENTITY"
+const identityEnv = "KRYOSTATE_AGE_IDENTITY"
 
 // ageFile decrypts a local age file. age is used rather than anything written
 // here because credential storage is the wrong place to be original.

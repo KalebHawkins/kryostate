@@ -1,4 +1,4 @@
-// Command hearsay records what documents claim about an estate, reads what the
+// Command kryostate records what documents claim about an estate, reads what the
 // machines actually report, and lists where the two disagree.
 package main
 
@@ -22,20 +22,20 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/KalebHawkins/hearsay/internal/collect"
-	"github.com/KalebHawkins/hearsay/internal/engine"
-	"github.com/KalebHawkins/hearsay/internal/ingest"
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/normalize"
-	"github.com/KalebHawkins/hearsay/internal/secret"
-	"github.com/KalebHawkins/hearsay/internal/store"
-	"github.com/KalebHawkins/hearsay/internal/transfer"
-	"github.com/KalebHawkins/hearsay/internal/web"
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/engine"
+	"github.com/KalebHawkins/kryostate/internal/ingest"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/normalize"
+	"github.com/KalebHawkins/kryostate/internal/secret"
+	"github.com/KalebHawkins/kryostate/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/transfer"
+	"github.com/KalebHawkins/kryostate/internal/web"
 )
 
-const usage = `hearsay — an inventory is hearsay until a machine confirms it
+const usage = `kryostate — an inventory is kryostate until a machine confirms it
 
-Usage: hearsay <command> [flags]
+Usage: kryostate <command> [flags]
 
 Everyday:
   hosts          list hosts, with a few attributes as columns
@@ -63,7 +63,7 @@ Setup and maintenance:
   restore        load a JSON file into an empty store
 
 Wherever a command takes a host, a name, fqdn, or id (or its first 6+
-characters) is accepted. Run "hearsay <command> -h" for the flags of one
+characters) is accepted. Run "kryostate <command> -h" for the flags of one
 command.
 `
 
@@ -128,7 +128,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "hearsay:", err)
+		fmt.Fprintln(os.Stderr, "kryostate:", err)
 		os.Exit(1)
 	}
 }
@@ -140,14 +140,14 @@ func dbFlag(fs *flag.FlagSet) *string {
 }
 
 func defaultDB() string {
-	if v := os.Getenv("HEARSAY_DB"); v != "" {
+	if v := os.Getenv("KRYOSTATE_DB"); v != "" {
 		return v
 	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		return "hearsay.db"
+		return "kryostate.db"
 	}
-	return filepath.Join(dir, "hearsay", "hearsay.db")
+	return filepath.Join(dir, "kryostate", "kryostate.db")
 }
 
 // dataDir is the folder holding the database this process opened. Custom
@@ -247,7 +247,7 @@ func buildEngine(st *store.Store, f engineFiles, log *slog.Logger) (*engine.Engi
 	// reference redacted, so "which keys did this run touch" is answerable
 	// afterwards.
 	reg := secret.NewRegistry(func(ctx context.Context, action, ref, detail string) {
-		_ = st.Audit(ctx, "hearsay", "credential "+action, "", ref+" "+detail)
+		_ = st.Audit(ctx, "kryostate", "credential "+action, "", ref+" "+detail)
 		if log != nil && detail != "" {
 			log.Debug("credential lookup", "action", action, "ref", ref, "detail", detail)
 		}
@@ -323,7 +323,7 @@ func cmdImport(ctx context.Context, args []string) error {
 	fs.Parse(args)
 
 	if *name == "" || fs.NArg() != 1 {
-		return errors.New("usage: hearsay import -name <source> [-map map.json] <file.md|file.csv>  (without -map, columns such as Host, OS, Role and Stack are recognised by name)")
+		return errors.New("usage: kryostate import -name <source> [-map map.json] <file.md|file.csv>  (without -map, columns such as Host, OS, Role and Stack are recognised by name)")
 	}
 	path := fs.Arg(0)
 
@@ -447,9 +447,9 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 	}
 	fmt.Printf("run %s: %d targets, %d ok, %d failed\n", sum.ID, sum.Targets, sum.Succeeded, sum.Failed)
 	if sum.Targets == 0 {
-		fmt.Println("no enabled targets; add one with: hearsay target -host <name> -address <addr> -user <user> -credential agent:")
+		fmt.Println("no enabled targets; add one with: kryostate target -host <name> -address <addr> -user <user> -credential agent:")
 	} else {
-		fmt.Println("compare the sources with: hearsay detect   (or use hearsay refresh next time)")
+		fmt.Println("compare the sources with: kryostate detect   (or use kryostate refresh next time)")
 	}
 	return nil
 }
@@ -500,7 +500,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 			return err
 		}
 		if len(results) == 0 {
-			fmt.Println("no checks defined; add one with: hearsay check -host <name> -name <name> -tcp host:port")
+			fmt.Println("no checks defined; add one with: kryostate check -host <name> -name <name> -tcp host:port")
 			return nil
 		}
 		for _, r := range results {
@@ -540,7 +540,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 	}
 
 	if *ci == "" || *name == "" || (*tcp == "" && *httpURL == "") {
-		return errors.New("usage: hearsay check -host <host> -name <name> (-tcp host:port | -http url [-expect 2xx]) | -list -host <host> | -run")
+		return errors.New("usage: kryostate check -host <host> -name <name> (-tcp host:port | -http url [-expect 2xx]) | -list -host <host> | -run")
 	}
 	c := store.Check{
 		CIID: *ci, Name: *name, Expect: *expect,
@@ -554,7 +554,7 @@ func cmdCheck(ctx context.Context, args []string) error {
 	if err := st.PutCheck(ctx, c); err != nil {
 		return err
 	}
-	fmt.Printf("check %s on %s recorded; run it with: hearsay check -run -only %s\n", c.Name, label, label)
+	fmt.Printf("check %s on %s recorded; run it with: kryostate check -run -only %s\n", c.Name, label, label)
 	return nil
 }
 
@@ -756,10 +756,10 @@ func cmdHost(ctx context.Context, args []string) error {
 	unretire := fs.String("unretire", "", "undo a retirement")
 	reason := fs.String("reason", "", "why, recorded in the audit log")
 	if pos := parseInterspersed(fs, args); len(pos) == 1 && *name == "" {
-		// "hearsay host web01" reads as naturally as "hearsay host -name web01".
+		// "kryostate host web01" reads as naturally as "kryostate host -name web01".
 		*name = pos[0]
 	} else if len(pos) > 0 {
-		return errors.New("usage: hearsay host <name> [-fqdn <fqdn>]")
+		return errors.New("usage: kryostate host <name> [-fqdn <fqdn>]")
 	}
 
 	if *retire != "" || *unretire != "" {
@@ -791,7 +791,7 @@ func cmdHost(ctx context.Context, args []string) error {
 	}
 
 	if *name == "" {
-		return errors.New("usage: hearsay host <name> [-fqdn <fqdn>] | hearsay host -retire <host> [-reason <why>]")
+		return errors.New("usage: kryostate host <name> [-fqdn <fqdn>] | kryostate host -retire <host> [-reason <why>]")
 	}
 	st, err := openStore(*db)
 	if err != nil {
@@ -809,7 +809,7 @@ func cmdHost(ctx context.Context, args []string) error {
 	}
 	if created {
 		fmt.Printf("created %s (id %s)\n", *name, id)
-		fmt.Printf("next: hearsay target -host %s -user <user>\n", *name)
+		fmt.Printf("next: kryostate target -host %s -user <user>\n", *name)
 	} else {
 		fmt.Printf("already known as %s\n", id)
 	}
@@ -824,7 +824,7 @@ func cmdTarget(ctx context.Context, args []string) error {
 	address := fs.String("address", "", "address or name to connect to, blank for the host's fqdn or name")
 	port := fs.Int("port", 0, "port, zero for the transport default")
 	user := fs.String("user", "", "username")
-	cred := fs.String("credential", "agent:", "credential reference, for example agent: or keyring:hearsay/ops")
+	cred := fs.String("credential", "agent:", "credential reference, for example agent: or keyring:kryostate/ops")
 	bastion := fs.String("bastion", "", "bastion as user@host:port/credential-ref")
 	disable := fs.Bool("disable", false, "record the profile but never collect through it")
 	forget := fs.Bool("forget-host-key", false, "with -host: clear the pinned host key, so the next collection trusts whatever key the host presents. Use it only after checking the host was really rebuilt")
@@ -842,7 +842,7 @@ func cmdTarget(ctx context.Context, args []string) error {
 			return err
 		}
 		if len(profiles) == 0 {
-			fmt.Println("no enabled targets; add one with: hearsay target -host <name> -user <user>")
+			fmt.Println("no enabled targets; add one with: kryostate target -host <name> -user <user>")
 			return nil
 		}
 		tw := newTable(os.Stdout)
@@ -881,7 +881,7 @@ func cmdTarget(ctx context.Context, args []string) error {
 				return err
 			}
 			fmt.Printf("forgot the %s host key of %s. The next collection pins the key it presents then.\n", p.Transport, ref)
-			fmt.Printf("collect now: hearsay refresh -only %s\n", ref)
+			fmt.Printf("collect now: kryostate refresh -only %s\n", ref)
 			return nil
 		}
 		return fmt.Errorf("%s has no %s connection", ref, *transport)
@@ -901,7 +901,7 @@ func cmdTarget(ctx context.Context, args []string) error {
 		return err
 	}
 	fmt.Printf("recorded: %s via %s as %s@%s using %s\n", ref, p.Transport, p.Username, p.Address, p.CredentialRef)
-	fmt.Printf("try it with: hearsay refresh -only %s\n", ref)
+	fmt.Printf("try it with: kryostate refresh -only %s\n", ref)
 	return nil
 }
 
@@ -1045,7 +1045,7 @@ func listStacks(ctx context.Context, st *store.Store) error {
 		return err
 	}
 	if len(views) == 0 {
-		fmt.Println("no stacks; define one with: hearsay stack -name <name> -add <host,...>")
+		fmt.Println("no stacks; define one with: kryostate stack -name <name> -add <host,...>")
 		return nil
 	}
 	tw := newTable(os.Stdout)
@@ -1151,7 +1151,7 @@ func cmdRestore(ctx context.Context, args []string) error {
 	fs.Parse(args)
 
 	if *in == "" {
-		return errors.New("usage: hearsay restore -db <new.db> -in <dump.json>")
+		return errors.New("usage: kryostate restore -db <new.db> -in <dump.json>")
 	}
 	f, err := os.Open(*in)
 	if err != nil {
@@ -1208,7 +1208,7 @@ func splitIDs(s string) []string {
 }
 
 func actor() string {
-	for _, k := range []string{"HEARSAY_ACTOR", "USER", "USERNAME"} {
+	for _, k := range []string{"KRYOSTATE_ACTOR", "USER", "USERNAME"} {
 		if v := os.Getenv(k); v != "" {
 			return v
 		}

@@ -9,8 +9,8 @@ while [ ! -s /keys/id_ed25519.pub ]; do
 	if [ "$i" -gt 60 ]; then echo "no lab key in /keys" >&2; exit 1; fi
 	sleep 1
 done
-install -d -m 700 -o hearsay -g hearsay /home/hearsay/.ssh
-install -m 600 -o hearsay -g hearsay /keys/id_ed25519.pub /home/hearsay/.ssh/authorized_keys
+install -d -m 700 -o kryostate -g kryostate /home/kryostate/.ssh
+install -m 600 -o kryostate -g kryostate /keys/id_ed25519.pub /home/kryostate/.ssh/authorized_keys
 
 # A stand-in for Splunk: the files the catalog reads, and a process whose
 # command line looks like splunkd's. Nothing listens.
@@ -37,7 +37,7 @@ ssh-keygen -A >/dev/null
 
 # Each lab host gets a machine-id of its own, kept beside the host keys.
 # Containers from one image otherwise share the image's, the way cloned
-# virtual machines do, and hearsay would rightly see two hosts with one id.
+# virtual machines do, and kryostate would rightly see two hosts with one id.
 if [ ! -s /etc/ssh/lab-machine-id ]; then
 	tr -d '-' </proc/sys/kernel/random/uuid >/etc/ssh/lab-machine-id
 fi

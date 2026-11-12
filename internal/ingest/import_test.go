@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/normalize"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/normalize"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 const docPath = "../../testdata/documents/example-inventory.md"

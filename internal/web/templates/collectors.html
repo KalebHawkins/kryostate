@@ -44,7 +44,7 @@
 </div>
 
 <h2 style="margin-top:2rem">Catalog</h2>
-<p class="muted">Ready-made collectors. Each runs a read-only command written into hearsay; a host without the program is simply left blank. Limit one to some stacks when it only makes sense there, such as the Splunk forwarder version on your Splunk hosts.</p>
+<p class="muted">Ready-made collectors. Each runs a read-only command written into KryoState; a host without the program is simply left blank. Limit one to some stacks when it only makes sense there, such as the Splunk forwarder version on your Splunk hosts.</p>
 {{range .Catalog}}
 <h3 class="catalog__group">{{.Category}}</h3>
 <div class="catalog">
@@ -57,8 +57,8 @@
     {{if .T.Description}}<p class="muted">{{.T.Description}}</p>{{end}}
     <p class="muted small">{{join .T.Systems ", "}}{{if .T.Fixed}} · recorded as <span class="mono">{{.T.Attr}}</span>{{end}}</p>
     {{if not .Allowed}}
-      <p class="small">Shows what is inside files or variables, which may be secrets, so it is not switched on from this page. On the hearsay server, run:</p>
-      <pre><code>hearsay collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}{{if .T.Param.Config}} -section {{.T.Param.SectionPlaceholder}} -key {{.T.Param.KeyPlaceholder}}{{end}}</code></pre>
+      <p class="small">Shows what is inside files or variables, which may be secrets, so it is not switched on from this page. On the KryoState server, run:</p>
+      <pre><code>kryostate collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}{{if .T.Param.Config}} -section {{.T.Param.SectionPlaceholder}} -key {{.T.Param.KeyPlaceholder}}{{end}}</code></pre>
       {{with .On}}<p class="muted small">Switched on for: {{range $i, $c := .}}{{if $i}}, {{end}}<span class="mono">{{$c.ParamText}}</span>{{end}}</p>{{end}}
     {{else}}
     <details class="disclosure">
@@ -108,12 +108,12 @@
   </tbody>
 </table></div>
 {{else}}
-<p class="muted">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Start with <span class="mono">hearsay collectors -init</span> on the server, then follow the <a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">collector guide</a>. Your own collectors are written in a file rather than on this page, because this page has no login of its own and a collector is a command that runs on every host.</p>
+<p class="muted">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Start with <span class="mono">kryostate collectors -init</span> on the server, then follow the <a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">collector guide</a>. Your own collectors are written in a file rather than on this page, because this page has no login of its own and a collector is a command that runs on every host.</p>
 {{end}}
 
 {{if .External}}
 <h2 style="margin-top:1.5rem">External programs</h2>
-<p class="muted">Run on the hearsay server, once per host. {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{end}}</p>
+<p class="muted">Run on the kryostate server, once per host. {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{end}}</p>
 <div class="table-wrap"><table>
   <thead><tr><th scope="col">Name</th><th scope="col">Program</th></tr></thead>
   <tbody>{{range .External}}<tr><td class="mono">{{.Name}}</td><td class="mono">{{.Path}}</td></tr>{{end}}</tbody>

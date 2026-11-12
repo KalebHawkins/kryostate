@@ -1,6 +1,6 @@
 # Lab inventory
 
-A hand-kept list, the kind hearsay is meant to check. It is deliberately a
+A hand-kept list, the kind KryoState is meant to check. It is deliberately a
 little wrong: idx01 and web01 were upgraded after it was written, and hf01
 was planned but never built.
 

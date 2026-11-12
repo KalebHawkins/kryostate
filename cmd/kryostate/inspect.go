@@ -21,13 +21,13 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/engine"
-	"github.com/KalebHawkins/hearsay/internal/model"
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/engine"
+	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // parseInterspersed lets flags follow positional arguments, so that
-// "hearsay show web01 -json" works as well as "hearsay show -json web01".
+// "kryostate show web01 -json" works as well as "kryostate show -json web01".
 // The standard flag package stops at the first non-flag argument.
 func parseInterspersed(fs *flag.FlagSet, args []string) []string {
 	var pos []string
@@ -122,7 +122,7 @@ func cmdHosts(ctx context.Context, args []string) error {
 	}
 
 	if len(rows) == 0 {
-		fmt.Println("no hosts match; add one with: hearsay host -name <name>")
+		fmt.Println("no hosts match; add one with: kryostate host -name <name>")
 		return nil
 	}
 	columns := splitIDs(*cols)
@@ -166,7 +166,7 @@ func cmdShow(ctx context.Context, args []string) error {
 	asJSON := fs.Bool("json", false, "print JSON instead of text")
 	pos := parseInterspersed(fs, args)
 	if len(pos) != 1 {
-		return errors.New("usage: hearsay show <host> [-json]")
+		return errors.New("usage: kryostate show <host> [-json]")
 	}
 
 	st, err := openStore(*db)
@@ -305,7 +305,7 @@ func cmdShow(ctx context.Context, args []string) error {
 			fmt.Printf("target: %s %s@%s%s %s%s\n", p.Transport, p.Username, p.Address, portSuffix(p.Port), p.CredentialRef, state)
 		}
 	} else {
-		fmt.Printf("\nno connection profile; add one with: hearsay target -host %s -address <addr> -user <user> -credential agent:\n", ci.Label)
+		fmt.Printf("\nno connection profile; add one with: kryostate target -host %s -address <addr> -user <user> -credential agent:\n", ci.Label)
 	}
 
 	if len(discs) > 0 {
@@ -337,7 +337,7 @@ func cmdSet(ctx context.Context, args []string) error {
 	reason := fs.String("reason", "", "why, recorded in the audit log (required)")
 	pos := parseInterspersed(fs, args)
 	if len(pos) < 2 {
-		return errors.New(`usage: hearsay set <host> attr=value [attr=value ...] -reason "why"`)
+		return errors.New(`usage: kryostate set <host> attr=value [attr=value ...] -reason "why"`)
 	}
 	if strings.TrimSpace(*reason) == "" {
 		return errors.New("-reason is required: a value a person states is only as good as the reason given for it")
@@ -372,7 +372,7 @@ func cmdSet(ctx context.Context, args []string) error {
 		}
 		fmt.Printf("%s: %s = %s (claimed by %s)\n", pos[0], p.k, p.v, who)
 	}
-	fmt.Println("run hearsay detect to compare it with the other sources")
+	fmt.Println("run kryostate detect to compare it with the other sources")
 	return nil
 }
 
@@ -419,7 +419,7 @@ func cmdDisagreements(ctx context.Context, args []string) error {
 				return fmt.Errorf("%q is not a disagreement id", s)
 			}
 			if err := st.Dispose(ctx, n, d, actor(), *note); errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("no disagreement #%d; list them with: hearsay disagreements", n)
+				return fmt.Errorf("no disagreement #%d; list them with: kryostate disagreements", n)
 			} else if err != nil {
 				return fmt.Errorf("disagreement %d: %w", n, err)
 			}
@@ -453,7 +453,7 @@ func cmdDisagreements(ctx context.Context, args []string) error {
 	}
 	printDisagreements(list)
 	if f.Disposition == model.DispOpen {
-		fmt.Println("\nsettle one with: hearsay disagreements -decide <id> -as machine|document|accept [-note why]")
+		fmt.Println("\nsettle one with: kryostate disagreements -decide <id> -as machine|document|accept [-note why]")
 	}
 	return nil
 }
@@ -530,7 +530,7 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 	}
 	fmt.Printf("collect: %d targets, %d ok, %d failed\n", sum.Targets, sum.Succeeded, sum.Failed)
 	if sum.Targets == 0 {
-		fmt.Println("         nothing to collect from; add a connection with: hearsay target -host <name> -user <user>")
+		fmt.Println("         nothing to collect from; add a connection with: kryostate target -host <name> -user <user>")
 	}
 
 	if !*noChecks {
@@ -551,7 +551,7 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 	fmt.Printf("detect:  %d conflicts, %d not understood, %d stale, %d undocumented\n",
 		det.Conflicts, det.Unparsed, det.Stale, det.Undocumented)
 	if _, total, err := st.DiscrepancyCounts(ctx); err == nil && total > 0 {
-		fmt.Printf("%d disagreements open; list them with: hearsay disagreements\n", total)
+		fmt.Printf("%d disagreements open; list them with: kryostate disagreements\n", total)
 	}
 	return nil
 }

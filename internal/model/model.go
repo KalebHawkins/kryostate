@@ -153,7 +153,7 @@ const (
 	ProbeCollectorRun ProbeKind = "collector_run"
 	ProbeResolve      ProbeKind = "resolve"
 	// ProbeHealth is a request to an endpoint somebody named, run by
-	// "hearsay check".
+	// "kryostate check".
 	ProbeHealth ProbeKind = "health"
 )
 

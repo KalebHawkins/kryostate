@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // TestKeepingTheDocumentActuallyKeepsIt is the workflow the tool exists for.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KalebHawkins/hearsay/internal/store"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 func TestParseHostListReadsWhatPeoplePaste(t *testing.T) {

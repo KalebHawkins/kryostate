@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/KalebHawkins/hearsay/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // ParamKind says what kind of value a template takes, and so how it is
@@ -34,7 +34,7 @@ const (
 	// ParamConfig is a file, a key, and optionally the [section] the key is
 	// in. It is stored as one value, PATH#KEY or PATH#[SECTION]KEY, which
 	// ConfigParam builds and SplitConfigParam takes apart. # cannot appear in
-	// a path hearsay accepts, so the split is unambiguous.
+	// a path kryostate accepts, so the split is unambiguous.
 	ParamConfig ParamKind = "config"
 )
 

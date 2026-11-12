@@ -1,7 +1,7 @@
 // Package secret resolves a credential reference into credential material at
 // the moment it is needed.
 //
-// The database stores references such as "agent:" or "keyring:hearsay/svc-ro",
+// The database stores references such as "agent:" or "keyring:kryostate/svc-ro",
 // never keys or passwords. That is not a convenience: this tool holds the
 // means to log in to every host it manages, which makes it more valuable to an
 // attacker than any single host it manages. A reference that resolves through
