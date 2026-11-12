@@ -345,17 +345,27 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 		fmt.Println("Switched on from the catalog:")
 		tw := newTable(os.Stdout)
 		fmt.Fprintln(tw, "  #\tCOLLECTOR\tRECORDED AS\tRUNS ON")
+		var gone []collect.Choice
 		for _, c := range choices {
 			where := "all hosts"
 			if c.Target != "" {
 				where = c.Target
 			}
-			fmt.Fprintf(tw, "  %d\t%s\t%s\t%s\n", c.ID, c.Label(), c.Attr, where)
+			label := c.Label()
+			if !c.InCatalog() {
+				label += " (no longer in the catalog, skipped)"
+				gone = append(gone, c)
+			}
+			fmt.Fprintf(tw, "  %d\t%s\t%s\t%s\n", c.ID, label, c.Attr, where)
 		}
 		if err := tw.Flush(); err != nil {
 			return err
 		}
 		fmt.Println("  switch one off: kryostate collectors -disable <#>")
+		for _, c := range gone {
+			fmt.Printf("  %s is not in this build's catalog, so it never runs. Values it recorded are kept.\n"+
+				"    remove it:    kryostate collectors -disable %d\n", c.Template, c.ID)
+		}
 	}
 
 	builtin, err := collect.BuiltinSpecs()

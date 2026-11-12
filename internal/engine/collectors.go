@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -225,22 +224,8 @@ func (e *Engine) Collectors(ctx context.Context) ([]Collector, error) {
 	return out, nil
 }
 
-// appliesTo reports whether a collector has anything to do on a host, given
-// the operating system the host last reported (empty when unknown) and the
-// hosts each of its specs targets. A host whose system is unknown is given the
-// benefit of the doubt; the engine checks again once it is connected.
+// appliesTo reports whether a collector has anything to do on a host. See
+// fit, which also says why.
 func (c Collector) appliesTo(family, ciID string, tg *Targets) bool {
-	if c.External != nil {
-		return true
-	}
-	for _, sp := range c.Specs {
-		if family != "" && !slices.ContainsFunc(sp.OS, func(o string) bool { return strings.EqualFold(o, family) }) {
-			continue
-		}
-		if !tg.specApplies(sp, ciID) {
-			continue
-		}
-		return true
-	}
-	return false
+	return c.fit(family, ciID, tg).Runs
 }

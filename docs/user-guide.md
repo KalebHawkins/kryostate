@@ -318,14 +318,14 @@ kryostate stack -name payments-prod -q 'os.family == "Linux" && name in ("web01"
 ### Look at it
 
 The **Stacks** page shows each stack with its members, each member's role, and
-counts: collected, failed and never collected. **Collected
-here** lists what is read from the stack's hosts. **Open in inventory** lists
-the members with their values.
+counts: collected, failed and never collected. **Open in inventory** lists
+the members with their values. Each host's page lists the collectors that run
+on it, and why.
 
-To collect something more from just this stack, pick it under **Also collect
-on**, for example **Web servers** on your web
-stack, and select **Switch on**. That only ever adds the stack: anything already
-collected on other hosts keeps running there.
+To collect something more from just this stack, switch it on from the
+**Collectors** page with **Where it runs** set to the stack, or run
+`kryostate collectors -enable group.web -stacks payments-prod`. That only ever
+adds the stack: anything already collected on other hosts keeps running there.
 
 On the command line, `kryostate stack` lists the stacks and
 `kryostate hosts -stack payments-prod` lists the members.
@@ -399,8 +399,7 @@ DNS servers, SELinux mode, and the versions of Java, Python, OpenSSL, nginx,
 Apache httpd and Docker. It also has fill-in-the-blank ones: **file exists**,
 **file contents**, **a setting in a config file** such as `max_connections`
 in PostgreSQL's `postgresql.conf`, **an environment variable** such as
-`JAVA_HOME`, and **an installed package's version**. A few vendor-specific
-entries (Splunk versions and install location) come last.
+`JAVA_HOME`, and **an installed package's version**.
 
 **Groups** switch on several at once: **Host basics** (CPU, memory, time zone,
 DNS), **Language runtimes** and **Web servers**.

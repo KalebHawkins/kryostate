@@ -1463,3 +1463,18 @@ td .hostpick__input { width: 11rem; min-width: 0; }
 /* A long server path wraps inside its card instead of running out of it. */
 .cfoot .mono { overflow-wrap: anywhere; }
 /* ---------- end guide layout, query help, external programs ---------- */
+/* ---------- collectors on a host, and collectors no longer in the catalog ---------- */
+.hcoll { margin-top: var(--s-5); scroll-margin-top: calc(var(--nav-h) + var(--s-4)); }
+.hcoll__table td { vertical-align: top; }
+.hcoll__table td:first-child { overflow-wrap: anywhere; }
+.hcoll__table code, .hcoll__skipped code { overflow-wrap: anywhere; }
+.hcoll__skipped { margin: var(--s-3) 0 0; }
+.hcoll__skipped ul { margin: var(--s-2) 0 0; padding-left: var(--s-4); }
+.hcoll__skipped li { margin: 0 0 var(--s-1); }
+@media (max-width: 40rem) {
+  .hcoll__table th:nth-child(3), .hcoll__table td:nth-child(3) { display: none; }
+}
+.cgone { margin: 0 0 var(--s-4); border-left: 3px solid var(--warn); }
+.cgone__list { width: 100%; }
+.cgone__list td { vertical-align: middle; overflow-wrap: anywhere; }
+/* ---------- end collectors on a host ---------- */

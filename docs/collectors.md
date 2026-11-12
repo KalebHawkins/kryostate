@@ -36,9 +36,6 @@ left blank, not counted as a failure.
 | File contents, for a path you give | `file.<name>.contents` | Linux, AIX, Windows |
 | Setting in a config file, for a file, key and optional section you give | `conf.<file>.<section>.<key>` | Linux, AIX, Windows |
 | Environment variable, for a name you give | `env.<name>` | Linux, AIX, Windows |
-| Splunk Universal Forwarder version | `splunk.uf.version` | Linux, AIX, Windows |
-| Splunk Enterprise version | `splunk.enterprise.version` | Linux, AIX, Windows |
-| Splunk home, from the running splunkd | `splunk.home` | Linux, AIX, Windows |
 
 KryoState deliberately has no collectors for CPU or memory **usage**. Those
 change by the second, which is the job of a monitoring system.
@@ -121,10 +118,9 @@ If a query stored by an older version, or written by hand, does not parse,
 the collector runs on no host at all rather than on every host, and its page
 says why.
 
-Two shortcuts do the same thing from elsewhere. On a stack's page, under
-**Collected here**, **Also collect on** switches a group or a collector on
-for that stack. On a host's page, **Test a collector** runs any switched-on
-collector on that host.
+On a host's page, **Collectors on this host** lists what runs there, why,
+and on what schedule, with the switched-on collectors that skip it and the
+reason. **Test a collector** runs any switched-on collector on that host.
 
 It is read the next time it is due: once a day for most collectors, every 6
 hours for file and config checks, while `kryostate serve` runs. To read it
@@ -518,6 +514,33 @@ their `id` is different. For example, the starter collector records
 on Windows.
 
 ## Going further
+
+### A vendor application's version
+
+The catalog does not carry collectors for one vendor's products. Many
+applications write their version to a file under their install directory,
+which makes a short collector of your own. Say the vendor's file
+`/opt/acme/etc/version` holds lines such as `VERSION=4.2.1`, and the
+application is only installed on the hosts of the `acme` stack:
+
+```json
+{
+  "id": "acme.version",
+  "attr": "acme.version",
+  "os": ["linux", "aix"],
+  "stacks": ["acme"],
+  "command": "cat /opt/acme/etc/version",
+  "parse": { "kind": "kv", "key": "VERSION" },
+  "type": "text",
+  "optional": true
+}
+```
+
+`kv` keeps the value after `VERSION=`. `stacks` limits it to members of that
+stack; leave it out to run it on every Linux and AIX host, where `optional`
+keeps a host without the application from being reported as a failure. Each
+member's page then lists it under **Collectors on this host**, with
+`collectors.json` as the reason it runs there.
 
 ### Comparing versions
 

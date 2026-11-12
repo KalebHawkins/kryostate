@@ -2,10 +2,31 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"strconv"
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
 )
+
+// warnSkipped logs, once per switched-on collector and reason, that it is
+// skipped and how to clear it.
+func (e *Engine) warnSkipped(c collect.Choice, err error) {
+	if e.Log == nil {
+		return
+	}
+	key := strconv.FormatInt(c.ID, 10) + "\x00" + err.Error()
+	if _, seen := e.warned.LoadOrStore(key, true); seen {
+		return
+	}
+	if errors.Is(err, collect.ErrNotInCatalog) {
+		e.Log.Warn("switched-on collector skipped: its catalog entry no longer exists in this build",
+			"template", c.Template, "choice", c.ID,
+			"remove", "Turn off on the Collectors page, or: kryostate collectors -disable "+strconv.FormatInt(c.ID, 10))
+		return
+	}
+	e.Log.Warn("switched-on collector skipped", "collector", c.Label(), "choice", c.ID, "err", err)
+}
 
 // AllSpecs is every spec that may run: the built-in ones, any from a spec
 // file, and the catalog collectors switched on in the store. The catalog part
@@ -29,8 +50,8 @@ func (e *Engine) AllSpecs(ctx context.Context) (*collect.SpecSet, error) {
 		if err != nil {
 			// A row that no longer renders, say because the catalog entry
 			// was removed in a later build, must not stop every other
-			// collector from running.
-			e.logf("catalog collector "+c.Label(), err)
+			// collector from running. It is skipped, and said once.
+			e.warnSkipped(c, err)
 			continue
 		}
 		set.Specs = append(set.Specs, specs...)

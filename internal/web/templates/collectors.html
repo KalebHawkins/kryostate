@@ -4,6 +4,32 @@
 
 {{with .FileProblem}}<div class="notice notice--bad" role="alert"><strong>collectors.json:</strong> {{.}}</div>{{end}}
 
+{{if .Gone}}
+<section class="card cgone" aria-labelledby="h-gone">
+  <h2 id="h-gone">No longer in the catalog</h2>
+  <p class="muted small">These were switched on, but this version of KryoState has no catalog entry by that name, so they are skipped at every collection. Values they already recorded stay in each host's history. Turn them off to clear this list.</p>
+  <table class="cgone__list">
+    <caption class="visually-hidden">Switched-on collectors no longer in the catalog</caption>
+    <thead><tr><th scope="col">Collector</th><th scope="col">Recorded as</th><th scope="col">Was running on</th><th scope="col"><span class="visually-hidden">Turn off</span></th></tr></thead>
+    <tbody>
+    {{range .Gone}}
+      <tr>
+        <td class="mono">{{.Template}}{{with .Param}} <span class="muted">{{.}}</span>{{end}} <span class="chip chip--off">not in catalog</span></td>
+        <td class="mono small">{{.Attr}}</td>
+        <td class="small">{{if .Target}}<span class="mono">{{.Target}}</span>{{else}}every host{{end}}</td>
+        <td class="num">
+          <form class="inline" method="post" action="/collectors/remove">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button class="btn btn--small" type="submit" aria-label="Turn off {{.Template}}">Turn off</button>
+          </form></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  <p class="muted small">From the command line: <span class="mono">kryostate collectors</span> lists them; <span class="mono">kryostate collectors -disable &lt;#&gt;</span> turns one off.</p>
+</section>
+{{end}}
+
 <form class="filterbar cfilter" method="get" action="/collectors" role="search" data-filter="#collector-list">
   <label class="visually-hidden" for="cf-q">Search collectors</label>
   <input type="search" id="cf-q" name="q" value="{{.Filter.Q}}" placeholder="Search by name, attribute or system…" autocomplete="off">

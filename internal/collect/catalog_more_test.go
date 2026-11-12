@@ -181,17 +181,3 @@ func TestYesNoAnswersAreTrueFalse(t *testing.T) {
 		}
 	}
 }
-
-// TestNoSplunkGroups: the Splunk collectors are switched on one at a time.
-func TestNoSplunkGroups(t *testing.T) {
-	for _, g := range Groups {
-		if strings.Contains(g.ID, "splunk") {
-			t.Errorf("group %s is still offered", g.ID)
-		}
-	}
-	for _, id := range []string{"splunk.uf.version", "splunk.enterprise.version", "splunk.home"} {
-		if _, ok := Lookup(id); !ok {
-			t.Errorf("catalog entry %s is gone", id)
-		}
-	}
-}

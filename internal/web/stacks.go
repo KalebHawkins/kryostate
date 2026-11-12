@@ -109,6 +109,8 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	// A choice no longer in the catalog runs nowhere, so it is not counted.
+	choices = slices.DeleteFunc(choices, func(c collect.Choice) bool { return !c.InCatalog() })
 	tg, err := s.targetsNow(ctx)
 	if err != nil {
 		s.fail(w, err)
@@ -215,29 +217,6 @@ func (s *Server) handleStack(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	choices, err := s.Store.Choices(ctx)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	tg, err := s.targetsNow(ctx)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	ids := make([]string, 0, len(hosts))
-	for _, h := range hosts {
-		ids = append(ids, h.CI.ID)
-	}
-	var here, everywhere []collect.Choice
-	for _, c := range choices {
-		switch {
-		case c.Target == "":
-			everywhere = append(everywhere, c)
-		case runsOnStack(tg, c.Target, name, ids):
-			here = append(here, c)
-		}
-	}
 	var members []memberRow
 	for _, h := range hosts {
 		if len(members) == memberLimit {
@@ -251,12 +230,7 @@ func (s *Server) handleStack(w http.ResponseWriter, r *http.Request) {
 		Inventory   string
 		Members     []memberRow
 		MoreMembers int
-		Collectors  []collect.Choice // limited to some hosts, and run here
-		Everywhere  []collect.Choice // on for every host
-		Groups      []collect.Group
-		Fixed       []collect.Template // catalog entries that need no value
-	}{view, stackURL(name), stackInventory(name), members, len(hosts) - len(members),
-		here, everywhere, collect.Groups, fixedEntries()})
+	}{view, stackURL(name), stackInventory(name), members, len(hosts) - len(members)})
 }
 
 // handleStackHosts suggests hosts by name for adding to a stack. It reads
