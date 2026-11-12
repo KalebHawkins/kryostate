@@ -42,6 +42,9 @@ func (s *Store) FinishRun(ctx context.Context, id, status string, ok, failed int
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE run SET finished_at=?, status=?, succeeded=?, failed=? WHERE id=?`,
 		ts(time.Now()), status, ok, failed, id)
+	if err == nil {
+		s.afterRun(ctx)
+	}
 	return err
 }
 

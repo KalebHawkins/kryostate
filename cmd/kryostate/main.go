@@ -45,6 +45,7 @@ Everyday:
   refresh        collect and run checks, in one go
   set            state a host's application, stack or role yourself
   collectors     list, switch on, test and schedule collectors; create your own
+  rules          track a rollout: which hosts in scope match, which do not yet
   serve          run the web interface, and the collection schedules
 
 Setup and maintenance:
@@ -87,6 +88,8 @@ func main() {
 		err = cmdSet(ctx, os.Args[2:])
 	case "collectors":
 		err = cmdCollectors(ctx, os.Args[2:])
+	case "rules":
+		err = cmdRules(ctx, os.Args[2:])
 	case "refresh":
 		err = cmdRefresh(ctx, log, os.Args[2:])
 	case "serve":

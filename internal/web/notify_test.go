@@ -75,7 +75,7 @@ func TestNotificationsPage(t *testing.T) {
 		t.Errorf("flash %q", msg)
 	}
 	got, _ := st.GetNotifySettings(ctx)
-	if !got.Enabled || got.At != "07:30" || !got.SendQuiet || strings.Join(got.Sections, ",") != "changes,never,rules" ||
+	if !got.Enabled || got.At != "07:30" || !got.SendQuiet || strings.Join(got.Sections, ",") != "changes,never" ||
 		got.BaseURL != "https://kryostate.example.com" || got.UpdatedBy != "operator@example.invalid" {
 		t.Errorf("settings: %+v", got)
 	}

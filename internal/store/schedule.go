@@ -201,6 +201,9 @@ func (s *Store) FinishRunNote(ctx context.Context, id, status string, ok, failed
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE run SET finished_at=?, status=?, succeeded=?, failed=?, note=? WHERE id=?`,
 		ts(time.Now()), status, ok, failed, note, id)
+	if err == nil {
+		s.afterRun(ctx)
+	}
 	return err
 }
 

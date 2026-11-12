@@ -79,6 +79,7 @@ type overviewData struct {
 	ManualOnly   bool
 	LastRun      *store.RunSummary
 	Glance       []glanceGroup
+	Rollouts     rollouts
 }
 
 // staleAfter is how long since a host's last good collection before the
@@ -165,6 +166,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d.Glance = s.glance(ctx, d.Health.Hosts)
+	d.Rollouts = s.rollouts(ctx)
 	s.render(w, r, "home.html", "Overview", "home", d)
 }
 

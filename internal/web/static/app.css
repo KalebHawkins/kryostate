@@ -1715,3 +1715,50 @@ td .hostpick__input { width: 11rem; min-width: 0; }
   .schedules tbody tr:not(.sched-storm-row) > th { grid-column: 1 / -1; border-bottom: 0; padding-bottom: 0; }
   .schedules tbody tr:not(.sched-storm-row) > td.sched-edit-cell { align-self: start; }
 }
+
+/* ---------- rules: tracking a rollout ---------- */
+.rbar { height: 0.5rem; max-width: 14rem; margin: 0.3rem 0 0.2rem; }
+.rbar__notyet { background: var(--warn); }
+.rcounts { font-variant-numeric: tabular-nums; }
+.rcounts__notyet { color: var(--warn); }
+.rchip--done { color: var(--ok); border-color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.rchip--done::before { content: "\2713"; }
+.rlist { width: 100%; }
+.rlist td { vertical-align: middle; }
+.rlist__name { overflow-wrap: anywhere; }
+.rlist__progress { min-width: 12rem; }
+.spark { display: block; overflow: visible; }
+.spark__area { fill: var(--ok); opacity: 0.18; }
+.spark__line { fill: none; stroke: var(--ok); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.rhead { margin: 0 0 var(--s-4); }
+.rhead .rbar { max-width: 32rem; height: 0.75rem; }
+.rhead__counts { margin: var(--s-1) 0 0; }
+.rqueries { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-1) var(--s-3); margin: 0 0 var(--s-4); }
+.rqueries dt { color: var(--text-dim); }
+.rqueries dd { margin: 0; overflow-wrap: anywhere; }
+.rlists { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s-4); margin: 0 0 var(--s-4); }
+.rlistcard { min-width: 0; }
+.rlistcard--notyet h2 { color: var(--warn); }
+.rlistcard--done h2 { color: var(--ok); }
+.rhosts { list-style: none; margin: 0 0 var(--s-2); padding: 0; display: grid; gap: var(--s-1); }
+.rhosts li { overflow-wrap: anywhere; }
+.rtrendcard { margin: 0 0 var(--s-4); }
+.rtrend { width: 100%; height: auto; display: block; max-width: 48rem; }
+.rtrend__done { fill: var(--ok); opacity: 0.55; }
+.rtrend__unknown { fill: var(--text-faint); opacity: 0.45; }
+.rtrend__notyet { fill: var(--warn); opacity: 0.35; }
+.rtrend__line { fill: none; stroke: var(--ok); stroke-width: 2; }
+.rtrend__grid { stroke: var(--hairline); stroke-width: 1; }
+.rtrend__axis { fill: var(--text-dim); font-family: var(--font-ui); font-size: 0.6875rem; }
+.rkey { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; vertical-align: -0.05rem; margin-left: var(--s-2); }
+.rkey--done { background: var(--ok); }
+.rkey--unknown { background: var(--text-faint); }
+.rkey--notyet { background: var(--warn); }
+.ov-rollouts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.ov-rollouts .rbar { max-width: none; }
+.rform textarea[aria-invalid="true"] { border-color: var(--bad); }
+@media (max-width: 40rem) {
+  .rlist th:nth-child(2), .rlist td:nth-child(2),
+  .rlist th:nth-child(4), .rlist td:nth-child(4) { display: none; }
+}
+/* ---------- end rules ---------- */

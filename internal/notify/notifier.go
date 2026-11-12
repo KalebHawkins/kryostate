@@ -52,7 +52,8 @@ func New(st *store.Store, reg *secret.Registry, log *slog.Logger) *Notifier {
 	if reg == nil {
 		reg = secret.NewRegistry(nil)
 	}
-	return &Notifier{Store: st, Secrets: reg, Log: log, Attempts: 3, Backoff: 30 * time.Second}
+	return &Notifier{Store: st, Secrets: reg, Log: log, Attempts: 3, Backoff: 30 * time.Second,
+		Extra: []SectionSource{RulesSource(st)}}
 }
 
 func (n *Notifier) httpClient() *http.Client {

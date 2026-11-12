@@ -47,6 +47,7 @@ var tables = []string{
 	"run", "probe", "audit", "collector_choice",
 	"collector_schedule", "collector_state",
 	"notify_dest", "notify_config", "notify_send",
+	"rule", "rule_snapshot",
 }
 
 // obsoleteTables were written by earlier builds and hold nothing this build
