@@ -9,7 +9,7 @@
 {{else}}
 <p class="target__words">
 {{- if eq .Kind "all"}}Every host it has a command for
-{{- else if eq .Kind "stacks"}}Hosts in {{range $i, $s := .Items}}{{if $i}}, {{end}}{{if has $.Missing $s}}<span class="chip chip--bad" title="This stack no longer exists">{{$s}} is gone</span>{{else}}<a href="/stacks#stack-{{slug $s}}">{{$s}}</a>{{end}}{{end}}{{if .More}} and {{.More}} more stacks{{end}}
+{{- else if eq .Kind "stacks"}}Hosts in {{range $i, $s := .Items}}{{if $i}}, {{end}}{{if has $.Missing $s}}<span class="chip chip--bad" title="This stack no longer exists">{{$s}} is gone</span>{{else}}<a href="{{stackURL $s}}" hx-get="{{stackURL $s}}" hx-target="#main" hx-push-url="true">{{$s}}</a>{{end}}{{end}}{{if .More}} and {{.More}} more stacks{{end}}
 {{- else if eq .Kind "names"}}Only {{range $i, $s := .Items}}{{if $i}}, {{end}}<span class="mono">{{$s}}</span>{{end}}{{if .More}} and {{.More}} more hosts{{end}}
 {{- else}}Hosts matching <code class="target__code">{{.Expr}}</code>{{end}}</p>
 <p class="small target__count"><a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">matches {{.Count}} host{{if ne .Count 1}}s{{end}}</a>

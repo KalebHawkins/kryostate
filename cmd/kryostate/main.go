@@ -28,6 +28,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/ingest"
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/normalize"
+	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/secret"
 	"github.com/KalebHawkins/kryostate/internal/store"
 	"github.com/KalebHawkins/kryostate/internal/transfer"
@@ -951,6 +952,7 @@ func cmdStack(ctx context.Context, args []string) error {
 	remove := fs.String("remove", "", "comma-separated hosts (names or ids) to take out")
 	role := fs.String("role", "", "role for added members that do not name their own")
 	app := fs.String("application", "", "with -add or -file: the application the added hosts run")
+	q := fs.String("q", "", `add every recorded host matching a query, such as 'os.family == "Linux"', in the -role role; once, the stack does not follow the query afterwards (the query language of hosts -q)`)
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -1028,6 +1030,17 @@ func cmdStack(ctx context.Context, args []string) error {
 		if len(res.Problems) > 0 && !*create {
 			fmt.Println("To add hosts that are not recorded yet, repeat with -create.")
 		}
+	}
+
+	if *q != "" {
+		res, err := web.AddMatchingToStack(ctx, st, *name, *q, *role)
+		var qe *query.Error
+		if errors.As(err, &qe) {
+			return fmt.Errorf("query: %s\n  %s\n  %s", qe.Msg, *q, qe.Caret())
+		} else if err != nil {
+			return err
+		}
+		fmt.Println(res.Summary(*name))
 	}
 
 	removeIDs, err := st.LookupCIs(ctx, splitIDs(*remove))

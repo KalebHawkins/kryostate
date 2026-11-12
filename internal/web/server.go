@@ -17,17 +17,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/model"
-	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -107,6 +104,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /hosts.json", s.handleHostsJSON)
 	mux.HandleFunc("GET /hosts/{id}", s.handleHost)
 	mux.HandleFunc("GET /stacks", s.handleStacks)
+	mux.HandleFunc("GET /stacks/{name}", s.handleStack)
+	mux.HandleFunc("GET /stacks/{name}/hosts", s.handleStackHosts)
+	mux.HandleFunc("GET /stacks/{name}/query", s.handleStackQueryPreview)
 	mux.HandleFunc("GET /charts", s.handleCharts)
 	mux.HandleFunc("POST /hosts/{id}/address", s.handleSelectAddress)
 	mux.HandleFunc("POST /hosts/{id}/application", s.handleApplication)
@@ -133,6 +133,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /collectors/try/hosts", s.handleTryHosts)
 	mux.HandleFunc("POST /stacks/hosts", s.handleBulkHosts)
 	mux.HandleFunc("POST /stacks/collectors", s.handleStackCollectors)
+	mux.HandleFunc("POST /stacks/query", s.handleStackQuery)
 	mux.HandleFunc("POST /collectors/group", s.handleChooseGroup)
 	mux.HandleFunc("GET /runs", s.handleRuns)
 	mux.HandleFunc("GET /schedules", s.handleSchedules)
@@ -333,80 +334,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, r, "host.html", ci.Label, "hosts", d)
-}
-
-func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
-	views, err := s.Store.Stacks(r.Context())
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	type stackWithMembers struct {
-		View       store.StackView
-		Members    []store.HostRow
-		Roles      map[string]string
-		Collectors []collect.Choice // catalog collectors limited to some hosts, run on members of this stack
-	}
-	choices, err := s.Store.Choices(r.Context())
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	tg, err := s.targetsNow(r.Context())
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	var everywhere []collect.Choice
-	for _, c := range choices {
-		if c.Target == "" {
-			everywhere = append(everywhere, c)
-		}
-	}
-	// A collector is listed on a stack when it names the stack, or when its
-	// target matches any member, so the card says what really runs there.
-	runsOn := func(c collect.Choice, stack string, members []store.HostRow) bool {
-		if names, ok := query.ListOf(c.Target, "stack"); ok {
-			return slices.Contains(names, stack)
-		}
-		return slices.ContainsFunc(members, func(m store.HostRow) bool { return tg.Match(c.Target, m.CI.ID) })
-	}
-	out := make([]stackWithMembers, 0, len(views))
-	for _, v := range views {
-		m, err := s.Store.StackMembers(r.Context(), v.Stack.Name)
-		if err != nil {
-			s.fail(w, err)
-			return
-		}
-		roles, err := s.Store.StackRoles(r.Context(), v.Stack.Name)
-		if err != nil {
-			s.fail(w, err)
-			return
-		}
-		row := stackWithMembers{View: v, Members: m, Roles: roles}
-		for _, c := range choices {
-			if c.Target != "" && runsOn(c, v.Stack.Name, m) {
-				row.Collectors = append(row.Collectors, c)
-			}
-		}
-		out = append(out, row)
-	}
-	hosts, err := s.Store.Hosts(r.Context(), store.HostFilter{})
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	names := make([]string, 0, len(hosts))
-	for _, h := range hosts {
-		names = append(names, h.CI.Label)
-	}
-	s.render(w, r, "stacks.html", "Stacks", "stacks", struct {
-		Stacks     []stackWithMembers
-		HostNames  []string
-		Everywhere []collect.Choice // catalog collectors on for every host
-		Groups     []collect.Group
-		Fixed      []collect.Template // catalog entries that need no value
-	}{out, names, everywhere, collect.Groups, fixedEntries()})
 }
 
 func (s *Server) handleSelectAddress(w http.ResponseWriter, r *http.Request) {

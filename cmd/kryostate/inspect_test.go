@@ -61,6 +61,49 @@ func TestSetAcceptsOnlyApplicationStackAndRole(t *testing.T) {
 	}
 }
 
+// TestStackAddsHostsByQuery: stack -q adds what a query matches, once, in
+// the -role role, and leaves members alone.
+func TestStackAddsHostsByQuery(t *testing.T) {
+	ctx := context.Background()
+	db := filepath.Join(t.TempDir(), "k.db")
+	st, err := openStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	for _, n := range []string{"web01", "web02", "db01"} {
+		id, _, err := st.ResolveCI(ctx, model.KindHost, n, []model.Identity{{Scheme: model.IdentHostname, Value: n}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[n] = id
+	}
+	st.Close()
+
+	if err := cmdStack(ctx, []string{"-db", db, "-name", "pay", "-add", "web01:api"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdStack(ctx, []string{"-db", db, "-name", "pay", "-q", `name in ("web01", "web02")`, "-role", "app"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdStack(ctx, []string{"-db", db, "-name", "pay", "-q", `name ==`}); err == nil || !strings.Contains(err.Error(), "query") {
+		t.Errorf("a bad query gave %v", err)
+	}
+
+	st, err = openStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	roles, err := st.StackRoles(ctx, "pay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roles) != 2 || roles[ids["web01"]] != "api" || roles[ids["web02"]] != "app" {
+		t.Errorf("roles %v", roles)
+	}
+}
+
 func TestFlagsMayFollowTheHost(t *testing.T) {
 	for _, args := range [][]string{
 		{"web01", "-json", "-reason", "why", "env=prod"},

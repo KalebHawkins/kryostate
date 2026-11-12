@@ -177,7 +177,7 @@ func TestStacksFromTheBrowser(t *testing.T) {
 	if len(views) != 1 || views[0].Stack.Owner != "team-b" {
 		t.Fatalf("stack %+v", views)
 	}
-	if body := get(t, h, "/stacks", nil).Body.String(); !strings.Contains(body, "appnode1") || !strings.Contains(body, `id="stack-payments"`) {
+	if body := get(t, h, "/stacks/payments", nil).Body.String(); !strings.Contains(body, "appnode1") || !strings.Contains(body, "team-b") {
 		t.Error("the stacks page does not show the member")
 	}
 

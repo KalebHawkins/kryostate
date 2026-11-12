@@ -268,7 +268,7 @@ setting in a config file, an environment variable, and an installed package's
 version. A few vendor-specific entries (Splunk versions and install location)
 come last. Groups switch several on together: host basics, language runtimes,
 web servers. Switch them on in the web interface on the Collectors page or from
-a stack's card, or:
+a stack's page, or:
 
 ```sh
 ./kryostate collectors -catalog
@@ -471,10 +471,10 @@ it without saving.
 
 ![Host](docs/images/host.png)
 
-The stacks page shows one card for each stack, with its collection coverage,
-each member's role, and what is collected there. A host that serves two
-stacks appears in both. A new stack takes a pasted list of hosts and roles; a
-card switches a collector or a group on for that stack.
+The stacks page is a table with one row for each stack: its members, collection coverage, roles and how many collectors run there, with a filter by name, environment or owner. Each stack has a page of its own with its members,
+their roles, and what is collected there. A host that serves two
+stacks appears in both. A new stack takes a pasted list of hosts and roles; a stack's page adds hosts by name, by a pasted list or by query, and
+switches a collector or a group on for that stack.
 
 ![Stacks](docs/images/stacks.png)
 

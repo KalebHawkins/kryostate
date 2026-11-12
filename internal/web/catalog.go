@@ -234,7 +234,7 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 // handleBulkHosts adds a pasted list of hosts to a stack.
 func (s *Server) handleBulkHosts(w http.ResponseWriter, r *http.Request) {
 	stack := field(r, "stack")
-	back := "/stacks#stack-" + slug(stack, map[string]int{})
+	back := stackBack(field(r, "back"), stackURL(stack))
 	if stack == "" {
 		refuse(w, r, "/stacks", errors.New("name the stack"))
 		return
@@ -352,7 +352,7 @@ func (s *Server) handleChooseGroup(w http.ResponseWriter, r *http.Request) {
 // that stack's card.
 func (s *Server) handleStackCollectors(w http.ResponseWriter, r *http.Request) {
 	stack := field(r, "stack")
-	back := "/stacks#stack-" + slug(stack, map[string]int{})
+	back := stackBack(field(r, "back"), stackURL(stack))
 	if _, err := s.Store.StackID(r.Context(), stack); err != nil {
 		refuse(w, r, "/stacks", errors.New("no such stack"))
 		return

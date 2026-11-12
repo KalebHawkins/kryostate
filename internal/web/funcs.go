@@ -28,6 +28,7 @@ func funcs() template.FuncMap {
 		"dict":        dict,
 		"has":         contains,
 		"slug":        func(s string) string { return slug(s, map[string]int{}) },
+		"stackURL":    stackURL,
 		"defaultAttr": collect.DefaultAttr,
 		"multiline":   func(s string) bool { return len(s) > 48 || strings.Contains(s, "\n") },
 		"lower":       strings.ToLower,

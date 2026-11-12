@@ -129,7 +129,7 @@
     <p class="muted">The deployed systems this host is part of.</p>
     <ul class="list">
     {{range .Memberships}}
-      <li><a href="/hosts?stack={{qesc .Stack}}">{{.Stack}}</a>{{if .Role}} <span class="muted">as {{.Role}}</span>{{end}}
+      <li><a href="{{stackURL .Stack}}" hx-get="{{stackURL .Stack}}" hx-target="#main" hx-push-url="true">{{.Stack}}</a>{{if .Role}} <span class="muted">as {{.Role}}</span>{{end}}
         <form class="inline" method="post" action="/stacks/members/remove">
           <input type="hidden" name="stack" value="{{.Stack}}"><input type="hidden" name="ci" value="{{$.CI.ID}}">
           <input type="hidden" name="back" value="/hosts/{{$.CI.ID}}">

@@ -175,7 +175,7 @@ func TestTargetOnTheCollectorPage(t *testing.T) {
 	}
 	page := get(t, h, "/collectors/file.exists", nil).Body.String()
 	for _, want := range []string{
-		`Hosts in <a href="/stacks#stack-web">web</a>`, "matches 0 hosts",
+		`Hosts in <a href="/stacks/web" hx-get="/stacks/web"`, "matches 0 hosts",
 		"Hosts matching", "matches 3 hosts",
 		"does not parse", "Column 8",
 		`action="/collectors/where"`,
