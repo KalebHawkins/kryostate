@@ -26,7 +26,8 @@ if [ -n "$home" ]; then
 	printf '[general]\nserverName = %s\npass4SymmKey = $7$notarealkey\n\n[sslConfig]\nsslPassword = $7$notarealpassword\n' \
 		"$(hostname)" >"$home/etc/system/local/server.conf"
 	printf '#!/bin/sh\nwhile :; do sleep 3600; done\n' >"$home/bin/splunkd"
-	chmod 755 "$home/bin/splunkd"
+	printf '#!/bin/sh\necho "Splunk %s (build e3bdab203ac8)"\n' "${SPLUNK_VERSION:-9.4.1}" >"$home/bin/splunk"
+	chmod 755 "$home/bin/splunkd" "$home/bin/splunk"
 	echo "export SPLUNK_HOME=$home" >/etc/profile.d/splunk.sh
 	"$home/bin/splunkd" -p 8089 _internal_launch_under_systemd &
 fi

@@ -26,7 +26,7 @@
 //
 // Names. name, id, stack, role and application (or app) are the host's name,
 // its id, the stacks it is a member of, its roles in them (and its role
-// attribute, if one was recorded), and its app.name attribute. Any other name
+// attribute, if one was recorded), and its application attribute. Any other name
 // is an attribute, such as os.version. A parameterised collector, such as
 // file.exists, is named with its parameter in brackets:
 // file.exists["/opt/x/bin/x"] is whatever attribute that collector records
@@ -280,7 +280,7 @@ func (p *parser) field() (field, *bareTemplate, error) {
 	case "role":
 		return field{kind: fRole}, nil, nil
 	case "application", "app":
-		return field{kind: fAttr, attr: "app.name"}, nil, nil
+		return field{kind: fAttr, attr: model.AttrApplication}, nil, nil
 	}
 	return field{kind: fAttr, attr: t.text}, nil, nil
 }

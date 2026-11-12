@@ -97,6 +97,9 @@ seed() {
 	hs collectors -enable config.value -stacks splunk-lab \
 		-param /opt/splunkforwarder/etc/system/local/server.conf -section general -key serverName
 	hs collectors -enable package.version -param openssl
+	# true on the forwarders, false elsewhere; try the inventory query
+	#   os.family == "Linux" && !file.exists == "/opt/splunkforwarder/bin/splunk"
+	hs collectors -enable file.exists -param /opt/splunkforwarder/bin/splunk
 
 	hs refresh
 }

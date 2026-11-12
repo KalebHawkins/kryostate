@@ -9,7 +9,7 @@ var hosts = map[string]Host{
 	"rhel7": {ID: "c1", Name: "web01", Stacks: []string{"splunk-prod"}, Roles: []string{"indexer"},
 		Values: map[string]string{
 			"os.family": "Linux", "os.version": "Red Hat 7.9 (Ootpa)", "kernel.version": "3.10.0-1160.el7.x86_64",
-			"hw.cpu.cores": "8", "hw.memory.total_mb": "15884", "app.name": "splunk",
+			"hw.cpu.cores": "8", "hw.memory.total_mb": "15884", "application": "splunk",
 			"file.splunk.exists": "true", "pkg.openssl.version": "1.0.2k",
 		}},
 	"alma9": {ID: "c2", Name: "web02", Stacks: []string{"splunk-prod", "web"}, Roles: []string{"search-head", "frontend"},

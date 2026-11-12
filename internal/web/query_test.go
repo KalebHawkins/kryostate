@@ -43,7 +43,7 @@ func seedQuery(t *testing.T, st *store.Store) {
 	set("appnode2", "file.splunk.exists", "false")
 	set("appnode1", "hw.cpu.cores", "16")
 	set("appnode2", "hw.cpu.cores", "4")
-	set("appnode1", "app.name", "splunk")
+	set("appnode1", "application", "splunk")
 	sid, err := st.EnsureStack(ctx, "splunk-prod")
 	if err != nil {
 		t.Fatal(err)

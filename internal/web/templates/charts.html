@@ -1,5 +1,5 @@
 {{define "chart-detail"}}
-<p class="muted viz__caption">{{.KindText}}, from the value that currently wins on each of {{.Total}} hosts. Hatched marks are hosts with no value, split by why. Select a mark or a row to list those hosts.</p>
+<p class="muted viz__caption">{{.KindText}}, from the current value on each of {{.Total}} hosts. Hatched marks are hosts with no value, split by why. Select a mark or a row to list those hosts.</p>
 <div class="viz__large">{{.LargeSVG}}</div>
 {{with .Unknowns}}<p class="viz__unknowns">{{range .}}<a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true"><svg class="viz__swatch" viewBox="0 0 12 12" aria-hidden="true"><rect class="viz__mark viz__mark--unknown" width="12" height="12" rx="3"></rect></svg> {{.Label}}: {{.Count}}</a> {{end}}</p>{{end}}
 <div class="table-wrap viz__table">
@@ -33,7 +33,7 @@
   <p><a href="/charts" hx-get="/charts" hx-target="#main" hx-push-url="true">All charts</a></p>
   {{range .Charts}}<section class="card viz viz--single">{{template "chart-detail" .}}</section>{{else}}<div class="card"><p class="muted">Nothing is recorded for that attribute.</p></div>{{end}}
 {{else}}
-<p class="muted">How the value that currently wins for each attribute is spread across hosts. Hosts with no value are counted too, hatched, split by why: never collected, collection failed, or collected and not understood. Open a chart for a larger view and a table; each value there links to its hosts.</p>
+<p class="muted">How each attribute's current value is spread across hosts. Values that identify a single host, such as machine ids, are not charted. Hosts with no value are counted too, hatched, split by why: never collected, collection failed, or collected and not understood. Open a chart for a larger view and a table; each value there links to its hosts.</p>
 <div class="vizgrid">
 {{range .Charts}}
   <section class="card viz">

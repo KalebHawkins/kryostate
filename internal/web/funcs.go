@@ -161,3 +161,21 @@ func dict(kv ...any) map[string]any {
 // fixedTitles are the catalog's own names for the attributes its fixed
 // entries record.
 var fixedTitles = collect.FixedTitles()
+
+// funcs is the template functions with "label" bound to this server, so a
+// heading uses the title of the collector choice that records the attribute
+// ("serverName in server.conf [general]") rather than one made from its name.
+func (s *Server) funcs() template.FuncMap {
+	fm := funcs()
+	fm["label"] = s.label
+	return fm
+}
+
+func (s *Server) label(attr string) string {
+	if m := s.titles.Load(); m != nil {
+		if t, ok := (*m)[attr]; ok && t != "" {
+			return t
+		}
+	}
+	return attrLabel(attr)
+}

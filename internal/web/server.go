@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
@@ -71,6 +72,9 @@ type Server struct {
 	// wave of sessions into the estate because somebody clicked twice is not
 	// a thing a tool should allow.
 	running bool
+	// titles names attributes after the collector choices that record them,
+	// refreshed for each page so a newly switched-on collector is named at once.
+	titles atomic.Pointer[map[string]string]
 }
 
 // New builds a server and parses templates once.
@@ -81,7 +85,7 @@ func New(st *store.Store, eng *engine.Engine, log *slog.Logger) (*Server, error)
 		s.Scheduler = engine.NewScheduler(eng, nil)
 		s.Scheduler.OnProgress = s.hub.broadcast
 	}
-	t, err := template.New("").Funcs(funcs()).ParseFS(templateFS, "templates/*.html")
+	t, err := template.New("").Funcs(s.funcs()).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +167,10 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name, title, nav
 	w.Header().Set("Vary", "HX-Request, HX-History-Restore-Request")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
+	if s.Store != nil {
+		m := s.attrTitles(r.Context())
+		s.titles.Store(&m)
+	}
 	var buf bytes.Buffer
 	if err := s.tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		s.fail(w, err)

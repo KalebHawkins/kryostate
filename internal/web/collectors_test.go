@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"html"
+	"html/template"
 	"net/http"
 	"net/url"
 	"os"
@@ -245,5 +247,23 @@ func TestScheduleFormReturnsOnlyToACollectorPage(t *testing.T) {
 		if !strings.HasPrefix(loc, want) {
 			t.Errorf("back=%q went to %q, want %s…", back, loc, want)
 		}
+	}
+}
+
+// TestHeadingsUseTheChoiceTitle: an attribute recorded by a switched-on
+// catalog choice is named after it on every page, not spelled out from its
+// dotted name.
+func TestHeadingsUseTheChoiceTitle(t *testing.T) {
+	_, h, st := testServer(t)
+	c := collect.Choice{Template: "file.exists", Param: "/opt/splunkforwarder/bin/splunk"}
+	tpl, _ := collect.Lookup(c.Template)
+	c.Attr = collect.DefaultAttr(tpl, c.Param)
+	if _, _, err := st.EnableChoice(context.Background(), c, "test"); err != nil {
+		t.Fatal(err)
+	}
+	body := get(t, h, "/hosts?col="+url.QueryEscape(c.Attr), nil).Body.String()
+	want := template.HTMLEscapeString(c.ShortLabel())
+	if !strings.Contains(body, "<th scope=\"col\">"+want+"</th>") {
+		t.Errorf("column heading is not %q", want)
 	}
 }

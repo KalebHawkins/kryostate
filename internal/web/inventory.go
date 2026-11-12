@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
@@ -242,7 +243,7 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 // values holds the chosen columns, with null for a column the host has no
 // value for; col=* chooses every attribute. stacks is always an array, empty
 // when the host is in none, and role is "" when none was given. application
-// is the app.name attribute, omitted when there is none; last_collected is
+// is the application attribute, omitted when there is none; last_collected is
 // omitted for a host never collected.
 type HostJSON struct {
 	ID            string          `json:"id"`
@@ -266,7 +267,7 @@ func HostsJSON(rows []store.HostRow, members map[string][]store.Membership, cols
 	out := make([]HostJSON, 0, len(rows))
 	for _, r := range rows {
 		h := HostJSON{ID: r.CI.ID, Name: r.CI.Label, Stacks: []StackRoleJSON{},
-			Application: r.Values["app.name"], Values: map[string]any{}, CollectOK: r.CollectOK}
+			Application: r.Values[model.AttrApplication], Values: map[string]any{}, CollectOK: r.CollectOK}
 		for _, m := range members[r.CI.ID] {
 			h.Stacks = append(h.Stacks, StackRoleJSON{Stack: m.Stack, Role: m.Role})
 		}
