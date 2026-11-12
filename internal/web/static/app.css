@@ -1762,3 +1762,6 @@ td .hostpick__input { width: 11rem; min-width: 0; }
   .rlist th:nth-child(4), .rlist td:nth-child(4) { display: none; }
 }
 /* ---------- end rules ---------- */
+
+/* Code reads exactly as typed: no ligature turns >= into one glyph. */
+code, pre, kbd, samp, .mono, input.mono, textarea.mono { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }

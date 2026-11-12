@@ -559,6 +559,19 @@ collector read before, for the last 24 hours, 7 days or 30 days.
 
 ![Changes](docs/images/changes.png)
 
+**Notifications**, linked from the Changes page, sends a daily digest of
+those changes, hosts that started failing or recovered, and rule progress to
+Slack, Teams, a webhook or email. Destinations are added from the command line.
+
+![Notifications](docs/images/notifications.png)
+
+A rule tracks a rollout: the hosts it covers, what each should report, and
+how many are done, not yet, or unknown, with a trend over time.
+
+![Rules](docs/images/rules.png)
+
+![A rule](docs/images/rule.png)
+
 The schedules page lists every collector with its schedule, last run and next
 due time, and the limits that keep scheduled runs gentle. The runs page lists
 every collection, manual and scheduled, and has **Collect now**.
