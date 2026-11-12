@@ -277,17 +277,18 @@ func EvaluateRule(r Rule, hosts []query.Host, resolve query.Resolver) RuleEval {
 			continue
 		}
 		ev.InScope++
-		rh := RuleHost{ID: h.ID, Name: h.Name}
+		// The values the rule reads are kept in every bucket: they are what put
+		// the host there, and what a tool reading the API checks.
+		rh := RuleHost{ID: h.ID, Name: h.Name, Values: map[string]string{}}
+		for _, a := range ev.Attrs {
+			if v := h.Values[a]; v != "" {
+				rh.Values[a] = v
+			}
+		}
 		switch expect.Decide(h) {
 		case query.Yes:
 			ev.Done = append(ev.Done, rh)
 		case query.No:
-			rh.Values = map[string]string{}
-			for _, a := range ev.Attrs {
-				if v := h.Values[a]; v != "" {
-					rh.Values[a] = v
-				}
-			}
 			ev.NotYet = append(ev.NotYet, rh)
 		default:
 			rh.Missing = expect.Missing(h)

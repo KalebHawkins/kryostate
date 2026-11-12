@@ -811,6 +811,10 @@ path, recipes and common mistakes. In the web interface it is at
 
 #### JSON export
 
+For other tools, the read-only API at `/api/v1` serves the same hosts with
+paging, plus everything else the pages show. See the [API guide](api.md),
+which is also at **Guide → API** (`/guide/api`).
+
 `/hosts.json` takes the same `q` and `col` parameters as the Inventory page,
 and `kryostate hosts -json` prints the same shape:
 

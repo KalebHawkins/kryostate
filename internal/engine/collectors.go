@@ -229,3 +229,7 @@ func (e *Engine) Collectors(ctx context.Context) ([]Collector, error) {
 func (c Collector) appliesTo(family, ciID string, tg *Targets) bool {
 	return c.fit(family, ciID, tg).Runs
 }
+
+// ChoiceKey is the collector key a switched-on catalog collector runs under,
+// as Plan and the schedules list it.
+func ChoiceKey(c collect.Choice) string { return choiceKey(c) }

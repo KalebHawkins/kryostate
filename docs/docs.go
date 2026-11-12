@@ -18,3 +18,8 @@ var Collectors string
 //
 //go:embed queries.md
 var Queries string
+
+// API is docs/api.md, served at /guide/api.
+//
+//go:embed api.md
+var API string

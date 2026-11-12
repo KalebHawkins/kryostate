@@ -589,6 +589,7 @@ var guides = []guideLink{
 	{"/guide", "User guide"},
 	{"/guide/collectors", "Writing collectors"},
 	{"/guide/queries", "Queries"},
+	{"/guide/api", "API"},
 }
 
 // guidePage is what guide.html renders: one guide, its contents, and the
@@ -616,4 +617,10 @@ func (s *Server) renderDocs() {
 	s.guide, s.guideTOC = renderMarkdown(docs.UserGuide)
 	s.collectorGuide, s.collectorGuideTOC = renderMarkdown(docs.Collectors)
 	s.queryGuide, s.queryGuideTOC = renderMarkdown(docs.Queries)
+	s.apiGuide, s.apiGuideTOC = renderMarkdown(docs.API)
+}
+
+// handleAPIGuide serves the API reference.
+func (s *Server) handleAPIGuide(w http.ResponseWriter, r *http.Request) {
+	s.renderGuide(w, r, "/guide/api", s.apiGuide, s.apiGuideTOC)
 }

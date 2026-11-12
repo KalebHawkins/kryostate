@@ -444,6 +444,20 @@ In the web interface the same query goes in the Inventory page's box, and
 same view. The [user guide](docs/user-guide.md#queries) lists the operators
 and the JSON shape.
 
+### 5.7 API
+
+Everything the pages show is also served as read-only JSON under `/api/v1`:
+hosts and their values, one host in full, stacks, attribute distributions,
+changes, rule progress, collectors, runs, and an estate health summary for
+monitoring. `/api/v1/openapi.json` describes it in OpenAPI 3.1, so a client
+can be generated from it. The [API guide](docs/api.md) has the conventions
+and recipes for curl, Python and PowerShell.
+
+```sh
+curl -s http://localhost:8099/api/v1/status
+curl -s -G http://localhost:8099/api/v1/hosts --data-urlencode 'q=stack == "web"' --data-urlencode 'fields=nginx.version'
+```
+
 ## 6. Credentials
 
 Each host can use a different credential. The database stores a reference. It

@@ -70,6 +70,8 @@ type Server struct {
 	collectorGuideTOC []tocEntry
 	queryGuide        template.HTML
 	queryGuideTOC     []tocEntry
+	apiGuide          template.HTML
+	apiGuideTOC       []tocEntry
 	hub               *hub
 	mu                sync.Mutex
 	// running guards against two collection runs at once. Opening a second
@@ -156,8 +158,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /guide", s.handleGuide)
 	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)
 	mux.HandleFunc("GET /guide/queries", s.handleQueryGuide)
+	mux.HandleFunc("GET /guide/api", s.handleAPIGuide)
 	mux.HandleFunc("POST /collect", s.handleCollect)
 	mux.HandleFunc("GET /events", s.handleEvents)
+	s.apiRoutesOn(mux)
 	mux.Handle("GET /static/", http.FileServerFS(staticFS))
 
 	// Every POST here changes the inventory, and the interface has no login

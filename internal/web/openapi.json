@@ -1,0 +1,357 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "KryoState API",
+    "version": "1",
+    "description": "Read-only access to everything the KryoState web pages show. Every endpoint answers GET with JSON. Times are RFC 3339 in UTC. Lists are paged with limit and offset and carry a next URL while more remain. Errors are {\"error\": {\"status\", \"message\"}} with the same HTTP status. A host can be named by its id, an id prefix of six or more characters, or any name it is known by. Nothing secret is returned."
+  },
+  "servers": [{"url": "/"}],
+  "tags": [
+    {"name": "estate"}, {"name": "hosts"}, {"name": "stacks"}, {"name": "attributes"},
+    {"name": "changes"}, {"name": "rules"}, {"name": "collection"}
+  ],
+  "paths": {
+    "/api/v1": {
+      "get": {
+        "tags": ["estate"], "operationId": "index", "summary": "List the endpoints",
+        "responses": {"200": {"description": "The endpoints", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Index"}}}}}
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "tags": ["estate"], "operationId": "openapi", "summary": "This description",
+        "responses": {"200": {"description": "OpenAPI 3.1 document", "content": {"application/json": {}}}}
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "tags": ["estate"], "operationId": "status", "summary": "Estate health",
+        "description": "How many live hosts were collected, are failing, are stale, were never collected or have no connection. healthy is true when every host is collected and current; useful as a monitoring check.",
+        "responses": {"200": {"description": "Health", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Status"}}}}}
+      }
+    },
+    "/api/v1/hosts": {
+      "get": {
+        "tags": ["hosts"], "operationId": "listHosts", "summary": "List hosts with their values",
+        "description": "The same hosts the Inventory page shows for the same parameters.",
+        "parameters": [
+          {"name": "q", "in": "query", "description": "A query in the inventory's language, such as os.family == \"Linux\" && stack == \"web\", or a plain name to search for. See /guide/queries.", "schema": {"type": "string"}},
+          {"name": "fields", "in": "query", "description": "Comma-separated attributes to return in values, with null for a host that has none. Without it every value the host has is returned.", "schema": {"type": "string"}, "example": "os.version,application"},
+          {"name": "stack", "in": "query", "description": "Only members of this stack", "schema": {"type": "string"}},
+          {"name": "health", "in": "query", "description": "Only hosts in one health bucket", "schema": {"type": "string", "enum": ["failing", "stale", "never", "noconn"]}},
+          {"name": "unknown", "in": "query", "description": "Only hosts with no value for this attribute", "schema": {"type": "string"}},
+          {"name": "attr", "in": "query", "description": "With value: only hosts whose attr has this value", "schema": {"type": "string"}},
+          {"name": "value", "in": "query", "schema": {"type": "string"}},
+          {"name": "retired", "in": "query", "description": "List retired hosts instead of live ones", "schema": {"type": "boolean"}},
+          {"$ref": "#/components/parameters/limit"},
+          {"$ref": "#/components/parameters/offset"}
+        ],
+        "responses": {
+          "200": {"description": "A page of hosts", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HostList"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"}
+        }
+      }
+    },
+    "/api/v1/hosts/{host}": {
+      "get": {
+        "tags": ["hosts"], "operationId": "getHost", "summary": "One host in full",
+        "parameters": [
+          {"$ref": "#/components/parameters/host"},
+          {"name": "at", "in": "query", "description": "Show the values as they stood at the end of this day (2026-03-01) or at this time. unknown is then omitted.", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "The host", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HostDetail"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/v1/hosts/{host}/changes": {
+      "get": {
+        "tags": ["hosts", "changes"], "operationId": "hostChanges", "summary": "Changes on one host",
+        "parameters": [
+          {"$ref": "#/components/parameters/host"},
+          {"$ref": "#/components/parameters/since"},
+          {"name": "attr", "in": "query", "schema": {"type": "string"}},
+          {"$ref": "#/components/parameters/limit"},
+          {"$ref": "#/components/parameters/offset"}
+        ],
+        "responses": {
+          "200": {"description": "A page of changes", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ChangeList"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/v1/stacks": {
+      "get": {
+        "tags": ["stacks"], "operationId": "listStacks", "summary": "List stacks",
+        "parameters": [{"$ref": "#/components/parameters/limit"}, {"$ref": "#/components/parameters/offset"}],
+        "responses": {"200": {"description": "A page of stacks", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StackList"}}}}}
+      }
+    },
+    "/api/v1/stacks/{stack}": {
+      "get": {
+        "tags": ["stacks"], "operationId": "getStack", "summary": "One stack and its members",
+        "parameters": [{"name": "stack", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "The stack", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StackDetail"}}}},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/v1/attributes": {
+      "get": {
+        "tags": ["attributes"], "operationId": "listAttributes", "summary": "Every attribute recorded",
+        "parameters": [{"$ref": "#/components/parameters/limit"}, {"$ref": "#/components/parameters/offset"}],
+        "responses": {"200": {"description": "A page of attributes", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttributeList"}}}}}
+      }
+    },
+    "/api/v1/attributes/{attr}": {
+      "get": {
+        "tags": ["attributes"], "operationId": "getAttribute", "summary": "How many hosts hold each value",
+        "description": "Every value of one attribute with its host count, and the hosts with no value split by why: collection failed, not understood, never collected. hosts_url lists the hosts in a bucket.",
+        "parameters": [{"name": "attr", "in": "path", "required": true, "schema": {"type": "string"}, "example": "os.version"}],
+        "responses": {"200": {"description": "The distribution", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Distribution"}}}}}
+      }
+    },
+    "/api/v1/changes": {
+      "get": {
+        "tags": ["changes"], "operationId": "listChanges", "summary": "Values that changed, newest first",
+        "parameters": [
+          {"$ref": "#/components/parameters/since"},
+          {"name": "host", "in": "query", "description": "Only this host: id, id prefix or name", "schema": {"type": "string"}},
+          {"name": "attr", "in": "query", "schema": {"type": "string"}},
+          {"$ref": "#/components/parameters/limit"},
+          {"$ref": "#/components/parameters/offset"}
+        ],
+        "responses": {
+          "200": {"description": "A page of changes", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ChangeList"}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/v1/rules": {
+      "get": {
+        "tags": ["rules"], "operationId": "listRules", "summary": "Rollout rules and their progress",
+        "parameters": [{"$ref": "#/components/parameters/limit"}, {"$ref": "#/components/parameters/offset"}],
+        "responses": {"200": {"description": "A page of rules", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RuleList"}}}}}
+      }
+    },
+    "/api/v1/rules/{rule}": {
+      "get": {
+        "tags": ["rules"], "operationId": "getRule", "summary": "One rule with its hosts and history",
+        "parameters": [{"name": "rule", "in": "path", "required": true, "description": "The rule's id or name", "schema": {"type": "string"}}],
+        "responses": {
+          "200": {"description": "The rule", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RuleDetail"}}}},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
+    "/api/v1/collectors": {
+      "get": {
+        "tags": ["collection"], "operationId": "listCollectors", "summary": "What is collected and when",
+        "parameters": [{"$ref": "#/components/parameters/limit"}, {"$ref": "#/components/parameters/offset"}],
+        "responses": {"200": {"description": "A page of collectors", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CollectorList"}}}}}
+      }
+    },
+    "/api/v1/runs": {
+      "get": {
+        "tags": ["collection"], "operationId": "listRuns", "summary": "Recent collection runs, newest first",
+        "parameters": [{"$ref": "#/components/parameters/limit"}, {"$ref": "#/components/parameters/offset"}],
+        "responses": {"200": {"description": "A page of runs", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RunList"}}}}}
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "host": {"name": "host", "in": "path", "required": true, "description": "The host's id, an id prefix of six or more characters, or a name it is known by", "schema": {"type": "string"}},
+      "limit": {"name": "limit", "in": "query", "description": "Items per page, 1 to 5000", "schema": {"type": "integer", "minimum": 1, "maximum": 5000, "default": 500}},
+      "offset": {"name": "offset", "in": "query", "description": "Items to skip", "schema": {"type": "integer", "minimum": 0, "default": 0}},
+      "since": {"name": "since", "in": "query", "description": "A date (2026-11-01), a time (2026-11-01T08:00:00Z) or an age (24h, 7d). Default 7d.", "schema": {"type": "string"}}
+    },
+    "responses": {
+      "BadRequest": {"description": "A parameter or query is wrong; message says how", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "NotFound": {"description": "Nothing by that name", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+    },
+    "schemas": {
+      "Error": {
+        "type": "object", "required": ["error"],
+        "properties": {"error": {"type": "object", "required": ["status", "message"], "properties": {"status": {"type": "integer"}, "message": {"type": "string"}}}}
+      },
+      "Page": {
+        "type": "object", "required": ["total", "limit", "offset"],
+        "properties": {
+          "total": {"type": "integer", "description": "Items across all pages"},
+          "limit": {"type": "integer"}, "offset": {"type": "integer"},
+          "next": {"type": "string", "description": "URL of the next page; absent on the last"}
+        }
+      },
+      "Index": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"}, "api": {"type": "string"}, "version": {"type": "string"},
+          "read_only": {"type": "boolean"}, "docs": {"type": "string"}, "openapi": {"type": "string"},
+          "endpoints": {"type": "array", "items": {"type": "object", "properties": {"path": {"type": "string"}, "summary": {"type": "string"}}}}
+        }
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "hosts": {"type": "integer"}, "ok": {"type": "integer"}, "failing": {"type": "integer"},
+          "stale": {"type": "integer"}, "never_collected": {"type": "integer"}, "no_connection": {"type": "integer"},
+          "stale_after_hours": {"type": "integer"}, "healthy": {"type": "boolean"},
+          "last_run": {"$ref": "#/components/schemas/Run"}
+        }
+      },
+      "StackRole": {"type": "object", "properties": {"stack": {"type": "string"}, "role": {"type": "string"}}},
+      "Host": {
+        "type": "object", "required": ["id", "name", "stacks", "values", "collect_ok"],
+        "properties": {
+          "id": {"type": "string"}, "name": {"type": "string"},
+          "stacks": {"type": "array", "items": {"$ref": "#/components/schemas/StackRole"}},
+          "application": {"type": "string"},
+          "values": {"type": "object", "additionalProperties": {"type": ["string", "null"]}, "description": "Attribute to current value"},
+          "last_collected": {"type": "string", "format": "date-time"},
+          "collect_ok": {"type": "boolean"}
+        }
+      },
+      "HostList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Host"}}}}]},
+      "Fact": {
+        "type": "object",
+        "properties": {
+          "attr": {"type": "string"}, "scope": {"type": "string"},
+          "value": {"type": "string", "description": "The normalised value, or raw when there is none"},
+          "raw": {"type": "string", "description": "Exactly what the source said"},
+          "source": {"type": "string"}, "source_kind": {"type": "string", "enum": ["collector", "document", "human", "derived", "dns"]},
+          "observed_at": {"type": "string", "format": "date-time"},
+          "confirmed_at": {"type": "string", "format": "date-time", "description": "When the source last said the same again"}
+        }
+      },
+      "Unknown": {
+        "type": "object", "description": "A value the host could not report on its last try. Its old value is not in facts.",
+        "properties": {
+          "attr": {"type": "string"}, "scope": {"type": "string"},
+          "since": {"type": "string", "format": "date-time"}, "last_tried": {"type": "string", "format": "date-time"},
+          "error": {"type": "string"}
+        }
+      },
+      "HostDetail": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"}, "name": {"type": "string"}, "url": {"type": "string"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "retired_at": {"type": ["string", "null"], "format": "date-time"},
+          "as_of": {"type": "string", "format": "date-time"},
+          "facts": {"type": "array", "items": {"$ref": "#/components/schemas/Fact"}},
+          "unknown": {"type": "array", "items": {"$ref": "#/components/schemas/Unknown"}},
+          "stacks": {"type": "array", "items": {"$ref": "#/components/schemas/StackRole"}},
+          "identities": {"type": "array", "items": {"type": "object", "properties": {"scheme": {"type": "string"}, "value": {"type": "string"}, "last_seen": {"type": "string", "format": "date-time"}}}},
+          "reachability": {"type": "object", "additionalProperties": {"type": "object", "properties": {"outcome": {"type": "string"}, "at": {"type": "string", "format": "date-time"}, "detail": {"type": "string"}}}},
+          "connections": {"type": "array", "items": {"type": "object", "properties": {"transport": {"type": "string"}, "address": {"type": "string"}, "port": {"type": "integer"}, "user": {"type": "string"}, "enabled": {"type": "boolean"}}}}
+        }
+      },
+      "Change": {
+        "type": "object",
+        "properties": {
+          "host_id": {"type": "string"}, "host": {"type": "string"}, "attr": {"type": "string"}, "scope": {"type": "string"},
+          "old": {"type": "string"}, "new": {"type": "string"},
+          "old_at": {"type": "string", "format": "date-time"}, "at": {"type": "string", "format": "date-time"},
+          "source": {"type": "string"}, "trigger": {"type": "string"}, "run_id": {"type": "string"}, "url": {"type": "string"}
+        }
+      },
+      "ChangeList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Change"}}}}]},
+      "Stack": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"}, "description": {"type": "string"}, "owner": {"type": "string"}, "environment": {"type": "string"},
+          "members": {"type": "integer"}, "collected": {"type": "integer"}, "failed": {"type": "integer"}, "never_collected": {"type": "integer"},
+          "url": {"type": "string"}
+        }
+      },
+      "StackList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Stack"}}}}]},
+      "StackDetail": {
+        "type": "object",
+        "properties": {
+          "stack": {"$ref": "#/components/schemas/Stack"},
+          "members": {"type": "array", "items": {"allOf": [{"$ref": "#/components/schemas/Host"}, {"type": "object", "properties": {"role": {"type": "string"}}}]}}
+        }
+      },
+      "Attribute": {
+        "type": "object",
+        "properties": {"attr": {"type": "string"}, "label": {"type": "string"}, "hosts": {"type": "integer"}, "distinct_values": {"type": "integer"}, "chartable": {"type": "boolean"}}
+      },
+      "AttributeList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Attribute"}}}}]},
+      "Distribution": {
+        "type": "object",
+        "properties": {
+          "attr": {"type": "string"}, "hosts": {"type": "integer"},
+          "values": {"type": "array", "items": {"type": "object", "properties": {
+            "value": {"type": "string", "description": "Empty for an unknown bucket"},
+            "label": {"type": "string"}, "hosts": {"type": "integer"}, "unknown": {"type": "boolean"},
+            "hosts_url": {"type": "string", "description": "The API URL listing these hosts"}}}}
+        }
+      },
+      "Rule": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"}, "name": {"type": "string"}, "description": {"type": "string"}, "owner": {"type": "string"},
+          "scope": {"type": "string", "description": "Query choosing the hosts the rule is about"},
+          "expect": {"type": "string", "description": "Query a host must match to count as done"},
+          "in_scope": {"type": "integer"}, "done": {"type": "integer"}, "not_yet": {"type": "integer"}, "unknown": {"type": "integer"},
+          "percent_done": {"type": "integer"}, "complete": {"type": "boolean"},
+          "complete_since": {"type": "string", "format": "date-time"}, "last_change": {"type": "string", "format": "date-time"},
+          "error": {"type": "string"}, "url": {"type": "string"}
+        }
+      },
+      "RuleList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Rule"}}}}]},
+      "RuleHost": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"}, "name": {"type": "string"},
+          "values": {"type": "object", "additionalProperties": {"type": "string"}, "description": "The host's values for the attributes the rule reads"},
+          "missing": {"type": "array", "items": {"type": "string"}, "description": "For an unknown host, the attributes it has no value for"}
+        }
+      },
+      "RuleDetail": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"}, "name": {"type": "string"}, "description": {"type": "string"}, "owner": {"type": "string"},
+          "scope": {"type": "string"}, "expect": {"type": "string"}, "attrs": {"type": "array", "items": {"type": "string"}},
+          "in_scope": {"type": "integer"}, "done_count": {"type": "integer"}, "not_yet_count": {"type": "integer"}, "unknown_count": {"type": "integer"},
+          "percent_done": {"type": "integer"},
+          "done": {"type": "array", "items": {"$ref": "#/components/schemas/RuleHost"}},
+          "not_yet": {"type": "array", "items": {"$ref": "#/components/schemas/RuleHost"}},
+          "unknown": {"type": "array", "items": {"$ref": "#/components/schemas/RuleHost"}},
+          "history": {"type": "array", "items": {"type": "object", "properties": {"at": {"type": "string", "format": "date-time"}, "in_scope": {"type": "integer"}, "done": {"type": "integer"}, "not_yet": {"type": "integer"}, "unknown": {"type": "integer"}}}},
+          "error": {"type": "string"}, "url": {"type": "string"}
+        }
+      },
+      "Collector": {
+        "type": "object",
+        "properties": {
+          "key": {"type": "string"}, "kind": {"type": "string"}, "title": {"type": "string"},
+          "attrs": {"type": "array", "items": {"type": "string"}},
+          "target": {"type": "string", "description": "Query choosing the hosts it runs on; empty for every host"},
+          "schedule": {"type": "string", "description": "In words, such as daily at 02:00"},
+          "every_seconds": {"type": "integer", "description": "0 for manual only"},
+          "at": {"type": "string", "description": "HH:MM for a daily schedule"},
+          "custom_schedule": {"type": "boolean"},
+          "last_started": {"type": "string", "format": "date-time"}, "last_outcome": {"type": "string"},
+          "next": {"type": "string", "format": "date-time"}, "running": {"type": "boolean"}
+        }
+      },
+      "CollectorList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Collector"}}}}]},
+      "Run": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"}, "collector": {"type": "string"}, "trigger": {"type": "string"}, "status": {"type": "string"},
+          "started_at": {"type": "string", "format": "date-time"}, "finished_at": {"type": "string", "format": "date-time"},
+          "targets": {"type": "integer"}, "succeeded": {"type": "integer"}, "failed": {"type": "integer"}, "note": {"type": "string"}
+        }
+      },
+      "RunList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Run"}}}}]}
+    }
+  }
+}
