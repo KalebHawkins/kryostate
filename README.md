@@ -143,28 +143,82 @@ stacks and roles.
 
 ## 4. Installation
 
-The tool needs Go 1.27.1 or later. Use Go 1.27.2 or later if you can: earlier
-1.27.x releases are missing `html/template` escaping fixes. See
-`docs/threat-model.md` for the findings and how to check them yourself.
+KryoState is one binary. The HTML templates, the CSS and the JavaScript are
+compiled into it, the SQLite driver is pure Go, and it needs no network access
+to serve its own interface. Pick whichever way of getting it suits the
+machine. To run it as a service, with backups and upgrades, see
+[docs/operations.md](docs/operations.md).
+
+Release builds exist for Linux (amd64, arm64), macOS (amd64, arm64) and
+Windows (amd64). There is no AIX build: the pure Go SQLite library has no AIX
+port. KryoState still collects from AIX hosts; it cannot run on one.
+
+**Release archive.** Download `kryostate_<version>_<os>_<arch>.tar.gz` (or
+`.zip` for Windows) from the
+[releases page](https://github.com/KalebHawkins/kryostate/releases), check it
+against `checksums.txt`, and put `kryostate` on your `PATH`. The archive also
+holds this README, the licence, the docs and the systemd unit.
 
 ```sh
-go build ./cmd/kryostate
+sha256sum -c --ignore-missing checksums.txt
+tar -xzf kryostate_*_linux_amd64.tar.gz kryostate
+sudo install kryostate /usr/local/bin/
+kryostate version
 ```
 
-The SQLite driver is pure Go, so cgo is not necessary. The HTML templates, the
-CSS and the JavaScript are compiled into the binary. The binary needs no
-network access to serve its own interface.
+**.deb or .rpm package.** These install the binary, a hardened systemd service
+running as a dedicated `kryostate` user, `/etc/kryostate/kryostate.env` for
+settings and `/var/lib/kryostate` for the database. The service is not started
+until you start it; it listens on `127.0.0.1:8099`.
+
+```sh
+sudo apt install ./kryostate_<version>_amd64.deb        # Debian, Ubuntu
+sudo dnf install ./kryostate-<version>-1.x86_64.rpm     # RHEL, Alma, Fedora
+sudo systemctl enable --now kryostate
+```
+
+**Container image.** Multi-arch (amd64, arm64) images are on GitHub's
+registry; see 4.1.
+
+```sh
+podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data \
+  ghcr.io/kalebhawkins/kryostate:latest
+```
+
+**go install.** With Go 1.27.1 or later (see below):
+
+```sh
+CGO_ENABLED=0 go install github.com/KalebHawkins/kryostate/cmd/kryostate@latest
+```
+
+**From source.**
+
+```sh
+git clone https://github.com/KalebHawkins/kryostate && cd kryostate
+CGO_ENABLED=0 go build ./cmd/kryostate
+```
+
+Building needs Go 1.27.1 or later. Use Go 1.27.2 or later if you can: earlier
+1.27.x releases are missing `html/template` escaping fixes. See
+`docs/threat-model.md` for the findings and how to check them yourself. A
+plain build reports its version from the commit it was built from
+(`kryostate version`); release builds are stamped by GoReleaser
+(`.goreleaser.yaml`), and `goreleaser release --snapshot --clean` builds every
+archive, package and image locally without publishing anything.
 
 ### 4.1 Podman or Docker
 
-`deploy/Containerfile` builds a small image with no shell, running as an
-unprivileged user. The database, and any `collectors.json`, `rules.json` or
-`externals.json` placed beside it, live in the `/data` volume.
+The image has no shell and runs as an unprivileged user (uid 65532). The
+database, and any `collectors.json`, `rules.json` or `externals.json` placed
+beside it, live in the `/data` volume. Released images are
+`ghcr.io/kalebhawkins/kryostate:<version>` and `:latest`; to build one from
+source instead, use `deploy/Containerfile`:
 
 ```sh
 podman build -t kryostate -f deploy/Containerfile .
 podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data kryostate
 podman exec kryostate kryostate hosts        # the command line, inside the container
+podman run --rm kryostate version            # which build this is
 ```
 
 The page has no login, so publish the port to `127.0.0.1` or put it behind a
@@ -258,6 +312,7 @@ one command.
 | `evidence` | Lists or deletes stored command output |
 | `serve` | Runs the web interface, and the collection schedules unless `-no-schedule` is given |
 | `export`, `restore` | Writes and reads the whole database as JSON |
+| `version` | Prints the version, commit, build date and Go version (also `-version`) |
 
 ### 5.3 Choosing what to collect
 

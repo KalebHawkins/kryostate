@@ -1,0 +1,78 @@
+# KryoState as a system service.
+#
+# Installed by the .deb and .rpm packages as
+# /usr/lib/systemd/system/kryostate.service. Settings belong in
+# /etc/kryostate/kryostate.env rather than here; for anything else, use
+# "systemctl edit kryostate" so a package upgrade does not undo it.
+#
+# The service runs as the unprivileged "kryostate" user with its data in
+# /var/lib/kryostate and nothing else on the file system writable. It reaches
+# hosts over SSH with whatever credential each target names; see
+# docs/operations.md, "SSH access for the service user", for what that user
+# needs. Host keys are pinned in the database, so no known_hosts file is
+# read or written.
+
+[Unit]
+Description=KryoState server inventory
+Documentation=https://github.com/KalebHawkins/kryostate/blob/main/docs/operations.md
+Wants=network-online.target
+After=network-online.target kryostate-ssh-agent.service
+
+[Service]
+Type=simple
+User=kryostate
+Group=kryostate
+
+# Defaults; /etc/kryostate/kryostate.env overrides any of them.
+Environment=KRYOSTATE_DB=/var/lib/kryostate/kryostate.db
+Environment=KRYOSTATE_ADDR=127.0.0.1:8099
+Environment=HOME=/var/lib/kryostate
+EnvironmentFile=-/etc/kryostate/kryostate.env
+# KRYOSTATE_OPTS carries any other serve flags, such as -trusted-origin.
+ExecStart=/usr/bin/kryostate serve -db ${KRYOSTATE_DB} -addr ${KRYOSTATE_ADDR} $KRYOSTATE_OPTS
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# Where it may write. StateDirectory creates /var/lib/kryostate owned by the
+# service user if the package did not.
+StateDirectory=kryostate
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/kryostate
+UMask=0077
+
+# Hardening. kryostate needs no privileges, no devices and no other part of
+# the file system; credential helpers (exec:) and external collector
+# programs it starts inherit all of this.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+# Home directories are hidden, which includes /run/user: an ssh-agent
+# started in someone's login session is out of reach. Give the service its
+# own agent (kryostate-ssh-agent.service) or a key file under /etc/kryostate.
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+# SSH, WinRM and DNS need IP; the agent socket needs AF_UNIX.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

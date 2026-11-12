@@ -78,14 +78,33 @@ A host with no value for an attribute is put in one of three groups:
 
 ## 3. Installation
 
-You need Go 1.27.1 or later (1.27.2 or later is better).
+KryoState is one binary. It contains the web interface and needs no other
+files. Get it whichever way suits the machine:
 
-```sh
-go build ./cmd/kryostate
-```
+- **A release archive** for Linux, macOS or Windows from the project's
+  GitHub releases page. Unpack it and put `kryostate` on your `PATH`.
+- **A .deb or .rpm package**, which also sets KryoState up as a service: a
+  `kryostate` system user, settings in `/etc/kryostate/kryostate.env` and the
+  database in `/var/lib/kryostate`. Start it with
+  `sudo systemctl enable --now kryostate`. Running it this way, including
+  how the service reaches hosts over SSH, is covered in `docs/operations.md`.
+- **The container image**, `ghcr.io/kalebhawkins/kryostate`:
 
-The result is one binary. It contains the web interface and needs no other
-files.
+  ```sh
+  podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data \
+    ghcr.io/kalebhawkins/kryostate:latest
+  ```
+
+- **With Go** 1.27.1 or later (1.27.2 or later is better):
+
+  ```sh
+  go install github.com/KalebHawkins/kryostate/cmd/kryostate@latest
+  # or, in a copy of the repository:
+  go build ./cmd/kryostate
+  ```
+
+Check what you have with `kryostate version`. The Guide page shows the same
+version at the bottom.
 
 The database is a single SQLite file. By default it is in your user
 configuration directory. To use a different file, set `KRYOSTATE_DB` or pass

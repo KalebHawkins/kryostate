@@ -61,6 +61,7 @@ Setup and maintenance:
   secret         manage credential references
   export         write the whole store to a JSON file
   restore        load a JSON file into an empty store
+  version        print the version, commit and build date
 
 Wherever a command takes a host, a name, fqdn, or id (or its first 6+
 characters) is accepted. Run "kryostate <command> -h" for the flags of one
@@ -116,6 +117,8 @@ func main() {
 		err = cmdExport(ctx, os.Args[2:])
 	case "restore":
 		err = cmdRestore(ctx, os.Args[2:])
+	case "version", "-version", "--version":
+		err = cmdVersion(os.Args[2:])
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 		return

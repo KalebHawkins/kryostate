@@ -9,6 +9,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/query"
+	"github.com/KalebHawkins/kryostate/internal/version"
 )
 
 func funcs() template.FuncMap {
@@ -159,6 +160,7 @@ var fixedTitles = collect.FixedTitles()
 func (s *Server) funcs() template.FuncMap {
 	fm := funcs()
 	fm["label"] = s.label
+	fm["version"] = version.Short
 	return fm
 }
 
