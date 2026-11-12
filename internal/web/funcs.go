@@ -8,6 +8,7 @@ import (
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/query"
 )
 
 func funcs() template.FuncMap {
@@ -28,25 +29,13 @@ func funcs() template.FuncMap {
 		"has":         contains,
 		"slug":        func(s string) string { return slug(s, map[string]int{}) },
 		"defaultAttr": collect.DefaultAttr,
-		// onStacks is where a fixed catalog entry already runs, to pre-select
-		// it when changing that. A template adds a new choice each time, so
-		// nothing is pre-selected.
-		"onStacks": func(on []collect.Choice) []string {
-			if len(on) == 1 && on[0].Param == "" {
-				return on[0].Stacks
-			}
-			return nil
-		},
-		"multiline": func(s string) bool { return len(s) > 48 || strings.Contains(s, "\n") },
-		"lower":     strings.ToLower,
-		"list":      func(v ...any) []any { return v },
-		"choicesOf": func(cs []choiceView) []collect.Choice {
-			out := make([]collect.Choice, len(cs))
-			for i, c := range cs {
-				out[i] = c.C
-			}
-			return out
-		},
+		"multiline":   func(s string) bool { return len(s) > 48 || strings.Contains(s, "\n") },
+		"lower":       strings.ToLower,
+		"list":        func(v ...any) []any { return v },
+		// insertStack and insertSystem are the query a target editor's chip
+		// adds.
+		"insertStack":  func(s string) string { return "stack == " + query.Quote(s) },
+		"insertSystem": func(s string) string { return "os.family == " + query.Quote(s) },
 	}
 }
 

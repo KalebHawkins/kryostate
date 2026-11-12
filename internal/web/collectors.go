@@ -145,7 +145,7 @@ type collectorsData struct {
 	Shown      int
 	Total      int
 	Groups     []groupView
-	Stacks     []string
+	Chips      targetChips
 	Own        int
 }
 
@@ -169,7 +169,7 @@ func (s *Server) collectorRows(ctx context.Context) ([]collectorRow, error) {
 		}
 		if len(on) > 0 {
 			row.On, row.Status = true, "on"
-			row.Where = whereText(on[0].Stacks)
+			row.Where = whereText(on[0].Target)
 			if len(on) > 1 {
 				row.Where = plural(len(on), "value")
 			}
@@ -203,7 +203,7 @@ func (s *Server) collectorRows(ctx context.Context) ([]collectorRow, error) {
 
 	for _, sp := range s.Engine.OwnSpecs() {
 		rows = append(rows, collectorRow{ID: collect.RefSpec + sp.ID, Title: sp.ID, Description: sp.Comment,
-			Category: "Custom", Source: srcOwn, On: true, Status: "on", Where: whereText(sp.Stacks),
+			Category: "Custom", Source: srcOwn, On: true, Status: "on", Where: whereText(engine.SpecTarget(sp)),
 			Attrs: []string{sp.Attr}, Systems: systemNames(sp.OS)})
 	}
 	if s.Engine != nil {
@@ -272,10 +272,17 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Groups = append(d.Groups, v)
 	}
-	if d.Stacks, _, err = s.stackNames(ctx); err != nil {
+	stacks, _, err := s.stackNames(ctx)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	tg, err := s.targetsNow(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	d.Chips = chipsFor(tg, stacks)
 	s.render(w, r, "collectors.html", "Collectors", "collectors", d)
 }
 
@@ -290,9 +297,8 @@ type variantView struct {
 
 // choiceView is one switched-on use of a catalog entry.
 type choiceView struct {
-	C       collect.Choice
-	Missing []string // stacks it is limited to that no longer exist
-	Members map[string]int
+	C      collect.Choice
+	Target targetView
 }
 
 type collectorDetail struct {
@@ -307,8 +313,16 @@ type collectorDetail struct {
 	Scope        string
 	Choices      []choiceView
 	Allowed      bool
-	Stacks       []string
-	Hosts        []hostOption
+	// Chips are the target editor's quick inserts.
+	Chips targetChips
+	// Target is where a collector from a file or built in runs.
+	Target targetView
+	// SpecWhere and SpecStacks are the where and stacks fields of a spec
+	// from collectors.json, as written.
+	SpecWhere  string
+	SpecStacks []string
+	// CanTest is true when some host has a connection to test on.
+	CanTest bool
 	// TrySpecs are the spec ids the Test button runs, for collectors that
 	// are not catalog choices.
 	TrySpecs []string
@@ -348,8 +362,15 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	d.Stacks = stacks
-	d.Hosts = s.testHosts(ctx)
+	tg, err := s.targetsNow(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	d.Chips = chipsFor(tg, stacks)
+	if profiles, err := s.Store.CollectTargets(ctx, ""); err == nil {
+		d.CanTest = len(profiles) > 0
+	}
 	if all, err := s.scheduleRows(ctx); err == nil {
 		d.Schedules = schedulesFor(all, id, d.Row.Source)
 	}
@@ -377,13 +398,7 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 			if c.Template != t.ID {
 				continue
 			}
-			cv := choiceView{C: c, Members: members}
-			for _, st := range c.Stacks {
-				if _, ok := members[st]; !ok {
-					cv.Missing = append(cv.Missing, st)
-				}
-			}
-			d.Choices = append(d.Choices, cv)
+			d.Choices = append(d.Choices, choiceView{C: c, Target: describeTarget(tg, c.Target, t.Systems(), members)})
 		}
 		if !t.Fixed() {
 			d.ShowCmd += " -param '" + t.ExampleParam() + "'"
@@ -399,6 +414,7 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 		}
 		specs := byAttr[strings.TrimPrefix(id, collect.RefBuiltin)]
 		d.specDetail(specs)
+		d.Target = describeTarget(tg, "", specSystems(specs), members)
 		d.Example = collect.AttrExample(specs[0].Attr)
 		d.DefNote = "These specs are built into KryoState. To write one like them, copy a spec into your own collectors.json and give it an id of its own: ids must be unique, and the built-in ones are taken."
 
@@ -406,6 +422,8 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 		for _, sp := range s.Engine.OwnSpecs() {
 			if collect.RefSpec+sp.ID == id {
 				d.specDetail([]collect.Spec{sp})
+				d.SpecWhere, d.SpecStacks = sp.Where, sp.Stacks
+				d.Target = describeTarget(tg, engine.SpecTarget(sp), sp.OS, members)
 			}
 		}
 		d.File = s.Config.Collectors
@@ -483,31 +501,6 @@ func (s *Server) stackNames(ctx context.Context) ([]string, map[string]int, erro
 	return names, members, nil
 }
 
-// testHosts are the hosts a collector can be tested on: those with a
-// connection.
-func (s *Server) testHosts(ctx context.Context) []hostOption {
-	var out []hostOption
-	targets, err := s.Store.CollectTargets(ctx, "")
-	if err != nil {
-		return nil
-	}
-	seen := map[string]bool{}
-	for _, p := range targets {
-		if c, err := s.Store.CI(ctx, p.CIID); err == nil && !seen[c.ID] {
-			seen[c.ID] = true
-			out = append(out, hostOption{ID: c.ID, Label: c.Label})
-		}
-	}
-	return out
-}
-
-func whereText(stacks []string) string {
-	if len(stacks) == 0 {
-		return "All hosts"
-	}
-	return strings.Join(stacks, ", ")
-}
-
 func plural(n int, what string) string {
 	if n == 1 {
 		return "1 " + what
@@ -570,5 +563,3 @@ func (s *Server) renderDocs() {
 	s.guide, s.guideTOC = renderMarkdown(docs.UserGuide)
 	s.collectorGuide, s.collectorGuideTOC = renderMarkdown(docs.Collectors)
 }
-
-type hostOption struct{ ID, Label string }

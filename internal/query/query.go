@@ -13,8 +13,11 @@
 //	unary      = "!" unary | primary ;
 //	primary    = "(" or ")"
 //	           | "has" "(" field ")"
+//	           | field "in" list
 //	           | field [ comparison literal ] ;
 //	field      = name [ "[" string "]" ] ;
+//	list       = "(" literal { "," literal } [ "," ] ")"
+//	           | "[" literal { "," literal } [ "," ] "]" ;
 //	comparison = "==" | "!=" | "=~" | "!~" | "<" | "<=" | ">" | ">=" ;
 //	literal    = string | number | "true" | "false" ;
 //	name       = letter { letter | digit | "_" | "." | "-" } ;
@@ -45,6 +48,12 @@
 // several values (stack, role) match when any value does, and != and !~ are
 // exactly the negation of == and =~, so stack != "x" means "not in stack x".
 // A bare name with no comparison means name == true, for yes/no attributes.
+//
+// Lists. name in ("web01", "web02") is true when the name equals any value in
+// the list, by the same rules as ==, and works for any name: stack in ("a",
+// "b") picks the members of either stack, and file.exists in ("/a", "/b")
+// any host with either file. Square brackets work as well as round ones, and
+// !name in (...) is its negation. This is how individual hosts are picked.
 package query
 
 import (
@@ -286,11 +295,15 @@ func (p *parser) field() (field, *bareTemplate, error) {
 }
 
 func (p *parser) comparison() (node, error) {
+	nameTok := p.peek()
 	f, tmpl, err := p.field()
 	if err != nil {
 		return nil, err
 	}
 	op := p.peek()
+	if op.kind == tIdent && op.text == "in" {
+		return p.membership(nameTok, f, tmpl)
+	}
 	if !op.kind.comparison() {
 		if tmpl != nil {
 			return nil, p.errf(tmpl.tok, "%s takes a %s: write %s[\"...\"] == true, or %s == \"...\"", tmpl.tok.text, paramWord(tmpl.t), tmpl.tok.text, tmpl.tok.text)
@@ -327,11 +340,7 @@ func (p *parser) comparison() (node, error) {
 		if (op.kind != tEq && op.kind != tNe) || lt.kind != tString {
 			return nil, p.errf(op, "%s takes a %s: write %s[\"...\"] %s ..., or %s == \"...\" to test it", tmpl.tok.text, paramWord(tmpl.t), tmpl.tok.text, op.kind, tmpl.tok.text)
 		}
-		attr := field{kind: fAttr, attr: p.resolve(tmpl.t.ID, lt.text)}
-		var n node = hasNode{attr}
-		if tmpl.t.Type == model.TypeBool {
-			n = cmpNode{f: attr, op: tEq, lit: literal{isBool: true, b: true}}
-		}
+		n := p.templateTest(tmpl, lt.text)
 		if op.kind == tNe {
 			n = notNode{n}
 		}
@@ -360,6 +369,91 @@ func (p *parser) comparison() (node, error) {
 		}
 	}
 	return c, nil
+}
+
+// templateTest is the shorthand file.exists == "/opt/x": the attribute that
+// collector records for that parameter is present, or true for a yes/no one.
+func (p *parser) templateTest(tmpl *bareTemplate, param string) node {
+	attr := field{kind: fAttr, attr: p.resolve(tmpl.t.ID, param)}
+	if tmpl.t.Type == model.TypeBool {
+		return cmpNode{f: attr, op: tEq, lit: literal{isBool: true, b: true}}
+	}
+	return hasNode{attr}
+}
+
+// membership reads the list after in, as in name in ("web01", "web02").
+func (p *parser) membership(nameTok token, f field, tmpl *bareTemplate) (node, error) {
+	p.next() // in
+	open := p.next()
+	example := nameTok.text + ` in ("web01", "web02")`
+	if tmpl != nil {
+		example = nameTok.text + ` in ("/opt/a", "/opt/b")`
+	}
+	var closer kind
+	switch open.kind {
+	case tLParen:
+		closer = tRParen
+	case tLBrack:
+		closer = tRBrack
+	default:
+		return nil, p.errf(open, "in takes a list of values in brackets, such as %s, found %s", example, open.describe())
+	}
+	openCol := errAt(p.src, open.off, "").Col
+	var items []token
+	for {
+		t := p.peek()
+		if t.kind == closer {
+			if len(items) == 0 {
+				return nil, p.errf(t, "the list after in is empty; give at least one value, such as %s", example)
+			}
+			p.next()
+			break
+		}
+		switch t.kind {
+		case tString, tNumber, tTrue, tFalse:
+			p.next()
+			items = append(items, t)
+		case tEOF:
+			return nil, p.errf(t, "the list opened at column %d is not closed: add a %s at the end", openCol, closer)
+		case tIdent:
+			return nil, p.errf(t, "expected a value in the list, found %s; put text in double quotes: \"%s\"", t.describe(), t.text)
+		default:
+			return nil, p.errf(t, "expected a value in the list, such as \"web01\", found %s", t.describe())
+		}
+		switch sep := p.peek(); sep.kind {
+		case tComma:
+			p.next()
+		case closer:
+		case tEOF:
+			return nil, p.errf(sep, "the list opened at column %d is not closed: add a %s at the end", openCol, closer)
+		default:
+			return nil, p.errf(sep, "expected , or %s in the list opened at column %d, found %s", closer, openCol, sep.describe())
+		}
+	}
+
+	var n inNode
+	for _, it := range items {
+		if tmpl != nil {
+			if it.kind != tString {
+				return nil, p.errf(it, "%s takes each %s in quotes, found %s", tmpl.tok.text, paramWord(tmpl.t), it.describe())
+			}
+			n.tests = append(n.tests, p.templateTest(tmpl, it.text))
+			continue
+		}
+		lit := literal{s: it.text}
+		switch it.kind {
+		case tNumber:
+			v, err := strconv.ParseFloat(it.text, 64)
+			if err != nil {
+				return nil, p.errf(it, "%s is not a number", it.text)
+			}
+			lit.isNum, lit.n = true, v
+		case tTrue, tFalse:
+			lit.isBool, lit.b = true, it.kind == tTrue
+		}
+		n.tests = append(n.tests, cmpNode{f: f, op: tEq, lit: lit})
+	}
+	return n, nil
 }
 
 func quoteLit(t token) string {
@@ -440,6 +534,18 @@ func (f field) values(h *Host) []string {
 		return []string{v}
 	}
 	return nil
+}
+
+// inNode is a list membership test: true when any of its tests is.
+type inNode struct{ tests []node }
+
+func (n inNode) eval(h *Host) bool {
+	for _, t := range n.tests {
+		if t.eval(h) {
+			return true
+		}
+	}
+	return false
 }
 
 type hasNode struct{ f field }
@@ -674,4 +780,122 @@ func Quote(s string) string {
 	}
 	sb.WriteByte('"')
 	return sb.String()
+}
+
+// ListOf reads back a query that is nothing but a list test on one name, as In
+// writes it: name == "web01", name in ("web01", "web02"), or the same with
+// square brackets. It reports false for anything else, including a query
+// that also tests something more.
+func ListOf(src, name string) ([]string, bool) {
+	toks, err := lex(src)
+	if err != nil || len(toks) < 4 || toks[0].kind != tIdent || toks[0].text != name {
+		return nil, false
+	}
+	switch {
+	case toks[1].kind == tEq && toks[2].kind == tString && toks[3].kind == tEOF:
+		return []string{toks[2].text}, true
+	case toks[1].kind == tIdent && toks[1].text == "in":
+	default:
+		return nil, false
+	}
+	closer := tRParen
+	switch toks[2].kind {
+	case tLParen:
+	case tLBrack:
+		closer = tRBrack
+	default:
+		return nil, false
+	}
+	var out []string
+	i := 3
+	for {
+		if toks[i].kind != tString {
+			return nil, false
+		}
+		out = append(out, toks[i].text)
+		i++
+		if toks[i].kind == tComma {
+			i++
+		}
+		if toks[i].kind == closer {
+			break
+		}
+	}
+	if toks[i+1].kind != tEOF {
+		return nil, false
+	}
+	return out, true
+}
+
+// Alternatives splits a query at its top-level ||, returning each side as
+// written. A query that does not lex is returned whole.
+func Alternatives(src string) []string {
+	toks, err := lex(src)
+	if err != nil {
+		return []string{strings.TrimSpace(src)}
+	}
+	var out []string
+	depth, start := 0, 0
+	for _, t := range toks {
+		switch t.kind {
+		case tLParen, tLBrack:
+			depth++
+		case tRParen, tRBrack:
+			depth--
+		case tOr, tEOF:
+			if depth == 0 || t.kind == tEOF {
+				out = append(out, strings.TrimSpace(src[start:t.off]))
+				start = t.off + 2
+			}
+		}
+	}
+	return out
+}
+
+// In writes a list test, such as name in ("web01", "web02"), or
+// name == "web01" for a list of one. It returns "" for an empty list.
+func In(name string, values []string) string {
+	switch len(values) {
+	case 0:
+		return ""
+	case 1:
+		return name + " == " + Quote(values[0])
+	}
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = Quote(v)
+	}
+	return name + " in (" + strings.Join(quoted, ", ") + ")"
+}
+
+// Or joins queries so that a host matching any of them matches. || binds
+// loosest, so no side needs brackets. Blank queries are left out.
+func Or(qs ...string) string {
+	var out []string
+	for _, q := range qs {
+		if q = strings.TrimSpace(q); q != "" {
+			out = append(out, q)
+		}
+	}
+	return strings.Join(out, " || ")
+}
+
+// And joins queries so that a host must match all of them, bracketing any
+// with a top-level ||, which binds looser than &&. Blank queries are left out.
+func And(qs ...string) string {
+	var out []string
+	for _, q := range qs {
+		if q = strings.TrimSpace(q); q != "" {
+			out = append(out, q)
+		}
+	}
+	if len(out) == 1 {
+		return out[0]
+	}
+	for i := range out {
+		if len(Alternatives(out[i])) > 1 {
+			out[i] = "(" + out[i] + ")"
+		}
+	}
+	return strings.Join(out, " && ")
 }

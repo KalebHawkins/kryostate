@@ -83,6 +83,20 @@ func TestMatch(t *testing.T) {
 		{`!(os.family == "Linux")`, "win bare"},
 		{`!!(os.family == "Linux")`, "rhel7 alma9"},
 		{`name == 'nobody' || name == 'web01'`, "rhel7"},
+		// Lists.
+		{`name in ("web01", "db01")`, "rhel7 win"},
+		{`name in ["web01", "db01",]`, "rhel7 win"},
+		{`name in ("nobody")`, ""},
+		{`!name in ("web01", "db01")`, "alma9 bare"},
+		{`stack in ("web", "nowhere")`, "alma9"},
+		{`role in ("indexer", "database")`, "rhel7 win"},
+		{`hw.cpu.cores in (4, 16)`, "alma9 win"},
+		{`file.splunk.exists in (true)`, "rhel7 win"},
+		{`os.version in ("")`, "win bare"},
+		{`file.exists in ("/nope", "/opt/splunkforwarder/bin/splunk")`, "rhel7 win"},
+		{`os.family == "Linux" && name in ("web02", "db01")`, "alma9"},
+		{`name in ("db01") || stack == "web"`, "alma9 win"},
+		{`in == "x"`, ""}, // in is still a name where a name is expected
 	}
 	order := []string{"rhel7", "alma9", "win", "bare"}
 	for _, c := range cases {
@@ -118,6 +132,60 @@ func TestEscapes(t *testing.T) {
 	}
 	if !e.Match(Host{Name: "Red Hat \"7\" \\ x\n"}) {
 		t.Errorf("Quote did not round-trip: %s", q)
+	}
+}
+
+func TestBuilders(t *testing.T) {
+	for _, c := range []struct{ got, want string }{
+		{In("name", nil), ""},
+		{In("name", []string{"web01"}), `name == "web01"`},
+		{In("stack", []string{"a", `b"c`}), `stack in ("a", "b\"c")`},
+		{Or("", `a == "1"`, " "), `a == "1"`},
+		{Or(`a == "1" && b`, `c`), `a == "1" && b || c`},
+		{And(`a || b`, ""), `a || b`},
+		{And(`a || b`, `c`), `(a || b) && c`},
+		{And(`a && (b || c)`, `d`), `a && (b || c) && d`},
+	} {
+		if c.got != c.want {
+			t.Errorf("got %s, want %s", c.got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		q, want string
+		ok      bool
+	}{
+		{`stack == "a"`, "a", true},
+		{`stack in ("a", "b\"c")`, `a|b"c`, true},
+		{`stack in ['a', "b",]`, "a|b", true},
+		{`stack in ("a"`, "", false},
+		{`stack in ("a") && name == "x"`, "", false},
+		{`stack != "a"`, "", false},
+		{`name in ("a")`, "", false},
+		{`stack in ("a", 5)`, "", false},
+		{``, "", false},
+	} {
+		got, ok := ListOf(c.q, "stack")
+		if ok != c.ok || strings.Join(got, "|") != c.want {
+			t.Errorf("ListOf(%s) = %q %v, want %q %v", c.q, got, ok, c.want, c.ok)
+		}
+	}
+	for q, want := range map[string]string{
+		`a`:                            `a`,
+		`a || b == "x||y" || (c || d)`: `a|b == "x||y"|(c || d)`,
+		`a && (b || c)`:                `a && (b || c)`,
+		`name in ("a", "b") || x`:      `name in ("a", "b")|x`,
+	} {
+		if got := strings.Join(Alternatives(q), "|"); got != want {
+			t.Errorf("Alternatives(%s) = %s, want %s", q, got, want)
+		}
+	}
+	// What the builders write parses, and means what it says.
+	e, err := Parse(And(In("stack", []string{"web", "x"}), Or(In("name", []string{"web02"}), `name == "db01"`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !e.Match(hosts["alma9"]) || e.Match(hosts["rhel7"]) || e.Match(hosts["win"]) {
+		t.Errorf("%s matched the wrong hosts", e)
 	}
 }
 
@@ -182,6 +250,17 @@ func TestErrors(t *testing.T) {
 		{`os.version == "x" == "y"`, 19, "join conditions"},
 		{`!`, 2, "ends too soon"},
 		{`()`, 2, "expected a condition"},
+		{`name in "web01"`, 9, "list of values in brackets"},
+		{`name in`, 8, "list of values in brackets"},
+		{`name in ()`, 10, "empty"},
+		{`name in ("web01"`, 17, "not closed"},
+		{`name in ("web01",`, 18, "not closed"},
+		{`name in ["web01")`, 17, "expected , or ]"},
+		{`name in ("web01" "web02")`, 18, "expected , or )"},
+		{`name in (web01)`, 10, "double quotes"},
+		{`name in (,)`, 10, "expected a value in the list"},
+		{`file.exists in (5)`, 17, "in quotes"},
+		{`name , "x"`, 6, "join conditions"},
 	}
 	for _, c := range cases {
 		_, err := Parse(c.q)

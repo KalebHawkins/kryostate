@@ -34,7 +34,7 @@ func TestCatalogCollectorsFollowTheirStacks(t *testing.T) {
 	if err := st.AddToStack(ctx, sid, fwd, "forwarder"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.PutChoice(ctx, collect.Choice{Template: "splunk.uf.version", Stacks: []string{"splunk"}}, "op"); err != nil {
+	if _, err := st.PutChoice(ctx, collect.Choice{Template: "splunk.uf.version", Target: `stack == "splunk"`}, "op"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.PutChoice(ctx, collect.Choice{Template: "cpu.cores"}, "op"); err != nil {
@@ -42,7 +42,7 @@ func TestCatalogCollectorsFollowTheirStacks(t *testing.T) {
 	}
 
 	ids := func(ci string) string {
-		got, err := e.specsForHost(ctx, ci, "linux")
+		got, err := e.specsForHost(ctx, ci, "linux", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,7 +59,7 @@ func TestCatalogCollectorsFollowTheirStacks(t *testing.T) {
 		t.Errorf("a host outside the stack runs: %s", got)
 	}
 	// Windows hosts get the Windows variant, never the Linux command.
-	win, err := e.specsForHost(ctx, fwd, "windows")
+	win, err := e.specsForHost(ctx, fwd, "windows", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

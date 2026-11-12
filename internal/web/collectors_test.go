@@ -167,7 +167,7 @@ func TestSwitchingOnReturnsToTheCollector(t *testing.T) {
 		t.Errorf("redirected to %q", loc)
 	}
 	page := get(t, h, "/collectors/cpu.cores", nil).Body.String()
-	if !strings.Contains(page, `action="/collectors/remove"`) || !strings.Contains(page, "All hosts") {
+	if !strings.Contains(page, `action="/collectors/remove"`) || !strings.Contains(page, "Every host it has a command for") {
 		t.Error("the switched-on collector's page does not offer turning it off")
 	}
 }

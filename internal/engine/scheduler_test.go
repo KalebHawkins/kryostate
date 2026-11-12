@@ -246,7 +246,7 @@ func (fx *schedFixture) markAllRun(t *testing.T) {
 func (fx *schedFixture) choose(t *testing.T, template string, stacks ...string) Collector {
 	t.Helper()
 	ctx := context.Background()
-	ch, err := fx.st.PutChoice(ctx, collect.Choice{Template: template, Stacks: stacks}, "test")
+	ch, err := fx.st.PutChoice(ctx, collect.Choice{Template: template, Target: store.StacksTarget(stacks)}, "test")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -94,10 +94,14 @@ func (s *Store) migrate(ctx context.Context) error {
 		{"evidence", "assertion_id", "INTEGER"},
 		{"assertion", "spec_id", "TEXT NOT NULL DEFAULT ''"},
 		{"run", "trigger", "TEXT NOT NULL DEFAULT ''"},
+		{"collector_choice", "target", "TEXT NOT NULL DEFAULT ''"},
 	} {
 		if err := s.ensureColumn(ctx, c.table, c.col, c.decl); err != nil {
 			return err
 		}
+	}
+	if err := s.migrateChoiceStacks(ctx); err != nil {
+		return err
 	}
 	return s.seedPolicy(ctx)
 }

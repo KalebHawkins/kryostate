@@ -1,0 +1,87 @@
+{{/* Where a collector runs: a query over the inventory with a live count,
+     never a list of every host or stack. Every list here is capped. */}}
+
+{{define "target-summary"}}
+{{if .Err}}
+<p class="target__err" role="alert"><span class="chip chip--bad">does not parse</span> Runs on no host until this is fixed. Column {{.Col}}: {{.Err}}</p>
+<pre class="target__caret">{{.Expr}}
+{{.Caret}}</pre>
+{{else}}
+<p class="target__words">
+{{- if eq .Kind "all"}}Every host it has a command for
+{{- else if eq .Kind "stacks"}}Hosts in {{range $i, $s := .Items}}{{if $i}}, {{end}}{{if has $.Missing $s}}<span class="chip chip--bad" title="This stack no longer exists">{{$s}} is gone</span>{{else}}<a href="/stacks#stack-{{slug $s}}">{{$s}}</a>{{end}}{{end}}{{if .More}} and {{.More}} more stacks{{end}}
+{{- else if eq .Kind "names"}}Only {{range $i, $s := .Items}}{{if $i}}, {{end}}<span class="mono">{{$s}}</span>{{end}}{{if .More}} and {{.More}} more hosts{{end}}
+{{- else}}Hosts matching <code class="target__code">{{.Expr}}</code>{{end}}</p>
+<p class="small target__count"><a href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">matches {{.Count}} host{{if ne .Count 1}}s{{end}}</a>
+{{- if .Skipped}}; {{.Skipped}} of them run a system it has no command for, and are skipped{{end}}.</p>
+{{if and .Expr (ne .Kind "query")}}<p class="small muted"><code class="target__code">{{.Expr}}</code></p>{{end}}
+{{end}}
+{{end}}
+
+{{define "target-preview"}}
+{{if .Err}}
+<p class="target__err" role="alert">Column {{.Col}}: {{.Err}}</p>
+<pre class="target__caret">{{.Expr}}
+{{.Caret}}</pre>
+{{else}}
+<p class="small"><strong>{{if eq .Kind "all"}}Every host: {{end}}<a href="{{.Href}}">matches {{.Count}} host{{if ne .Count 1}}s{{end}}</a></strong>
+{{- if .Skipped}}; {{.Skipped}} run a system it has no command for, and would be skipped{{end}}.</p>
+{{if .Sample}}<ul class="target__sample">{{range .Sample}}<li>{{.}}</li>{{end}}{{if .SampleMore}}<li class="muted">and {{.SampleMore}} more</li>{{end}}</ul>{{end}}
+{{end}}
+{{end}}
+
+{{/* target-editor takes Key (unique on the page), Target (where to start),
+     ID (the catalog entry, for its systems) and Chips. */}}
+{{define "target-editor"}}
+<fieldset class="target">
+  <legend>Runs on</legend>
+  <label for="target-{{.Key}}">Hosts matching <span class="hint">A query, as in the inventory's search box. Blank means every host it has a command for.</span></label>
+  <textarea id="target-{{.Key}}" name="target" rows="2" class="mono target__expr" spellcheck="false" autocomplete="off"
+    placeholder='stack == "web" || name in ("db01", "db02")'
+    hx-get="/collectors/target/preview?id={{.ID}}" hx-trigger="focus once, input changed delay:300ms" hx-target="#target-{{.Key}}-preview" hx-sync="this:replace">{{.Target}}</textarea>
+  <div class="target__preview" id="target-{{.Key}}-preview" aria-live="polite"><p class="small muted">Type or pick below to see which hosts it matches.</p></div>
+  {{if or .Chips.Stacks .Chips.Systems}}
+  <div class="target__chips">
+    {{if .Chips.Stacks}}<span class="small muted">Stack:</span>
+    {{range .Chips.Stacks}}<button type="button" class="chip chip--quiet target__chip" data-insert="{{insertStack .}}" data-into="#target-{{$.Key}}">{{.}}</button>{{end}}
+    {{if .Chips.MoreStacks}}<span class="small muted">and {{.Chips.MoreStacks}} more, written as <span class="mono">stack == "name"</span></span>{{end}}{{end}}
+    {{if .Chips.Systems}}<span class="small muted">System:</span>
+    {{range .Chips.Systems}}<button type="button" class="chip chip--quiet target__chip" data-insert="{{insertSystem .}}" data-into="#target-{{$.Key}}">{{.}}</button>{{end}}
+    {{if .Chips.MoreSys}}<span class="small muted">and {{.Chips.MoreSys}} more</span>{{end}}{{end}}
+  </div>
+  {{end}}
+  <div class="target__add hostpick">
+    <label for="target-{{.Key}}-find" class="small">Add a host by name</label>
+    <input type="search" id="target-{{.Key}}-find" name="find" autocomplete="off" placeholder="Part of a name, such as web" data-no-submit
+      hx-get="/collectors/target/hosts?into=target-{{.Key}}" hx-trigger="input changed delay:250ms" hx-target="#target-{{.Key}}-found" hx-sync="this:replace">
+    <div class="hostpick__list" id="target-{{.Key}}-found" data-picklist aria-live="polite"></div>
+  </div>
+</fieldset>
+{{end}}
+
+{{define "host-picks"}}
+{{with .Note}}<p class="small muted">{{.}}</p>{{end}}
+{{if .Hosts}}
+<ul class="hostpick__items">
+{{range .Hosts}}<li><button type="button" class="hostpick__item" {{if $.Add}}data-add-host="{{.}}" title="Add to the list of hosts"{{else}}data-pick="{{.}}"{{end}} data-into="#{{$.Into}}">{{.}}</button></li>{{end}}
+</ul>
+{{if .More}}<p class="small muted">and {{.More}} more; type more of the name to narrow it down.</p>{{end}}
+{{end}}
+{{with .Empty}}<p class="small muted">{{.}}</p>{{end}}
+{{end}}
+
+{{/* try-form takes CanTest, Name (choice or spec), Values (its ids) and Key.
+     It only ever sends a collector id and a host: never a command. */}}
+{{define "try-form"}}
+{{if .CanTest}}
+<form class="form--inline hostpick" method="post" action="/collectors/try">
+  {{$name := .Name}}{{range .Values}}<input type="hidden" name="{{$name}}" value="{{.}}">{{end}}
+  <input type="hidden" name="into" value="try-{{.Key}}">
+  <label class="visually-hidden" for="try-{{.Key}}">Host to test on</label>
+  <input type="search" id="try-{{.Key}}" name="host" required autocomplete="off" placeholder="Type a host name" class="hostpick__input"
+    hx-get="/collectors/try/hosts" hx-include="closest form" hx-trigger="focus once, input changed delay:250ms" hx-target="#try-{{.Key}}-picks" hx-sync="this:replace">
+  <button class="btn btn--small" type="submit">Test</button>
+  <div class="hostpick__list" id="try-{{.Key}}-picks" data-picklist aria-live="polite"></div>
+</form>
+{{else}}<span class="muted small">No host has a connection yet, so there is nothing to test on.</span>{{end}}
+{{end}}

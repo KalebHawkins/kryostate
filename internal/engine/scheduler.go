@@ -455,6 +455,9 @@ type job struct {
 	profiles  []store.ConnProfile
 	externals []collect.External
 	keys      map[string]bool
+	// targets is the run's view of where collectors run, shared by every
+	// job in it; nil when no collector is limited to some hosts.
+	targets *Targets
 }
 
 // RunDue starts a run of every collector that is due and not already
@@ -564,19 +567,15 @@ func (s *Scheduler) jobsFor(ctx context.Context, due []Planned) ([]*job, error) 
 		if err != nil {
 			return nil, err
 		}
-		members := map[string]map[string]bool{}
-		memberOf := func(id string) map[string]bool {
-			if m, ok := members[id]; ok {
-				return m
-			}
-			m := map[string]bool{}
-			if ms, err := e.Store.MembershipsOf(ctx, id); err == nil {
-				for _, x := range ms {
-					m[x.Stack] = true
+		// Where each collector runs is decided once for the whole run.
+		var tg *Targets
+		for _, p := range withSpecs {
+			if anyTarget(p.Specs) {
+				if tg, err = e.LoadTargets(ctx); err != nil {
+					return nil, err
 				}
+				break
 			}
-			members[id] = m
-			return m
 		}
 		for _, t := range targets {
 			fam := families[t.CIID]
@@ -585,7 +584,7 @@ func (s *Scheduler) jobsFor(ctx context.Context, due []Planned) ([]*job, error) 
 			}
 			added := false
 			for _, p := range withSpecs {
-				if p.appliesTo(fam, memberOf(t.CIID)) {
+				if p.appliesTo(fam, t.CIID, tg) {
 					get(t.CIID).keys[p.Key] = true
 					added = true
 				}
@@ -593,6 +592,7 @@ func (s *Scheduler) jobsFor(ctx context.Context, due []Planned) ([]*job, error) 
 			if added {
 				j := byHost[t.CIID]
 				j.profiles = append(j.profiles, t)
+				j.targets = tg
 			}
 		}
 	}
@@ -764,7 +764,7 @@ func (s *Scheduler) runJob(ctx context.Context, runID string, j *job, report fun
 		dialErr error
 	)
 	for _, p := range j.profiles {
-		n, err := e.collectSome(hctx, runID, p, keep)
+		n, err := e.collectSome(hctx, runID, p, keep, j.targets)
 		facts += n
 		if err != nil {
 			if firstEr == nil {

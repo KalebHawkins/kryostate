@@ -88,3 +88,55 @@ document.addEventListener("click", function (e) {
   try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
   done(ok);
 });
+
+// ---- Where it runs: target editor and host pickers ----
+//
+// A chip adds its condition to the target with ||. A host found by name is
+// added to the target's name in (...) list, starting one if there is none. A
+// host picked for a test fills in the box. The server re-reads whatever is in
+// the box, so this only saves typing; nothing here decides what runs.
+(function () {
+  function quote(s) { return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'; }
+  function or(v, term) { v = v.trim(); return v ? v + " || " + term : term; }
+  // A name list at the top level: at the start, or after || or (.
+  var nameList = /(^|\|\|\s*|\(\s*)name in \(([^()]*)\)/;
+  var nameOne = /(^|\|\|\s*|\(\s*)name == ("(?:[^"\\]|\\.)*")/;
+  function addHost(v, name) {
+    var q = quote(name), m = nameList.exec(v);
+    if (m) {
+      if (m[2].indexOf(q) >= 0) return v;
+      var inner = m[2].replace(/[\s,]+$/, "");
+      var at = m.index + m[1].length;
+      return v.slice(0, at) + "name in (" + (inner ? inner + ", " : "") + q + ")" + v.slice(m.index + m[0].length);
+    }
+    m = nameOne.exec(v);
+    if (m) {
+      if (m[2] === q) return v;
+      var at1 = m.index + m[1].length;
+      return v.slice(0, at1) + "name in (" + m[2] + ", " + q + ")" + v.slice(m.index + m[0].length);
+    }
+    return or(v, "name in (" + q + ")");
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-insert],[data-add-host],[data-pick]") : null;
+    if (!b) return;
+    var box = document.querySelector(b.getAttribute("data-into"));
+    if (!box) return;
+    e.preventDefault();
+    if (b.hasAttribute("data-pick")) {
+      box.value = b.getAttribute("data-pick");
+      var list = b.closest("[data-picklist]");
+      if (list) list.innerHTML = "";
+      box.focus();
+      return;
+    }
+    box.value = b.hasAttribute("data-insert") ? or(box.value, b.getAttribute("data-insert")) : addHost(box.value, b.getAttribute("data-add-host"));
+    // The editor's preview listens for input.
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  // Enter in a search box that only finds hosts must not submit the form
+  // around it.
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.hasAttribute && e.target.hasAttribute("data-no-submit")) e.preventDefault();
+  });
+})();

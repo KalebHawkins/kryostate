@@ -458,7 +458,11 @@ type Choice struct {
 	Template string
 	Param    string
 	Attr     string
-	Stacks   []string
+	// Target is a query, in the inventory's language, choosing the hosts
+	// it runs on, such as stack == "web" or name in ("web01", "web02").
+	// Blank means every host whose system has a command. A target that does
+	// not parse matches no host: it never quietly widens to all of them.
+	Target string
 }
 
 // Specs turns a choice into the specs that run, one per variant.
@@ -501,7 +505,7 @@ func (c Choice) Specs() ([]Spec, error) {
 			Parse:    v.Parse,
 			Type:     t.Type,
 			Optional: true,
-			Stacks:   c.Stacks,
+			Where:    c.Target,
 		})
 	}
 	return out, nil

@@ -122,6 +122,7 @@ func (t Template) Definition(param string) ([]Spec, error) {
 		specs[i].ID = t.ID + "." + t.Variants[i].Name
 		specs[i].Comment = comment
 		specs[i].Stacks = nil
+		specs[i].Where = ""
 	}
 	return specs, nil
 }

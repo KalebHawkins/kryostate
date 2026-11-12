@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
@@ -82,16 +81,7 @@ func hostFilterFrom(q url.Values) store.HostFilter {
 // QueryResolver names the attribute a parameterised collector records,
 // honouring a name a person chose when switching it on.
 func QueryResolver(ctx context.Context, st *store.Store) query.Resolver {
-	choices, _ := st.Choices(ctx)
-	return func(tmpl, param string) string {
-		for _, c := range choices {
-			if c.Template == tmpl && c.Param == param && c.Attr != "" {
-				return c.Attr
-			}
-		}
-		t, _ := collect.Lookup(tmpl)
-		return collect.DefaultAttr(t, param)
-	}
+	return st.QueryResolver(ctx)
 }
 
 // FilterHosts lists the hosts matching the structured filter and, when expr

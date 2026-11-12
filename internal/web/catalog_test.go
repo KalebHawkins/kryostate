@@ -21,8 +21,27 @@ func TestSwitchCatalogCollectorsOnAndOff(t *testing.T) {
 	post(t, h, "/stacks", url.Values{"name": {"splunk"}})
 	post(t, h, "/collectors/choose", url.Values{"template": {"cpu.cores"}, "where": {"stacks"}, "stack": {"splunk"}})
 	cs, _ := st.Choices(ctx)
-	if len(cs) != 1 || len(cs[0].Stacks) != 1 || cs[0].Stacks[0] != "splunk" {
+	if len(cs) != 1 || cs[0].Target != `stack == "splunk"` {
 		t.Fatalf("choices %+v", cs)
+	}
+	// The same from the target box, and a target that does not parse.
+	post(t, h, "/collectors/choose", url.Values{"template": {"cpu.cores"}, "target": {`name in ("web01", "db01")`}})
+	if cs, _ := st.Choices(ctx); len(cs) != 1 || cs[0].Target != `name in ("web01", "db01")` {
+		t.Fatalf("choices %+v", cs)
+	}
+	if _, msg := followFlash(t, h, post(t, h, "/collectors/choose", url.Values{"template": {"cpu.cores"}, "target": {`name in ("web01"`}})); !strings.Contains(msg, "column 17") {
+		t.Errorf("a broken target gave %q", msg)
+	}
+	if cs, _ := st.Choices(ctx); cs[0].Target != `name in ("web01", "db01")` {
+		t.Errorf("a broken target replaced a good one: %+v", cs)
+	}
+	// Changing where one runs from its row keeps it otherwise as it was.
+	id := strconv.FormatInt(cs[0].ID, 10)
+	if _, msg := followFlash(t, h, post(t, h, "/collectors/where", url.Values{"id": {id}, "target": {`stack == "splunk"`}})); !strings.Contains(msg, `now runs on hosts matching stack == &#34;splunk&#34;`) {
+		t.Errorf("changing where gave %q", msg)
+	}
+	if cs, _ := st.Choices(ctx); cs[0].Target != `stack == "splunk"` || cs[0].Attr != "hw.cpu.cores" {
+		t.Errorf("after changing where: %+v", cs)
 	}
 	if _, msg := followFlash(t, h, post(t, h, "/collectors/choose", url.Values{"template": {"cpu.cores"}, "where": {"stacks"}, "stack": {"nope"}})); !strings.Contains(msg, "no stack named nope") {
 		t.Errorf("an unknown stack gave %q", msg)

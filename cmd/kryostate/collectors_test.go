@@ -57,6 +57,30 @@ func TestFilesNextToTheDatabaseAreFound(t *testing.T) {
 	}
 }
 
+// TestEnableTarget: -stacks becomes a query, -where is checked before
+// anything is saved, and both together must both hold.
+func TestEnableTarget(t *testing.T) {
+	for _, c := range []struct{ stacks, where, want, err string }{
+		{"", "", "", ""},
+		{"web", "", `stack == "web"`, ""},
+		{"web, db", "", `stack in ("web", "db")`, ""},
+		{"", `name in ("web01", "web02")`, `name in ("web01", "web02")`, ""},
+		{"web", `os.family == "Linux" || name == "x"`, `stack == "web" && (os.family == "Linux" || name == "x")`, ""},
+		{"", `name in ("web01"`, "", "column"},
+	} {
+		got, err := enableTarget(c.stacks, c.where)
+		if c.err != "" {
+			if err == nil || !strings.Contains(err.Error(), "^") {
+				t.Errorf("%q: got %v, want an error with a caret", c.where, err)
+			}
+			continue
+		}
+		if err != nil || got != c.want {
+			t.Errorf("%q %q: got %q %v, want %q", c.stacks, c.where, got, err, c.want)
+		}
+	}
+}
+
 func TestTryAndDisableFindCatalogCollectors(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(":memory:")
