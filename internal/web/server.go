@@ -55,6 +55,9 @@ type Server struct {
 	// read the contents of files or variables. Off by default: those values
 	// may be secrets, and the page has no login of its own.
 	AllowRevealing bool
+	// Scheduler runs collectors on their schedules. The schedules page reads
+	// it whether or not it was started, and a manual run passes its gate.
+	Scheduler *engine.Scheduler
 
 	tmpl *template.Template
 	// guide is the rendered user guide. It is fixed at build time, so it is
@@ -77,6 +80,8 @@ func New(st *store.Store, eng *engine.Engine, log *slog.Logger) (*Server, error)
 	s := &Server{Store: st, Engine: eng, Log: log, hub: newHub()}
 	if eng != nil {
 		eng.Wire()
+		s.Scheduler = engine.NewScheduler(eng, nil)
+		s.Scheduler.OnProgress = s.hub.broadcast
 	}
 	t, err := template.New("").Funcs(funcs()).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -120,6 +125,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /stacks/collectors", s.handleStackCollectors)
 	mux.HandleFunc("POST /collectors/group", s.handleChooseGroup)
 	mux.HandleFunc("GET /runs", s.handleRuns)
+	mux.HandleFunc("GET /schedules", s.handleSchedules)
+	mux.HandleFunc("POST /schedules", s.handleSetSchedule)
+	mux.HandleFunc("GET /changes", s.handleChanges)
 	mux.HandleFunc("GET /guide", s.handleGuide)
 	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)
 	mux.HandleFunc("POST /collect", s.handleCollect)
@@ -182,54 +190,6 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name, title, nav
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	s.Log.Error("render", "err", err)
 	http.Error(w, "something went wrong rendering this page", http.StatusInternalServerError)
-}
-
-type homeData struct {
-	Coverage  store.Coverage
-	Counts    map[model.DiscrepancyKind]int
-	Total     int
-	Recent    []model.Discrepancy
-	LastRun   *store.RunSummary
-	StaleDays int
-}
-
-// handleHome shows the disagreements first.
-//
-// The landing page is not a count of hosts. Anyone can count hosts. What a
-// written inventory cannot tell you is where it is wrong, so that is what
-// opens.
-func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	// The overview follows -stale-after so that its "older than" tile and the
-	// stale findings raised after a run use the same window. Zero turns the
-	// findings off, but a coverage tile still needs some window to count
-	// against, so it keeps the default.
-	staleAfter := s.StaleAfter
-	if staleAfter <= 0 {
-		staleAfter = 14 * 24 * time.Hour
-	}
-
-	cov, err := s.Store.Coverage(ctx, staleAfter)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	counts, total, err := s.Store.DiscrepancyCounts(ctx)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	recent, err := s.Store.Discrepancies(ctx, store.DiscrepancyFilter{Disposition: model.DispOpen}, 25)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	d := homeData{Coverage: cov, Counts: counts, Total: total, Recent: recent,
-		StaleDays: int(staleAfter.Hours() / 24)}
-	if runs, err := s.Store.Runs(ctx, 1); err == nil && len(runs) > 0 {
-		d.LastRun = &runs[0]
-	}
-	s.render(w, r, "home.html", "Disagreements", "home", d)
 }
 
 type hostsData struct {
@@ -367,6 +327,9 @@ type hostData struct {
 	// Labels name the attributes recorded by switched-on catalog templates,
 	// such as "openssl package version" for pkg.openssl.version.
 	Labels map[string]string
+	// Changed holds the recent change behind a fact, by assertion id, for the
+	// "changed" badge.
+	Changed map[int64]*store.Change
 }
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
@@ -436,6 +399,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.Labels = s.attrTitles(ctx)
+	d.Changed = s.hostChanges(ctx, id)
 	if choices, err := s.Store.Choices(ctx); err == nil {
 		for _, c := range choices {
 			d.Testable = append(d.Testable, testOption{Value: "choice:" + strconv.FormatInt(c.ID, 10), Label: c.Label(), Group: "Switched on"})
@@ -663,7 +627,13 @@ func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	s.render(w, r, "runs.html", "Collection runs", "runs", runs)
+	s.mu.Lock()
+	running := s.running
+	s.mu.Unlock()
+	s.render(w, r, "runs.html", "Collection runs", "runs", struct {
+		Runs    []store.RunSummary
+		Running bool
+	}{runs, running})
 }
 
 // handleCollect starts a run in the background and answers immediately. The
@@ -689,6 +659,16 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		defer cancel()
+		// A manual run and the scheduler must not become two waves into the
+		// same estate: this waits for scheduled sessions already open, and
+		// the scheduler opens none while it runs.
+		if s.Scheduler != nil {
+			gate := s.Scheduler.Gate()
+			if !gate.BeginManual() {
+				return
+			}
+			defer gate.EndManual()
+		}
 
 		progress := make(chan engine.Progress, 64)
 		go func() {
@@ -696,7 +676,7 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 				s.hub.broadcast(p)
 			}
 		}()
-		sum, err := s.Engine.Collect(ctx, engine.Options{Actor: actor}, progress)
+		sum, err := s.Engine.Collect(ctx, engine.Options{Actor: actor, Trigger: "web"}, progress)
 		if err != nil {
 			s.Log.Error("collection run", "err", err)
 		}

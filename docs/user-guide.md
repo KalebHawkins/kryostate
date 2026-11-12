@@ -182,7 +182,7 @@ The database stores a credential **reference**, never the key or password.
 
 ### Step 3: collect and compare
 
-**In the web interface:** open **Overview** and select **Collect now**.
+**In the web interface:** open **Runs** and select **Collect now**.
 Progress appears for each host as it finishes.
 
 **On the command line:**
@@ -417,7 +417,8 @@ The values come back on each host's page with readable names, such as
 
 ### Step 2: collect
 
-Select **Collect now** on the **Overview** page, or run `kryostate refresh`.
+Wait for its schedule (see **Schedules**), select **Collect now** on the
+**Runs** page, or run `kryostate refresh`.
 The new values appear on each host's page. To see one for every host, open
 **Inventory**, then **Columns**, and tick it.
 
@@ -440,7 +441,7 @@ when something does not work.
 
 ### The daily loop
 
-**In the web interface:** **Overview**, then **Collect now**. Then open
+**In the web interface:** **Runs**, then **Collect now**. Then open
 **Disagreements** and decide each one with **Machine wins**, **Document
 wins** or **Accept**.
 
@@ -454,6 +455,41 @@ kryostate disagreements -decide 12 -as machine -note "rebuilt in May"
 
 The `-as` values are `machine`, `document` and `accept`. You can settle
 several at once: `-decide 12,13,14`.
+
+### Schedules
+
+While `kryostate serve` runs, each collector runs on its own schedule: the
+built-in operating system, hardware and identity groups, every catalog
+collector you switched on, your own commands and external programs. Hardware,
+versions and the operating system default to once a day; settings and file
+checks to every 6 hours. A scheduled run logs in only to the hosts that
+collector applies to and runs only its commands. It opens at most 4 sessions
+at once and 1 per host, spreads hosts over up to 2 minutes, and leaves a host
+it cannot reach alone for 10 minutes, doubling each time up to 6 hours. A
+**Collect now** waits for scheduled sessions to finish, and nothing scheduled
+starts while it runs.
+
+**In the web interface:** **Schedules** lists each collector with its last
+run and next due time. Type an interval such as `30m`, `6h` or `1d`, and for
+whole days optionally a time, then **Save**; or choose **Manual only**.
+
+**On the command line:**
+
+```sh
+kryostate collectors -schedules                               # list them
+kryostate collectors -schedule builtin.os -every 1d -at 02:00
+kryostate collectors -schedule cpu.cores -every 6h
+kryostate collectors -schedule cpu.cores -manual              # or -default
+```
+
+Start the server with `-no-schedule` to collect only when asked.
+
+### Changes
+
+A change is a collected value that differs from what the same collector read
+before. **Changes** lists them for the last 24 hours, 7 days or 30 days; the
+Overview shows the last day, and a host page marks a value that changed in
+the last week with **changed** (hover for the old value).
 
 ### Finding hosts
 
@@ -496,13 +532,15 @@ kryostate restore -db new.db -in backup.json
 
 | Page | What it shows | What you can change |
 |---|---|---|
-| Overview | Coverage counts and the newest disagreements | Start a collection |
+| Overview | Whether hosts collected, failing hosts and why, the last day's changes, what runs next | |
 | Disagreements | One card for each disagreement | Decide each one |
 | Inventory | One row for each host | Add a host; choose columns; download CSV |
 | Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, stated values, retire and restore, chosen address; test any collector on it |
 | Stacks | One card for each stack, with roles and what is collected there | Create, edit and delete stacks; add and remove members; switch collectors on for one stack |
 | Charts | One chart for each attribute; each bar links to its hosts | |
-| Runs | The collection history | |
+| Changes | Collected values that changed, by time window | |
+| Runs | The collection history, manual and scheduled | Start a collection |
+| Schedules | Each collector's schedule, last run and next due time | Change how often each collector runs |
 | Collectors | Every collector that will run, the groups and the catalog | Switch catalog collectors and groups on and off, choose their stacks, test one on a host |
 | Guide | This document | |
 

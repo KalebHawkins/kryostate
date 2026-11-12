@@ -1,14 +1,24 @@
 {{define "runs.html"}}
 <h1>Collection runs</h1>
-<p class="muted">A run is recorded before it starts and closed when it ends, so a pass that died halfway is not mistaken for a complete one.</p>
-<div class="table-wrap">
+<p class="muted">A run is recorded before it starts and closed when it ends, so a pass that died halfway is not mistaken for a complete one. Scheduled runs appear here too, with only the collectors that were due.</p>
+
+<div class="card">
+  <h2>Collect everything now</h2>
+  <p class="muted">Opens a session to every enabled target and runs every collector. If scheduled sessions are open it waits for them first, and nothing scheduled starts until it is done. Progress streams below, scheduled runs included; nothing in the interface blocks on it.</p>
+  <button class="btn btn--primary" hx-post="/collect" hx-target="#runstatus" hx-swap="innerHTML"{{if .Running}} disabled{{end}}>Collect now</button>
+  <div id="runstatus">{{if .Running}}<p class="muted">A collection run is in progress.</p>{{end}}</div>
+  <div id="runlog" hx-ext="sse" sse-connect="/events" sse-swap="progress" hx-swap="afterbegin"></div>
+</div>
+
+<div class="table-wrap" style="margin-top:1.5rem">
 <table>
-  <thead><tr><th scope="col">Started</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col">Targets</th><th scope="col">Ok</th><th scope="col">Failed</th><th scope="col">Duration</th></tr></thead>
+  <thead><tr><th scope="col">Started</th><th scope="col">Trigger</th><th scope="col">Collector</th><th scope="col">Status</th><th scope="col">Targets</th><th scope="col">Ok</th><th scope="col">Failed</th><th scope="col">Duration</th></tr></thead>
   <tbody>
-  {{range .}}
+  {{range .Runs}}
     <tr>
       <td class="mono">{{stamp .Started}}</td>
-      <td>{{.Collector}}</td>
+      <td>{{if eq .Trigger "schedule"}}<span class="chip chip--sched">schedule</span>{{else if eq .Trigger "web"}}<span class="chip chip--human">web</span>{{else if .Trigger}}{{.Trigger}}{{else}}<span class="chip chip--human">command line</span>{{end}}</td>
+      <td>{{if eq .Collector "builtin"}}everything{{else}}<span class="small" title="{{.Collector}}">{{short .Collector 80}}</span>{{end}}{{if .Note}}<div class="muted small">{{.Note}}</div>{{end}}</td>
       <td>{{if eq .Status "complete"}}<span class="chip chip--collector">{{.Status}}</span>{{else if eq .Status "running"}}<span class="chip chip--unknown">{{.Status}}</span>{{else}}<span class="chip chip--bad">{{.Status}}</span>{{end}}</td>
       <td class="num">{{.Targets}}</td>
       <td class="num">{{.Succeeded}}</td>
@@ -16,7 +26,7 @@
       <td class="mono">{{if .Finished.IsZero}}—{{else}}{{.Finished.Sub .Started}}{{end}}</td>
     </tr>
   {{else}}
-    <tr><td colspan="7" class="muted">Nothing has run yet. A run starts from the button on the home page, or with <span class="mono">kryostate collect</span>.</td></tr>
+    <tr><td colspan="8" class="muted">Nothing has run yet. Start one with the button above, or with <span class="mono">kryostate collect</span>.</td></tr>
   {{end}}
   </tbody>
 </table>

@@ -259,12 +259,16 @@ type RunSummary struct {
 	Targets   int
 	Succeeded int
 	Failed    int
+	// Trigger says what started the run: empty for a person at the command
+	// line, "web" for the button, "schedule" for the scheduler.
+	Trigger string
+	Note    string
 }
 
 // Runs returns recent collection runs.
 func (s *Store) Runs(ctx context.Context, limit int) ([]RunSummary, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, collector, started_at, COALESCE(finished_at,''), status, targets, succeeded, failed
+		`SELECT id, collector, started_at, COALESCE(finished_at,''), status, targets, succeeded, failed, trigger, note
 		 FROM run ORDER BY started_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -274,7 +278,7 @@ func (s *Store) Runs(ctx context.Context, limit int) ([]RunSummary, error) {
 	for rows.Next() {
 		var r RunSummary
 		var st, fin string
-		if err := rows.Scan(&r.ID, &r.Collector, &st, &fin, &r.Status, &r.Targets, &r.Succeeded, &r.Failed); err != nil {
+		if err := rows.Scan(&r.ID, &r.Collector, &st, &fin, &r.Status, &r.Targets, &r.Succeeded, &r.Failed, &r.Trigger, &r.Note); err != nil {
 			return nil, err
 		}
 		r.Started, r.Finished = parseTS(st), parseTS(fin)

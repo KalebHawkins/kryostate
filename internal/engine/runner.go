@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,9 @@ type Engine struct {
 	// Log is optional. It receives the failures that have nowhere else to go,
 	// such as a probe that could not be written.
 	Log *slog.Logger
+	// Dial replaces the real SSH and WinRM connection, for tests. It returns
+	// the transport and the operating system family the host reports.
+	Dial func(ctx context.Context, p store.ConnProfile) (collect.Transport, string, error)
 }
 
 // Wire gives the store the rules it needs to normalise a value a person chose
@@ -82,6 +86,9 @@ type Options struct {
 	HostTimeout time.Duration
 	// Actor is recorded in the audit trail.
 	Actor string
+	// Trigger is recorded on the run, so the runs page can say what started
+	// it. Empty means a person at the command line.
+	Trigger string
 }
 
 func (o *Options) applyDefaults() {
@@ -137,7 +144,8 @@ func (e *Engine) Collect(ctx context.Context, opt Options, progress chan<- Progr
 		targets = filtered
 	}
 
-	runID, err := e.Store.StartRun(ctx, "builtin", len(targets))
+	started := time.Now()
+	runID, err := e.Store.StartRunAs(ctx, "builtin", opt.Trigger, len(targets))
 	if err != nil {
 		return store.RunSummary{}, err
 	}
@@ -167,7 +175,7 @@ func (e *Engine) Collect(ctx context.Context, opt Options, progress chan<- Progr
 				label = ci.Label
 			}
 
-			n, err := e.collectOne(hctx, runID, t)
+			n, err := e.collectSome(hctx, runID, t, nil)
 
 			mu.Lock()
 			done++
@@ -209,6 +217,9 @@ func (e *Engine) Collect(ctx context.Context, opt Options, progress chan<- Progr
 	}
 	_ = e.Store.Audit(closing, opt.Actor, "collect", runID,
 		fmt.Sprintf("%d targets, %d ok, %d failed", total, okCount, errCount))
+	if len(opt.Only) == 0 && opt.Transport == "" {
+		e.markAllRan(closing, runID, started, status, okCount, errCount)
+	}
 
 	return store.RunSummary{
 		ID: runID, Collector: "builtin", Status: status,
@@ -250,13 +261,22 @@ func outcomeFor(err error) model.Outcome {
 	}
 }
 
-func (e *Engine) collectOne(ctx context.Context, runID string, p store.ConnProfile) (int, error) {
+// collectSome connects to one host and runs the specs that apply to it. With
+// keep nil that is every applicable spec, which is what a full collection
+// does. With keep set only the specs it accepts run, for a scheduled run of
+// some collectors; then a host with nothing to do, or whose optional commands
+// all found nothing, is not a failure, because nothing was asked of it that it
+// could fail.
+//
+// A failure to connect is returned as a *DialError, so a caller can tell an
+// unreachable host from one that answered badly.
+func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProfile, keep func(collect.Spec) bool) (int, error) {
 	// Recording a failure must not be prevented by the deadline that caused
 	// it. Without this a timed-out host writes no probe at all and is then
 	// reported as one nobody has ever tried to reach.
 	rec := context.WithoutCancel(ctx)
 
-	t, osFamily, err := e.dial(ctx, p)
+	t, osFamily, err := e.connect(ctx, p)
 	if err != nil {
 		if perr := e.Store.RecordProbe(rec, model.Probe{
 			CIID: p.CIID, Kind: probeKindFor(p.Transport), Outcome: outcomeFor(err),
@@ -270,7 +290,7 @@ func (e *Engine) collectOne(ctx context.Context, runID string, p store.ConnProfi
 		}); perr != nil {
 			e.logProbe(perr)
 		}
-		return 0, err
+		return 0, &DialError{Err: err}
 	}
 	defer t.Close()
 
@@ -294,6 +314,12 @@ func (e *Engine) collectOne(ctx context.Context, runID string, p store.ConnProfi
 	specs, err := e.specsForHost(ctx, p.CIID, osFamily)
 	if err != nil {
 		return 0, err
+	}
+	if keep != nil {
+		specs = slices.DeleteFunc(specs, func(s collect.Spec) bool { return !keep(s) })
+		if len(specs) == 0 {
+			return 0, nil
+		}
 	}
 	// An optional spec reads something that legitimately may not be there,
 	// such as a hardware model inside a container. Its absence is not a
@@ -357,7 +383,9 @@ func (e *Engine) collectOne(ctx context.Context, runID string, p store.ConnProfi
 	// success, and the run must say so rather than counting the host as done.
 	outcome := model.OutcomeOK
 	var runErr error
-	if written == 0 {
+	if written == 0 && keep != nil && len(failures) == 0 {
+		detail = "nothing found by the optional commands"
+	} else if written == 0 {
 		outcome = model.OutcomeError
 		runErr = fmt.Errorf("connected to %s but no collector returned a value", p.Address)
 	} else if len(failures) > 0 {
@@ -386,7 +414,7 @@ func (e *Engine) assert(ctx context.Context, ciID string, r collect.Reading, src
 func (e *Engine) assertID(ctx context.Context, ciID string, r collect.Reading, srcID int64, runID string) (int64, error) {
 	a := model.Assertion{
 		CIID: ciID, Attr: r.Attr, Raw: r.Value, ValueType: r.Type,
-		SourceID: srcID, Scope: r.Scope, RunID: runID, ObservedAt: r.ObservedAt,
+		SourceID: srcID, Scope: r.Scope, RunID: runID, SpecID: r.SpecID, ObservedAt: r.ObservedAt,
 	}
 	var n *store.Normalized
 	if res, ok := e.Norm.Normalize(r.Attr, r.Value); ok {

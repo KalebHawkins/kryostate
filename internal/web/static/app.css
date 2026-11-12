@@ -800,3 +800,52 @@ td .form--inline { flex-wrap: nowrap; }
 .form--inline select { min-width: 12rem; }
 td .form--inline select { min-width: 0; max-width: 9rem; }
 .btn--small, .nowrap { white-space: nowrap; }
+
+/* ---------- overview, schedules and changes ---------- */
+
+.overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+.overview .card h2 { margin-bottom: var(--s-2); }
+.overview .list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-2); }
+.overview .list li > div { flex-basis: 100%; }
+.overview .list .num { margin-left: auto; font-family: var(--font-mono); }
+.overview p.small { margin: var(--s-2) 0 0; }
+
+/* A tile only takes a colour when its number is one to act on. */
+.stat--ok .stat__value { color: var(--ok); }
+.stat--bad { border-color: rgb(210 90 90 / 0.5); }
+.stat--bad .stat__value { color: var(--bad); }
+.stat--warn { border-color: rgb(216 161 63 / 0.45); }
+.stat--warn .stat__value { color: var(--warn); }
+
+/* A value that moved recently. Informational, so it sits below "disagrees"
+   and "failed" in loudness: an upgrade is usually somebody's intent. */
+.chip--changed {
+  background: rgb(106 167 232 / 0.14);
+  color: var(--accent-strong);
+  border-color: rgb(106 167 232 / 0.45);
+  cursor: help;
+}
+.chip--changed::before { content: "\0394"; }
+
+.chip--sched {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+.chip--sched::before { content: "\23f2"; }
+
+.change { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-2); }
+.change__old { color: var(--text-dim); text-decoration: line-through; text-decoration-color: var(--text-faint); }
+.change__new { color: var(--text); }
+.change__arrow { color: var(--text-faint); }
+
+.schedules th[scope="row"] { font-weight: 500; }
+.sched--due { color: var(--warn); }
+.sched-form { flex-wrap: nowrap; }
+.sched-form input[name="every"] { width: 4.5rem; }
+.sched-form input[type="time"] { width: 7rem; }

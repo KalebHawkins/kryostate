@@ -269,6 +269,7 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
 	trusted := fs.String("trusted-origin", "", "comma-separated origins, such as https://cmdb.example.com, allowed to submit forms when a proxy serves this under another name")
 	allowContent := fs.Bool("allow-content-collectors", false, "let the web interface switch on catalog collectors that read the contents of files and variables")
+	noSchedule := fs.Bool("no-schedule", false, "do not run collectors on their schedules; collect only when somebody asks")
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -288,6 +289,23 @@ func cmdServe(ctx context.Context, log *slog.Logger, args []string) error {
 	srv.StaleAfter = *stale
 	srv.TrustedOrigins = splitIDs(*trusted)
 	srv.AllowRevealing = *allowContent
+	// The scheduler stops with the server, and the store is not closed
+	// until a run in flight has written its results.
+	if !*noSchedule && srv.Scheduler != nil {
+		sctx, stopSched := context.WithCancel(ctx)
+		schedDone := make(chan struct{})
+		go func() {
+			defer close(schedDone)
+			srv.Scheduler.Run(sctx)
+		}()
+		defer func() {
+			stopSched()
+			<-schedDone
+		}()
+		log.Info("scheduler on", "sessions", srv.Scheduler.MaxSessions, "per_host", srv.Scheduler.PerHost)
+	} else {
+		log.Info("scheduler off; collectors run only when asked")
+	}
 	files := engineFiles{Rules: *rules, Collectors: *collectors, Externals: *externals}.resolved()
 	srv.Config = web.ConfigFiles{Dir: dataDir, Collectors: files.Collectors,
 		Rules: files.Rules, Externals: files.Externals}

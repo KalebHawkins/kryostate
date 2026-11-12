@@ -45,6 +45,7 @@ var tables = []string{
 	"address", "conn_profile", "check_def", "evidence",
 	"stack", "stack_member",
 	"run", "probe", "discrepancy", "audit", "collector_choice",
+	"collector_schedule", "collector_state",
 }
 
 // Export reads every table into a dump.

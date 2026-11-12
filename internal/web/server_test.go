@@ -352,17 +352,6 @@ func TestStaticAssetsAreServedLocally(t *testing.T) {
 	}
 }
 
-// TestHomeIsTheDisagreements, not the host table. What a person needs on
-// opening this is what is wrong, not what exists.
-func TestHomeIsTheDisagreements(t *testing.T) {
-	_, h, st := testServer(t)
-	seed(t, st)
-	body := get(t, h, "/", nil).Body.String()
-	if !strings.Contains(body, "the document and the machine disagree") {
-		t.Error("the landing page does not lead with the disagreements")
-	}
-}
-
 // tableBody narrows a page to the rows of its table, so a filter test is not
 // satisfied by a hostname appearing in a filter chip or a heading.
 func tableBody(html string) string {

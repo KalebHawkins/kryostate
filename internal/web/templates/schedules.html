@@ -1,0 +1,37 @@
+{{define "schedules.html"}}
+<h1>Schedules</h1>
+<p class="muted">How often each collector runs on its own. A scheduled run logs in only to the hosts the collector applies to and runs only its commands. Collectors due at the same moment share one session per host.</p>
+{{if not .Scheduling}}<div class="notice">Scheduling is off in this server (it was started with <span class="mono">-no-schedule</span>). Schedules can still be set here; they take effect in a server that runs them.</div>{{end}}
+<p class="muted small">Limits: {{.MaxSessions}} sessions at once across the estate, {{.PerHost}} per host, hosts spread over up to {{.Spread}} at random, and a host that cannot be reached is left alone for {{.Backoff}}, doubling each time up to {{.BackoffMax}}. Nothing runs more often than every {{.MinEvery}}.</p>
+
+<div class="table-wrap">
+<table class="schedules">
+  <thead><tr><th scope="col">Collector</th><th scope="col">Schedule</th><th scope="col">Last run</th><th scope="col">Next</th><th scope="col">Change</th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+    <tr id="{{.Anchor}}">
+      <th scope="row"><div>{{.Title}}</div><div class="muted mono small">{{.Key}}</div></th>
+      <td>{{.Describe}}{{if .Custom}} <span class="chip chip--human" title="default: {{.Default}}">chosen</span>{{else}} <span class="muted small">default</span>{{end}}</td>
+      <td>{{if .LastRun.IsZero}}<span class="muted">never</span>{{else}}{{ago .LastRun}}{{end}}
+        {{if .Outcome}}{{if eq .Outcome "ok"}}<span class="chip chip--collector">ok</span>{{else if eq .Outcome "running"}}<span class="chip chip--unknown">running</span>{{else if or (eq .Outcome "partial") (eq .Outcome "skipped")}}<span class="chip chip--stale">{{.Outcome}}</span>{{else}}<span class="chip chip--bad">{{.Outcome}}</span>{{end}}{{end}}
+        {{if .Detail}}<div class="muted small" title="{{.Detail}}">{{short .Detail 70}}</div>{{end}}</td>
+      <td class="nowrap{{if .Overdue}} sched--due{{end}}">{{.Next}}</td>
+      <td>
+        <form class="form--inline sched-form" method="post" action="/schedules">
+          <input type="hidden" name="collector" value="{{.Key}}">
+          <label><span class="visually-hidden">Every</span><input type="text" name="every" value="{{.Every}}" size="5" class="mono" aria-label="Interval, such as 30m, 6h or 1d" title="30m, 6h, 1d, 7d"></label>
+          <label><span class="visually-hidden">At</span><input type="time" name="at" value="{{.At}}" aria-label="Time of day, for whole-day intervals" title="Time of day, only with whole days"></label>
+          <button class="btn btn--small" type="submit" name="mode" value="every">Save</button>
+          {{if not .Manual}}<button class="btn btn--small btn--ghost" type="submit" name="mode" value="manual">Manual only</button>{{end}}
+          {{if .Custom}}<button class="btn btn--small btn--ghost" type="submit" name="mode" value="default" title="{{.Default}}">Default</button>{{end}}
+        </form>
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5" class="muted">No collectors.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<p class="muted small">The same from the command line: <span class="mono">kryostate collectors -schedules</span>, <span class="mono">kryostate collectors -schedule builtin.os -every 1d -at 02:00</span>, <span class="mono">-manual</span> or <span class="mono">-default</span>.</p>
+{{end}}
