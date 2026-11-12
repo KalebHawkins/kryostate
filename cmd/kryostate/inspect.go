@@ -263,6 +263,11 @@ func cmdShow(ctx context.Context, args []string) error {
 	} else {
 		fmt.Printf("\nno connection profile; add one with: kryostate target -host %s -address <addr> -user <user> -credential agent:\n", ci.Label)
 	}
+	if b, ok, err := st.HostBackoffFor(ctx, id); err != nil {
+		return err
+	} else if text := engine.BackoffText(b, time.Now(), time.Local); ok && text != "" {
+		fmt.Printf("%s (kryostate refresh -only %s still tries it)\n", text, ci.Label)
+	}
 
 	return nil
 }
@@ -403,6 +408,7 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 	externals := fs.String("externals", "", "file listing external collector programs")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
 	quiet := fs.Bool("quiet", false, "print only the summary lines, not one line per host")
+	lf := addLeaseFlags(fs)
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -429,8 +435,15 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 			sum.Checked, sum.Resolved, sum.Unresolved, sum.Multi)
 	}
 
+	// Only the collection itself opens sessions, so only it waits for, and
+	// holds off, collections by other processes on the same database.
+	release, err := takeLease(ctx, st, "refresh", lf)
+	if err != nil {
+		return err
+	}
 	sum, err := runCollect(ctx, eng, engine.Options{Only: ids, Concurrency: *conc,
 		HostTimeout: *timeout, Actor: actor()}, *quiet)
+	release()
 	if err != nil {
 		return fmt.Errorf("collect: %w", err)
 	}

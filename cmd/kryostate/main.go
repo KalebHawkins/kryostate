@@ -462,6 +462,7 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 	collectors := fs.String("collectors", "", "collector spec file to use instead of collectors.json beside the database")
 	externals := fs.String("externals", "", "file listing external collector programs")
 	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
+	lf := addLeaseFlags(fs)
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -479,6 +480,11 @@ func cmdCollect(ctx context.Context, log *slog.Logger, args []string) error {
 	if err != nil {
 		return err
 	}
+	release, err := takeLease(ctx, st, "collect", lf)
+	if err != nil {
+		return err
+	}
+	defer release()
 	opt := engine.Options{
 		Transport: *transport, Concurrency: *conc, Only: ids,
 		HostTimeout: *timeout, Actor: actor(),

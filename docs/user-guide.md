@@ -489,6 +489,15 @@ To collect everything straight away:
 kryostate refresh            # collect, then run the health checks
 ```
 
+Only one collection runs against a database at a time, whichever process
+starts it. If `kryostate serve` is in the middle of a scheduled run (or
+somebody else's `refresh` is running), `refresh` and `collect` say who is
+collecting and since when, and wait for it to finish, up to 10 minutes;
+change that with `-wait 30m`, or give up at once with `-no-wait`. Equally,
+while a `refresh` from the command line runs, the server's schedule waits and
+**Collect now** on the **Runs** page says "A collection started from the
+command line by kim is running" instead of starting a second wave.
+
 ### Schedules
 
 While `kryostate serve` runs, each collector runs on its own schedule: the
@@ -506,9 +515,16 @@ people look after:
 - Hosts are spread out at random over up to 2 minutes, so they are not all
   reached in the same second.
 - A host that cannot be reached is left alone for 10 minutes, then 20, and
-  so on, doubling each time up to 6 hours.
+  so on, doubling each time up to 6 hours. This is kept in the database, so
+  restarting the server does not try every failing host again at once. The
+  host's page and `kryostate show <host>` say so ("skipped by the schedule
+  until 14:20 after 3 failed attempts: ..."). **Collect now** and `refresh`
+  still try the host; one answer clears it.
 - **Collect now** waits for scheduled sessions to finish, and nothing
   scheduled starts while it runs.
+- While a `kryostate refresh` or `collect` from the command line is
+  collecting from the same database, the schedule skips its turn and tries
+  again at its next check, 30 seconds later; nothing queues up behind it.
 - The shortest interval allowed is 5 minutes.
 
 So collectors do run concurrently across hosts, but never more than 4
@@ -732,6 +748,18 @@ listed, then test it with `kryostate collectors -try <id> -host <name>`. The
 
 **A host shows "never" collected**: it has no enabled connection. Add one on
 the host's page, under **Connection**.
+
+**"a scheduled run in another kryostate serve ... has been running since"**:
+`refresh` or `collect` found another process collecting from the same
+database and is waiting for it (up to `-wait`, 10 minutes by default). If it
+gives up, run it again later or with a longer `-wait`. A process that was
+killed mid-run holds the database's collection lock for at most 2 minutes
+more; after that the lock is free again.
+
+**A host is "skipped by the schedule until ..."**: the schedule could not
+reach it, and is leaving it alone for a while, longer after each failure. Fix
+the cause (the error is in the message), then collect it by hand with
+`kryostate refresh -only <host>`; one success clears the wait.
 
 **"Not saved: this connection uses a credential the web interface cannot
 change"**: the connection uses a password or a helper program. Change it with

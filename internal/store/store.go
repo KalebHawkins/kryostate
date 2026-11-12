@@ -103,6 +103,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.migrateChoiceStacks(ctx); err != nil {
 		return err
 	}
+	if err := s.migrateCoordination(ctx); err != nil {
+		return err
+	}
 	return s.seedPolicy(ctx)
 }
 

@@ -170,6 +170,10 @@ type Scheduler struct {
 
 	gate    *Gate
 	started atomic.Bool
+	// lock is the collection lease, which keeps this process's runs apart
+	// from collections started by other processes on the same database.
+	lock        *CollectionLock
+	backoffOnce sync.Once
 
 	mu        sync.Mutex
 	running   map[string]bool
@@ -177,6 +181,9 @@ type Scheduler struct {
 	hostSlots map[string]chan struct{}
 	sessions  chan struct{}
 	wg        sync.WaitGroup
+	// blockedBy is the holder of the lease the scheduler last found held by
+	// another process, so that is logged once rather than every tick.
+	blockedBy string
 }
 
 type backoff struct {
@@ -214,6 +221,14 @@ func NewScheduler(e *Engine, gate *Gate) *Scheduler {
 // Gate is the gate manual runs must pass through.
 func (s *Scheduler) Gate() *Gate { return s.gate }
 
+// Lock is the collection lease that manual runs in this process take,
+// shared with the scheduler so that the two do not lock each other out; the
+// Gate orders them within the process.
+func (s *Scheduler) Lock() *CollectionLock {
+	s.init()
+	return s.lock
+}
+
 func (s *Scheduler) now() time.Time {
 	if s.Now != nil {
 		return s.Now()
@@ -238,6 +253,10 @@ func (s *Scheduler) init() {
 		s.running = map[string]bool{}
 		s.hosts = map[string]*backoff{}
 		s.hostSlots = map[string]chan struct{}{}
+	}
+	if s.lock == nil && s.Engine != nil && s.Engine.Store != nil {
+		s.lock = NewCollectionLock(s.Engine.Store)
+		s.lock.Log = s.Engine.Log
 	}
 	if s.sessions == nil {
 		n := s.MaxSessions
@@ -412,14 +431,35 @@ func (s *Scheduler) StaleAfter(ctx context.Context, fallback time.Duration) time
 
 // Backoff reports how a host stands with the scheduler: consecutive failures
 // to connect, and when it will next be tried.
+//
+// It is kept in the database too, so a restart does not try every failing
+// host again at once; it is read from there the first time it is needed.
 func (s *Scheduler) Backoff(ciID string) (fails int, until time.Time) {
 	s.init()
+	s.loadBackoff(context.Background())
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if b := s.hosts[ciID]; b != nil {
 		return b.fails, b.until
 	}
 	return 0, time.Time{}
+}
+
+func (s *Scheduler) loadBackoff(ctx context.Context) {
+	s.backoffOnce.Do(func() {
+		saved, err := s.Engine.Store.HostBackoffs(ctx)
+		if err != nil {
+			s.Engine.logf("load host backoff", err)
+			return
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for id, b := range saved {
+			if _, ok := s.hosts[id]; !ok {
+				s.hosts[id] = &backoff{fails: b.Fails, until: b.Until, last: b.LastError}
+			}
+		}
+	})
 }
 
 // Run looks for due collectors every Tick until ctx ends, then waits for
@@ -475,6 +515,7 @@ func (s *Scheduler) RunDue(ctx context.Context) ([]string, error) {
 	if s.gate.ManualRunning() {
 		return nil, nil
 	}
+	s.loadBackoff(ctx)
 	plan, err := s.Plan(ctx)
 	if err != nil {
 		return nil, err
@@ -514,11 +555,26 @@ func (s *Scheduler) RunDue(ctx context.Context) ([]string, error) {
 	if len(label) > 200 {
 		label = label[:197] + "…"
 	}
-	runID, err := st.StartRunAs(ctx, label, "schedule", len(jobs))
+	// Another process collecting from the same database (a kryostate
+	// refresh in another shell) has the estate. This tick is skipped and the
+	// collectors stay due, so the next tick tries again; nothing queues up.
+	release, err := s.lock.TryAcquire(ctx, LeaseInfo{Purpose: label, Origin: "schedule"})
+	var held *LeaseHeldError
+	if errors.As(err, &held) {
+		s.noteBlocked(&held.Lease)
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
+	s.noteBlocked(nil)
+	runID, err := st.StartRunAs(ctx, label, "schedule", len(jobs))
+	if err != nil {
+		release()
+		return nil, err
+	}
 	if err := st.MarkCollectorsStarted(ctx, keys, now, runID); err != nil {
+		release()
 		return nil, err
 	}
 	s.mu.Lock()
@@ -532,8 +588,36 @@ func (s *Scheduler) RunDue(ctx context.Context) ([]string, error) {
 		spread = shortest / 4
 	}
 	s.wg.Add(1)
-	go s.runWave(ctx, runID, keys, jobs, spread)
+	go func() {
+		// The lease is given back before Wait returns, so a server shutting
+		// down does not close the store first.
+		defer s.wg.Done()
+		defer release()
+		s.runWave(ctx, runID, keys, jobs, spread)
+	}()
 	return keys, nil
+}
+
+// noteBlocked logs, once per holder, that the scheduler is waiting for
+// another process's collection, and once when it no longer is.
+func (s *Scheduler) noteBlocked(l *store.Lease) {
+	s.mu.Lock()
+	prev := s.blockedBy
+	if l == nil {
+		s.blockedBy = ""
+	} else {
+		s.blockedBy = l.Holder
+	}
+	s.mu.Unlock()
+	log := s.Engine.Log
+	switch {
+	case log == nil:
+	case l != nil && l.Holder != prev:
+		log.Info("scheduled run postponed: another process is collecting from this database; trying again each tick",
+			"holder", l.Describe(), "since", l.AcquiredAt.Local().Format(time.TimeOnly), "purpose", l.Purpose)
+	case l == nil && prev != "":
+		log.Info("the other collection has finished; scheduled runs resume")
+	}
 }
 
 // jobsFor works out, for each host, which of the due collectors apply to it.
@@ -631,7 +715,6 @@ const (
 )
 
 func (s *Scheduler) runWave(ctx context.Context, runID string, keys []string, jobs []*job, spread time.Duration) {
-	defer s.wg.Done()
 	var (
 		mu                              sync.Mutex
 		ok, failed, backingOff, skipped int
@@ -791,7 +874,7 @@ func (s *Scheduler) runJob(ctx context.Context, runID string, j *job, report fun
 	}
 
 	if len(j.profiles) > 0 {
-		s.noteHost(j.ciID, dialErr)
+		s.noteHost(context.WithoutCancel(ctx), j.ciID, dialErr)
 	}
 	p := Progress{RunID: runID, CIID: j.ciID, Label: label + " (scheduled)", Facts: facts, Outcome: model.OutcomeOK}
 	if firstEr != nil {
@@ -807,11 +890,19 @@ func (s *Scheduler) runJob(ctx context.Context, runID string, j *job, report fun
 
 // noteHost records whether a host could be reached. Each failure to connect
 // doubles how long the host is left alone; one success forgives them all.
-func (s *Scheduler) noteHost(ciID string, dialErr error) {
+// Both are written to the database too, so they outlive a restart.
+func (s *Scheduler) noteHost(ctx context.Context, ciID string, dialErr error) {
+	st := s.Engine.Store
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if dialErr == nil {
+		_, had := s.hosts[ciID]
 		delete(s.hosts, ciID)
+		s.mu.Unlock()
+		if had {
+			if err := st.ClearHostBackoff(ctx, ciID); err != nil {
+				s.Engine.logf("host backoff", err)
+			}
+		}
 		return
 	}
 	b := s.hosts[ciID]
@@ -822,6 +913,11 @@ func (s *Scheduler) noteHost(ciID string, dialErr error) {
 	b.fails++
 	b.last = dialErr.Error()
 	b.until = s.now().Add(s.backoffFor(b.fails))
+	rec := store.HostBackoff{CIID: ciID, Fails: b.fails, Until: b.until, LastError: b.last, UpdatedAt: s.now()}
+	s.mu.Unlock()
+	if err := st.PutHostBackoff(ctx, rec); err != nil {
+		s.Engine.logf("host backoff", err)
+	}
 }
 
 func (s *Scheduler) backoffFor(fails int) time.Duration {

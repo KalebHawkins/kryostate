@@ -219,6 +219,7 @@
   {{if $c.Err}}<p class="notice notice--bad" role="alert">Could not work out which collectors run here: {{$c.Err}}</p>
   {{else}}
   <p class="muted small">What runs here, why, and when{{if not .Profiles}}, once the host has a connection{{end}}.{{if not $c.Family}} This host has not reported its system yet, so commands for every system are listed; the one for its system is picked when it connects.{{end}}</p>
+  {{with $c.Backoff}}<p class="notice small" role="status">Could not be reached: {{.}}. Collect now and <span class="mono">kryostate refresh</span> still try it.</p>{{end}}
   <div class="table-wrap">
   <table class="hcoll__table">
     <caption class="visually-hidden">Collectors that run on {{.CI.Label}}</caption>

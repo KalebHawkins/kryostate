@@ -365,6 +365,12 @@ minutes and then twice as long each time up to 6 hours, and no interval
 shorter than 5 minutes. A scheduled run logs in only to the hosts its
 collector applies to. `serve -no-schedule` turns schedules off.
 
+One collection runs against a database at a time, across processes: a
+`kryostate refresh` in another shell waits for a scheduled run to finish
+(`-wait 10m` by default, `-no-wait` to fail at once), and the schedule skips
+its turn while a `refresh` runs. Which hosts the schedule is leaving alone is
+kept in the database, so a restart does not retry them all at once.
+
 A collected value that differs from what the same collector read before is a
 **change**. The Changes page lists them by time window, and the Overview
 shows the last day's.

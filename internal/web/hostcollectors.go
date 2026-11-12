@@ -50,6 +50,9 @@ type hostCollectors struct {
 	// benefit of the doubt until it is connected.
 	Family string
 	Err    string
+	// Backoff says the schedule is leaving the host alone after failing to
+	// reach it, and until when; blank when it is not.
+	Backoff string
 }
 
 // hostCollectorsFor decides which collectors run on a host, with the engine's
@@ -58,6 +61,13 @@ func (s *Server) hostCollectorsFor(ctx context.Context, ciID string, facts []mod
 	var out hostCollectors
 	if s.Engine == nil {
 		return out
+	}
+	if b, ok, err := s.Store.HostBackoffFor(ctx, ciID); err == nil && ok {
+		loc := time.Local
+		if s.Scheduler != nil {
+			loc = s.Scheduler.Loc()
+		}
+		out.Backoff = engine.BackoffText(b, time.Now(), loc)
 	}
 	var plan []engine.Planned
 	var err error

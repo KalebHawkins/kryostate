@@ -4,9 +4,9 @@
 
 <div class="card">
   <h2>Collect everything now</h2>
-  <p class="muted">Opens a session to every enabled target and runs every collector. If scheduled sessions are open it waits for them first, and nothing scheduled starts until it is done. Progress streams below, scheduled runs included; nothing in the interface blocks on it.</p>
-  <button class="btn btn--primary" hx-post="/collect" hx-target="#runstatus" hx-swap="innerHTML"{{if .Running}} disabled{{end}}>Collect now</button>
-  <div id="runstatus">{{if .Running}}<p class="muted">A collection run is in progress.</p>{{end}}</div>
+  <p class="muted">Opens a session to every enabled target and runs every collector. If scheduled sessions are open it waits for them first, and nothing scheduled starts until it is done. While a <span class="mono">kryostate refresh</span> or <span class="mono">collect</span> from the command line is collecting from the same database, it does not start. Progress streams below, scheduled runs included; nothing in the interface blocks on it.</p>
+  <button class="btn btn--primary" hx-post="/collect" hx-target="#runstatus" hx-swap="innerHTML"{{if or .Running .Elsewhere}} disabled{{end}}>Collect now</button>
+  <div id="runstatus">{{if .Running}}<p class="muted">A collection run is in progress.</p>{{else if .Elsewhere}}<p class="notice" role="status">{{.Elsewhere}}</p>{{end}}</div>
   <div id="runlog" hx-ext="sse" sse-connect="/events" sse-swap="progress" hx-swap="afterbegin"></div>
 </div>
 

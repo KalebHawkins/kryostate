@@ -391,7 +391,9 @@ func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "runs.html", "Collection runs", "runs", struct {
 		Runs    []store.RunSummary
 		Running bool
-	}{runs, running})
+		// Elsewhere is a collection another process is running.
+		Elsewhere string
+	}{runs, running, s.otherCollection(r.Context())})
 }
 
 // handleCollect starts a run in the background and answers immediately. The
@@ -409,7 +411,23 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	actor := actorOf(r)
+	// Another process on the same database (a kryostate refresh in a shell)
+	// may already be collecting; this does not start a second wave.
+	releaseLease, other, err := s.takeLease(r.Context(), actor)
+	if err != nil || other != "" {
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprint(w, noticeHTML(other))
+		return
+	}
 	go func() {
+		defer releaseLease()
 		defer func() {
 			s.mu.Lock()
 			s.running = false
