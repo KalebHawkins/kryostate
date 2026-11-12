@@ -1,3 +1,54 @@
+// ---- Theme: System, Light or Dark ----
+//
+// The choice is an attribute on <html>; the stylesheet does the rest. A
+// script in the layout's <head> applies a stored choice before the first
+// paint. Without script the button stays hidden and the system preference
+// applies. Storage can be blocked, so every access is wrapped.
+(function () {
+  var KEY = "kryostate-theme";
+  var ORDER = ["system", "light", "dark"];
+  var NAMES = { system: "System", light: "Light", dark: "Dark" };
+  function current() {
+    var t = document.documentElement.getAttribute("data-theme");
+    return t === "light" || t === "dark" ? t : "system";
+  }
+  function label() {
+    var t = current();
+    document.querySelectorAll("[data-theme-toggle]").forEach(function (b) {
+      var name = b.querySelector("[data-theme-name]");
+      if (name) name.textContent = NAMES[t];
+      b.title = "Colour theme: " + NAMES[t] + ". Next: " + NAMES[ORDER[(ORDER.indexOf(t) + 1) % ORDER.length]];
+      b.hidden = false;
+    });
+  }
+  function apply(t, store) {
+    var root = document.documentElement;
+    if (t === "light" || t === "dark") root.setAttribute("data-theme", t);
+    else root.removeAttribute("data-theme");
+    if (store) {
+      try {
+        if (t === "light" || t === "dark") localStorage.setItem(KEY, t);
+        else localStorage.removeItem(KEY);
+      } catch (e) { /* not remembered, still applied */ }
+    }
+    label();
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-theme-toggle]") : null;
+    if (!b) return;
+    apply(ORDER[(ORDER.indexOf(current()) + 1) % ORDER.length], true);
+  });
+  // Another tab changed it.
+  window.addEventListener("storage", function (e) {
+    if (e.key === KEY) apply(e.newValue || "system", false);
+  });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", label);
+  else label();
+  // A history restore can replace the body, nav included.
+  document.addEventListener("htmx:historyRestore", label);
+  document.addEventListener("htmx:load", label);
+})();
+
 // Shows the body of a refused request instead of discarding it.
 //
 // htmx ignores the response body on a 4xx by default. The server answers a

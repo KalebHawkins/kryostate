@@ -1,31 +1,279 @@
 /* KryoState - app.css
-   Dark only. Glass on chrome (nav, cards, modals, filter bar);
-   solid surfaces under anything tabular. */
+   Dark by default, light by system preference or by the nav toggle. Glass
+   on chrome (nav, cards, modals, filter bar); solid surfaces under anything
+   tabular.
 
-/* ---------- tokens ---------- */
+   Colours live only in the theme blocks below. Rules use the tokens, never
+   a colour literal (theme_test.go enforces this), so a block appended later
+   picks up both themes for free. */
 
-:root {
+/* ---------- tokens: dark (the default) ---------- */
+
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* palette */
+  /* surfaces */
   --bg: #0b0d10;
   --bg-raised: #14171c;      /* solid table/panel surface, never translucent */
   --bg-inset: #0e1114;
+  --field-bg: #0e1114;      /* text inputs, selects */
+  --field-border: var(--border);
   --glass: rgb(20 23 28 / 0.72);
   --hairline: rgb(255 255 255 / 0.08);
+  --hairline-soft: rgb(255 255 255 / 0.04);
   --border: rgb(255 255 255 / 0.12);
+  --table-head-bg: #1a1e24;  /* solid: a translucent sticky header is unreadable */
+  --row-stripe: rgb(255 255 255 / 0.025);
+  --row-hover: rgb(255 255 255 / 0.06);
+  --hover-soft: rgb(255 255 255 / 0.05);
+  --btn-bg: rgb(255 255 255 / 0.07);
+  --btn-bg-hover: rgb(255 255 255 / 0.12);
+  --backdrop: rgb(0 0 0 / 0.58);
 
+  /* text */
   --text: #e8eaed;
   --text-dim: #9aa3ad;
-  --text-faint: #5d6670;
+  --text-faint: #7f8892;  /* AA (4.5:1) on every surface */
 
+  /* accent and status */
   --accent: #6aa7e8;
   --accent-strong: #8ec1f5;
+  --on-accent: #0b1420;      /* text on an accent fill */
   --ok: #58b07a;
   --warn: #d8a13f;
   --bad: #d96b6b;
   --focus: #9ecbff;
+  --bad-tint: rgb(217 107 107 / 0.15);
+  --bad-stripe: #8f3f3f;     /* second stripe of a failed segment */
+  --warn-tint: rgb(216 161 63 / 0.06);
+  --warn-edge: rgb(216 161 63 / 0.35);
+  --timeline-fill: rgb(106 167 232 / 0.55);
 
+  /* chips: background, text, border */
+  --chip-collector-bg: rgb(88 176 122 / 0.16);
+  --chip-collector-fg: #8fd3ab;
+  --chip-collector-bd: rgb(88 176 122 / 0.45);
+  --chip-document-bg: rgb(106 167 232 / 0.14);
+  --chip-document-fg: #a9c9ef;
+  --chip-document-bd: rgb(106 167 232 / 0.4);
+  --chip-changed-bd: rgb(106 167 232 / 0.45);
+  --chip-human-bg: rgb(190 150 220 / 0.14);
+  --chip-human-fg: #cfb3e3;
+  --chip-human-bd: rgb(190 150 220 / 0.4);
+  --chip-dns-bg: rgb(120 200 210 / 0.12);
+  --chip-dns-fg: #9fd4db;
+  --chip-dns-bd: rgb(120 200 210 / 0.35);
+  --chip-bad-bg: rgb(210 90 90 / 0.14);
+  --chip-bad-fg: #e8a0a0;
+  --chip-bad-bd: rgb(210 90 90 / 0.45);
+  --chip-stale-bg: rgb(216 161 63 / 0.14);
+  --chip-stale-fg: #e3c285;
+  --chip-stale-bd: rgb(216 161 63 / 0.4);
+
+  /* charts: categorical slots in a fixed order, a neutral for the folded
+     tail, and a hatch for "no value" */
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #008300;
+  --viz-other: #6b6a64;
+  --viz-hatch-bg: #23262b;
+  --viz-hatch: #6b7480;
+  --viz-surface: #111418;    /* the card's glass over the page, for the gaps */
+  --viz-ink: var(--text);
+  --viz-ink-2: var(--text-dim);
+  --viz-grid: var(--hairline);
+  --viz-base: var(--border);
+}
+
+/* ---------- tokens: light ----------
+   The same block twice: once for the system preference (unless the person
+   chose dark), once for an explicit choice. theme_test.go keeps them equal. */
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    --bg: #f4f5f7;
+    --bg-raised: #ffffff;
+    --bg-inset: #eceef1;
+    --field-bg: #ffffff;
+    --field-border: rgb(16 24 40 / 0.45);  /* 3:1 against the field and the card */
+    --glass: rgb(255 255 255 / 0.8);
+    --hairline: rgb(16 24 40 / 0.1);
+    --hairline-soft: rgb(16 24 40 / 0.06);
+    --border: rgb(16 24 40 / 0.18);
+    --table-head-bg: #eef0f3;
+    --row-stripe: rgb(16 24 40 / 0.025);
+    --row-hover: rgb(16 24 40 / 0.055);
+    --hover-soft: rgb(16 24 40 / 0.045);
+    --btn-bg: rgb(16 24 40 / 0.04);
+    --btn-bg-hover: rgb(16 24 40 / 0.09);
+    --backdrop: rgb(16 24 40 / 0.4);
+
+    --text: #161a1f;
+    --text-dim: #4d5763;
+    --text-faint: #5f6873;
+
+    --accent: #1f63b5;
+    --accent-strong: #154e92;
+    --on-accent: #ffffff;
+    --ok: #2b7a4b;
+    --warn: #8f5b00;
+    --bad: #be3434;
+    --focus: #1f63b5;
+    --bad-tint: rgb(190 52 52 / 0.1);
+    --bad-stripe: #e7a3a3;
+    --warn-tint: rgb(196 132 20 / 0.09);
+    --warn-edge: rgb(176 112 0 / 0.4);
+    --timeline-fill: rgb(31 99 181 / 0.68);
+
+    --chip-collector-bg: rgb(43 122 75 / 0.1);
+    --chip-collector-fg: #1d6338;
+    --chip-collector-bd: rgb(43 122 75 / 0.45);
+    --chip-document-bg: rgb(31 99 181 / 0.08);
+    --chip-document-fg: #1b5598;
+    --chip-document-bd: rgb(31 99 181 / 0.4);
+    --chip-changed-bd: rgb(31 99 181 / 0.45);
+    --chip-human-bg: rgb(126 72 168 / 0.09);
+    --chip-human-fg: #643790;
+    --chip-human-bd: rgb(126 72 168 / 0.4);
+    --chip-dns-bg: rgb(16 128 142 / 0.09);
+    --chip-dns-fg: #0c5f69;
+    --chip-dns-bd: rgb(16 128 142 / 0.4);
+    --chip-bad-bg: rgb(190 52 52 / 0.09);
+    --chip-bad-fg: #9f2a2a;
+    --chip-bad-bd: rgb(190 52 52 / 0.45);
+    --chip-stale-bg: rgb(196 132 20 / 0.12);
+    --chip-stale-fg: #7a4d00;
+    --chip-stale-bd: rgb(176 112 0 / 0.45);
+
+    --viz-1: #2a78d6;
+    --viz-2: #eb6834;
+    --viz-3: #1baf7a;
+    --viz-4: #eda100;
+    --viz-5: #e87ba4;
+    --viz-6: #008300;
+    --viz-other: #c3c2b7;
+    --viz-hatch-bg: #f0efec;
+    --viz-hatch: #8f8e86;
+    --viz-surface: #fcfcfd;
+    --viz-ink: var(--text);
+    --viz-ink-2: var(--text-dim);
+    --viz-grid: var(--hairline);
+    --viz-base: var(--border);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f5f7;
+  --bg-raised: #ffffff;
+  --bg-inset: #eceef1;
+  --field-bg: #ffffff;
+  --field-border: rgb(16 24 40 / 0.45);  /* 3:1 against the field and the card */
+  --glass: rgb(255 255 255 / 0.8);
+  --hairline: rgb(16 24 40 / 0.1);
+  --hairline-soft: rgb(16 24 40 / 0.06);
+  --border: rgb(16 24 40 / 0.18);
+  --table-head-bg: #eef0f3;
+  --row-stripe: rgb(16 24 40 / 0.025);
+  --row-hover: rgb(16 24 40 / 0.055);
+  --hover-soft: rgb(16 24 40 / 0.045);
+  --btn-bg: rgb(16 24 40 / 0.04);
+  --btn-bg-hover: rgb(16 24 40 / 0.09);
+  --backdrop: rgb(16 24 40 / 0.4);
+
+  --text: #161a1f;
+  --text-dim: #4d5763;
+  --text-faint: #5f6873;
+
+  --accent: #1f63b5;
+  --accent-strong: #154e92;
+  --on-accent: #ffffff;
+  --ok: #2b7a4b;
+  --warn: #8f5b00;
+  --bad: #be3434;
+  --focus: #1f63b5;
+  --bad-tint: rgb(190 52 52 / 0.1);
+  --bad-stripe: #e7a3a3;
+  --warn-tint: rgb(196 132 20 / 0.09);
+  --warn-edge: rgb(176 112 0 / 0.4);
+  --timeline-fill: rgb(31 99 181 / 0.68);
+
+  --chip-collector-bg: rgb(43 122 75 / 0.1);
+  --chip-collector-fg: #1d6338;
+  --chip-collector-bd: rgb(43 122 75 / 0.45);
+  --chip-document-bg: rgb(31 99 181 / 0.08);
+  --chip-document-fg: #1b5598;
+  --chip-document-bd: rgb(31 99 181 / 0.4);
+  --chip-changed-bd: rgb(31 99 181 / 0.45);
+  --chip-human-bg: rgb(126 72 168 / 0.09);
+  --chip-human-fg: #643790;
+  --chip-human-bd: rgb(126 72 168 / 0.4);
+  --chip-dns-bg: rgb(16 128 142 / 0.09);
+  --chip-dns-fg: #0c5f69;
+  --chip-dns-bd: rgb(16 128 142 / 0.4);
+  --chip-bad-bg: rgb(190 52 52 / 0.09);
+  --chip-bad-fg: #9f2a2a;
+  --chip-bad-bd: rgb(190 52 52 / 0.45);
+  --chip-stale-bg: rgb(196 132 20 / 0.12);
+  --chip-stale-fg: #7a4d00;
+  --chip-stale-bd: rgb(176 112 0 / 0.45);
+
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
+  --viz-other: #c3c2b7;
+  --viz-hatch-bg: #f0efec;
+  --viz-hatch: #8f8e86;
+  --viz-surface: #fcfcfd;
+  --viz-ink: var(--text);
+  --viz-ink-2: var(--text-dim);
+  --viz-grid: var(--hairline);
+  --viz-base: var(--border);
+}
+
+/* ---------- tokens: print ----------
+   Paper is light whatever the screen shows. Later and at least as specific
+   as the theme blocks, so it wins. */
+
+@media print {
+  :root[data-theme],
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --bg-raised: #ffffff;
+    --bg-inset: #ffffff;
+    --field-bg: #ffffff;
+    --field-border: rgb(16 24 40 / 0.45);  /* 3:1 against the field and the card */
+    --glass: #ffffff;
+    --table-head-bg: #ffffff;
+    --row-stripe: #f2f2f2;
+    --text: #000000;
+    --text-dim: #333333;
+    --border: #999999;
+    --hairline: #cccccc;
+    --accent: #000000;
+    --print-rule: #000000;
+    --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a;
+    --viz-4: #eda100; --viz-5: #e87ba4; --viz-6: #008300;
+    --viz-other: #c3c2b7; --viz-hatch-bg: #f0efec; --viz-hatch: #8f8e86;
+    --viz-surface: #ffffff; --viz-ink: #000000; --viz-ink-2: #333333;
+    --viz-grid: #dddddd; --viz-base: #999999;
+  }
+}
+
+/* ---------- tokens: everything that is not a colour ---------- */
+
+:root {
   /* spacing scale */
   --s-1: 0.25rem;
   --s-2: 0.5rem;
@@ -144,6 +392,23 @@ p.muted, .muted { color: var(--text-dim); }
 .nav a[aria-current="page"] { color: var(--text); }
 
 .nav__spacer { flex: 1; }
+
+/* theme toggle: quiet, like the links beside it */
+.nav__theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2rem 0.55rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.nav__theme:hover { color: var(--text); border-color: var(--border); background: var(--btn-bg); }
+.nav__theme[hidden] { display: none; }
 
 .content {
   max-width: 76rem;
@@ -352,7 +617,7 @@ a.ov-bar__label:hover { text-decoration: underline; }
   .ov-next li { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
 @media print {
-  .ov-banner, .ov-attn__link { background: #fff; }
+  .ov-banner, .ov-attn__link { background: var(--bg-raised); }
 }
 
 /* ---------- user guide ---------- */
@@ -423,7 +688,7 @@ a.ov-bar__label:hover { text-decoration: underline; }
   padding: var(--s-5);
   max-width: 34rem;
 }
-.modal::backdrop { background: rgb(0 0 0 / 0.55); }
+.modal::backdrop { background: var(--backdrop); }
 
 /* ---------- data table (solid, no blur anywhere near it) ---------- */
 
@@ -462,7 +727,7 @@ thead th {
   z-index: 10;
   /* solid, not inherited: a translucent sticky header over scrolling rows is
      unreadable */
-  background: #1a1e24;
+  background: var(--table-head-bg);
   color: var(--text-dim);
   font-weight: 600;
   font-size: 0.75rem;
@@ -489,8 +754,8 @@ tbody th {
 tbody tr:last-child > td,
 tbody tr:last-child > th { border-bottom: 0; }
 
-tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.025); }
-tbody tr:hover { background: rgb(255 255 255 / 0.06); }
+tbody tr:nth-child(even) { background: var(--row-stripe); }
+tbody tr:hover { background: var(--row-hover); }
 
 /* group header row inside the table */
 tr.group th {
@@ -526,23 +791,23 @@ td.host a { text-decoration: none; }
 .chip::before { font-weight: 700; }
 
 .chip--collector {
-  background: rgb(88 176 122 / 0.16);
-  color: #8fd3ab;
-  border-color: rgb(88 176 122 / 0.45);
+  background: var(--chip-collector-bg);
+  color: var(--chip-collector-fg);
+  border-color: var(--chip-collector-bd);
 }
 .chip--collector::before { content: "\2713"; }
 
 .chip--document {
-  background: rgb(106 167 232 / 0.14);
-  color: #a9c9ef;
-  border-color: rgb(106 167 232 / 0.4);
+  background: var(--chip-document-bg);
+  color: var(--chip-document-fg);
+  border-color: var(--chip-document-bd);
 }
 .chip--document::before { content: "\00b6"; }
 
 .chip--human {
-  background: rgb(190 150 220 / 0.14);
-  color: #cfb3e3;
-  border-color: rgb(190 150 220 / 0.4);
+  background: var(--chip-human-bg);
+  color: var(--chip-human-fg);
+  border-color: var(--chip-human-bd);
 }
 .chip--human::before { content: "\270e"; }
 
@@ -555,24 +820,24 @@ td.host a { text-decoration: none; }
 .chip--derived::before { content: "\2248"; }
 
 .chip--dns {
-  background: rgb(120 200 210 / 0.12);
-  color: #9fd4db;
-  border-color: rgb(120 200 210 / 0.35);
+  background: var(--chip-dns-bg);
+  color: var(--chip-dns-fg);
+  border-color: var(--chip-dns-bd);
 }
 .chip--dns::before { content: "\00b7"; }
 
 /* A run or a probe that failed: a problem with this tool's reach. */
 .chip--bad {
-  background: rgb(210 90 90 / 0.14);
-  color: #e8a0a0;
-  border-color: rgb(210 90 90 / 0.45);
+  background: var(--chip-bad-bg);
+  color: var(--chip-bad-fg);
+  border-color: var(--chip-bad-bd);
 }
 .chip--bad::before { content: "\00d7"; }
 
 .chip--stale {
-  background: rgb(216 161 63 / 0.14);
-  color: #e3c285;
-  border-color: rgb(216 161 63 / 0.4);
+  background: var(--chip-stale-bg);
+  color: var(--chip-stale-fg);
+  border-color: var(--chip-stale-bd);
 }
 .chip--stale::before { content: "\23f1"; }
 
@@ -677,7 +942,7 @@ td.host a { text-decoration: none; }
   background: repeating-linear-gradient(
     45deg,
     var(--bad) 0 4px,
-    #8f3f3f 4px 8px
+    var(--bad-stripe) 4px 8px
   );
 }
 .segbar__seg--never { background: var(--text-faint); }
@@ -693,18 +958,18 @@ td.host a { text-decoration: none; }
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text);
-  background: rgb(255 255 255 / 0.07);
+  background: var(--btn-bg);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   cursor: pointer;
   transition: background var(--t-fast), border-color var(--t-fast);
 }
-.btn:hover { background: rgb(255 255 255 / 0.12); }
+.btn:hover { background: var(--btn-bg-hover); }
 
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0b1420;
+  color: var(--on-accent);
 }
 .btn--primary:hover { background: var(--accent-strong); }
 
@@ -713,14 +978,14 @@ td.host a { text-decoration: none; }
   border-color: transparent;
   color: var(--text-dim);
 }
-.btn--ghost:hover { color: var(--text); background: rgb(255 255 255 / 0.07); }
+.btn--ghost:hover { color: var(--text); background: var(--btn-bg); }
 
 .btn--danger {
   background: transparent;
   border-color: var(--bad);
   color: var(--bad);
 }
-.btn--danger:hover { background: rgb(217 107 107 / 0.15); }
+.btn--danger:hover { background: var(--bad-tint); }
 
 input[type="text"],
 input[type="search"],
@@ -730,8 +995,8 @@ select {
   font: inherit;
   font-size: 0.8125rem;
   color: var(--text);
-  background: var(--bg-inset);
-  border: 1px solid var(--border);
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
   border-radius: var(--r-sm);
   padding: 0.35rem 0.6rem;
 }
@@ -796,10 +1061,7 @@ select:focus-visible {
 /* ---------- print ---------- */
 
 @media print {
-  :root { color-scheme: light; }
-
-  body { background: #fff; color: #000; }
-
+  /* the colours come from the print tokens at the top */
   .nav, .filterbar, .skip-link, .btn, .progress,
   .htmx-indicator {
     display: none !important;
@@ -808,8 +1070,6 @@ select:focus-visible {
   .content { max-width: none; padding: 0; }
 
   .card, .stat, .table-wrap {
-    background: #fff;
-    border-color: #999;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     box-shadow: none;
@@ -819,16 +1079,14 @@ select:focus-visible {
 
   thead th {
     position: static;
-    background: #fff;
-    color: #000;
-    border-bottom: 1px solid #000;
+    color: var(--text);
+    border-bottom: 1px solid var(--print-rule);
   }
 
-  tbody tr:nth-child(even) { background: #f2f2f2; }
-  tbody td { border-bottom-color: #ccc; color: #000; }
+  tbody td { color: var(--text); }
 
-  .chip { border-color: #666; color: #000; background: #fff; }
-  a { color: #000; text-decoration: none; }
+  .chip { border-color: var(--text-dim); color: var(--text); background: var(--bg); }
+  a { color: var(--text); text-decoration: none; }
 }
 
 /* ---------- editing forms ---------- */
@@ -963,9 +1221,9 @@ td .form--inline select { min-width: 0; max-width: 9rem; }
 /* A value that moved recently. Informational, so it sits below "disagrees"
    and "failed" in loudness: an upgrade is usually somebody's intent. */
 .chip--changed {
-  background: rgb(106 167 232 / 0.14);
+  background: var(--chip-document-bg);
   color: var(--accent-strong);
-  border-color: rgb(106 167 232 / 0.45);
+  border-color: var(--chip-changed-bd);
   cursor: help;
 }
 .chip--changed::before { content: "\0394"; }
@@ -1019,44 +1277,9 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
    Colours follow the data-viz reference palette: categorical slots in a
    fixed order, one hue for ranked bars and histograms, a neutral for the
    folded tail, and a 45-degree hatch for "no value" so that absence never
-   rests on colour alone. The page is dark; the light steps are kept for
-   print and for a light theme. */
+   rests on colour alone. The --viz-* tokens are set per theme at the top. */
 
-.viz, .viz-dialog {
-  --viz-1: #3987e5;
-  --viz-2: #d95926;
-  --viz-3: #199e70;
-  --viz-4: #c98500;
-  --viz-5: #d55181;
-  --viz-6: #008300;
-  --viz-other: #6b6a64;
-  --viz-hatch-bg: #23262b;
-  --viz-hatch: #6b7480;
-  --viz-surface: #111418;   /* the card's glass over the page, for the gaps */
-  --viz-ink: var(--text);
-  --viz-ink-2: var(--text-dim);
-  --viz-grid: var(--hairline);
-  --viz-base: var(--border);
-}
 .viz-dialog { --viz-surface: var(--bg-raised); }
-
-:root[data-theme="light"] .viz,
-:root[data-theme="light"] .viz-dialog {
-  --viz-1: #2a78d6;
-  --viz-2: #eb6834;
-  --viz-3: #1baf7a;
-  --viz-4: #eda100;
-  --viz-5: #e87ba4;
-  --viz-6: #008300;
-  --viz-other: #c3c2b7;
-  --viz-hatch-bg: #f0efec;
-  --viz-hatch: #a9a8a0;
-  --viz-surface: #fcfcfb;
-  --viz-ink: #0b0b0b;
-  --viz-ink-2: #52514e;
-  --viz-grid: #e1e0d9;
-  --viz-base: #c3c2b7;
-}
 
 .vizgrid {
   display: grid;
@@ -1079,7 +1302,7 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
   cursor: zoom-in;
   transition: background var(--t-fast);
 }
-.viz__open:hover { background: rgb(255 255 255 / 0.04); }
+.viz__open:hover { background: var(--hover-soft); }
 .viz__open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .viz__svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -1127,7 +1350,7 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
   background: var(--bg-raised);
   color: var(--text);
 }
-.viz-dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+.viz-dialog::backdrop { background: var(--backdrop); }
 .viz-dialog__inner { padding: var(--s-4) var(--s-5) var(--s-5); }
 .viz-dialog__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
 .viz-dialog__head h2 { margin: 0; font-size: 1.0625rem; }
@@ -1151,13 +1374,6 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
 }
 
 @media print {
-  .viz, .viz-dialog {
-    --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a;
-    --viz-4: #eda100; --viz-5: #e87ba4; --viz-6: #008300;
-    --viz-other: #c3c2b7; --viz-hatch-bg: #f0efec; --viz-hatch: #a9a8a0;
-    --viz-surface: #fff; --viz-ink: #000; --viz-ink-2: #333;
-    --viz-grid: #ddd; --viz-base: #999;
-  }
   .qhelp, .qerr { display: none; }
 }
 .csched + .csched { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--hairline); }
@@ -1172,7 +1388,7 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
 .schedules tbody th[scope="row"],
 .schedules tbody td {
   padding: calc(var(--s-1) + 2px) var(--s-3);
-  border-bottom: 1px solid rgb(255 255 255 / 0.04);
+  border-bottom: 1px solid var(--hairline-soft);
   vertical-align: top;
   text-align: left;
 }
@@ -1199,9 +1415,9 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
 }
 .sched-hour { display: grid; gap: 2px; text-decoration: none; color: var(--text-faint); border-radius: var(--r-sm); }
 a.sched-hour { color: var(--text-dim); }
-a.sched-hour:hover, a.sched-hour:focus-visible { color: var(--text); background: rgb(255 255 255 / 0.05); }
+a.sched-hour:hover, a.sched-hour:focus-visible { color: var(--text); background: var(--hover-soft); }
 .sched-hour__bar { display: flex; align-items: flex-end; height: 3rem; border-bottom: 1px solid var(--hairline); }
-.sched-hour__fill { display: block; width: 100%; background: rgb(106 167 232 / 0.55); border-radius: 2px 2px 0 0; }
+.sched-hour__fill { display: block; width: 100%; background: var(--timeline-fill); border-radius: 2px 2px 0 0; }
 a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
 .sched-hour--busy .sched-hour__fill { background: var(--warn); }
 .sched-hour--busy { color: var(--warn); }
@@ -1222,10 +1438,10 @@ a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
 .sched-storm {
   margin: 0 0 var(--s-2);
   padding: var(--s-2) var(--s-3);
-  border: 1px solid rgb(216 161 63 / 0.35);
+  border: 1px solid var(--warn-edge);
   border-left: 3px solid var(--warn);
   border-radius: var(--r-sm);
-  background: rgb(216 161 63 / 0.06);
+  background: var(--warn-tint);
 }
 .sched-storm p { margin: 0 0 var(--s-1); }
 .sched-storm form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
@@ -1234,7 +1450,7 @@ a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
 /* The editor: closed it is one small button; open it is a short form. */
 .sched-editor > summary { list-style: none; cursor: pointer; border-color: var(--border); }
 .sched-editor > summary::-webkit-details-marker { display: none; }
-.sched-editor[open] > summary { color: var(--text); background: rgb(255 255 255 / 0.07); }
+.sched-editor[open] > summary { color: var(--text); background: var(--btn-bg); }
 .sched-editor .sched-form {
   display: grid;
   gap: var(--s-2);
