@@ -227,9 +227,9 @@ func (e *Engine) Collectors(ctx context.Context) ([]Collector, error) {
 
 // appliesTo reports whether a collector has anything to do on a host, given
 // the operating system the host last reported (empty when unknown) and the
-// stacks it is in. A host whose system is unknown is given the benefit of the
-// doubt; the engine checks again once it is connected.
-func (c Collector) appliesTo(family string, member map[string]bool) bool {
+// hosts each of its specs targets. A host whose system is unknown is given the
+// benefit of the doubt; the engine checks again once it is connected.
+func (c Collector) appliesTo(family, ciID string, tg *Targets) bool {
 	if c.External != nil {
 		return true
 	}
@@ -237,7 +237,7 @@ func (c Collector) appliesTo(family string, member map[string]bool) bool {
 		if family != "" && !slices.ContainsFunc(sp.OS, func(o string) bool { return strings.EqualFold(o, family) }) {
 			continue
 		}
-		if len(sp.Stacks) > 0 && !slices.ContainsFunc(sp.Stacks, func(s string) bool { return member[s] }) {
+		if !tg.specApplies(sp, ciID) {
 			continue
 		}
 		return true

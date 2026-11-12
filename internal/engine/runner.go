@@ -142,6 +142,12 @@ func (e *Engine) Collect(ctx context.Context, opt Options, progress chan<- Progr
 		targets = filtered
 	}
 
+	// Where each collector runs is decided once for the whole run.
+	tg, err := e.targetsFor(ctx)
+	if err != nil {
+		return store.RunSummary{}, err
+	}
+
 	started := time.Now()
 	runID, err := e.Store.StartRunAs(ctx, "builtin", opt.Trigger, len(targets))
 	if err != nil {
@@ -173,7 +179,7 @@ func (e *Engine) Collect(ctx context.Context, opt Options, progress chan<- Progr
 				label = ci.Label
 			}
 
-			n, err := e.collectSome(hctx, runID, t, nil)
+			n, err := e.collectSome(hctx, runID, t, nil, tg)
 
 			mu.Lock()
 			done++
@@ -268,7 +274,10 @@ func outcomeFor(err error) model.Outcome {
 //
 // A failure to connect is returned as a *DialError, so a caller can tell an
 // unreachable host from one that answered badly.
-func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProfile, keep func(collect.Spec) bool) (int, error) {
+//
+// tg is the run's view of where collectors run; nil loads it for this host
+// when some collector needs it.
+func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProfile, keep func(collect.Spec) bool, tg *Targets) (int, error) {
 	// Recording a failure must not be prevented by the deadline that caused
 	// it. Without this a timed-out host writes no probe at all and is then
 	// reported as one nobody has ever tried to reach.
@@ -309,7 +318,7 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 		return 0, err
 	}
 
-	specs, err := e.specsForHost(ctx, p.CIID, osFamily)
+	specs, err := e.specsForHost(ctx, p.CIID, osFamily, tg)
 	if err != nil {
 		return 0, err
 	}

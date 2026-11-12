@@ -66,15 +66,60 @@ both.
    status (on or off).
 2. Select the collector to open its page. Under **Where it runs**, open
    **Switch on** (or **Add another** for the ones that take a path or a name).
-3. Under **Run on**, keep **All hosts**, or choose **Only hosts in these
-   stacks**. For example, run the nginx version only on your web
-   stacks.
+3. Under **Runs on**, leave the box blank to run it on every host, or write
+   which hosts it is for (see "Choosing where a collector runs" below). The
+   preview under the box says how many hosts match and names the first few.
 4. Select **Switch on**.
-5. Back under **Where it runs**, choose a host and select **Test** to see what
-   it reads. Nothing is saved by a test. **Turn off** is next to it.
+5. Back under **Where it runs**, type part of a host name in the box under
+   **Test on a host**, pick the host and select **Test** to see what it reads.
+   The suggestions are the hosts it runs on that have a connection. Nothing
+   is saved by a test. **Turn off** is next to it.
 
 The groups are the buttons above the list: open one, choose where it runs and
 switch it on.
+
+### Choosing where a collector runs
+
+Where a collector runs is a query in the same language as the **Inventory**
+search box, so you can write it once and see the hosts it picks there. Blank
+means every host. Some examples:
+
+| Query | Runs on |
+|---|---|
+| `stack == "web"` | Members of the web stack |
+| `stack in ("web", "edge")` | Members of either stack |
+| `name in ("web01", "web02", "db01")` | Exactly these hosts |
+| `os.family == "Linux" && stack == "web"` | Linux members of the web stack |
+| `stack == "web" \|\| name == "db01"` | The web stack, and db01 as well |
+| `!name in ("web03")` | Every host except web03 |
+
+`in` takes a list in round or square brackets, and works with any name, not
+only `name`. The editor helps you write it:
+
+- The **Stack** and **System** buttons add a condition such as
+  `stack == "web"`, joined to what is there with `||`. Only the first dozen
+  stacks are shown as buttons; type others in the same way.
+- **Add a host by name** finds hosts as you type, at most ten at a time.
+  Picking one adds it to the query's `name in (...)` list, or starts one.
+- The preview counts the hosts the query matches, and says how many of them
+  run a system the collector has no command for. Those are skipped: a host
+  must both match the query and run one of the collector's systems.
+- A query that does not parse is shown with the column of the problem, and
+  is not saved.
+
+Each switched-on collector shows where it runs in words, such as **Hosts in
+web** or **Only web01, web02**, with **matches N hosts**. Select that to open
+the **Inventory** filtered to those hosts. **Change where it runs** opens the
+same editor for that row.
+
+A collector with a command for several systems, such as one for Linux and
+one for Windows, needs no query to tell them apart: each host runs the
+command for the system it reports. The **Commands** card on its page shows
+each system's command in its own section.
+
+If a query stored by an older version, or written by hand, does not parse,
+the collector runs on no host at all rather than on every host, and its page
+says why.
 
 Two shortcuts do the same thing from elsewhere. On the **Stacks** page, each
 stack's card has **Also collect on**, which switches a group or a collector on
@@ -98,11 +143,20 @@ kryostate collectors -enable package.version -param openssl
 kryostate collectors -enable file.exists -param /etc/resolv.conf
 kryostate collectors -enable env.var -param JAVA_HOME
 kryostate collectors -enable group.web -stacks web-prod
+kryostate collectors -enable nginx.version -where 'name in ("web01", "web02")'
+kryostate collectors -enable java.version -where 'stack == "app" && os.family == "Linux"'
 kryostate collectors -enable config.value \
     -param /etc/app/app.conf -section database -key host
 kryostate collectors                                           # what is switched on
 kryostate collectors -disable 3                                # by its number in that list
 ```
+
+`-where` takes a query, as described in "Choosing where a collector runs".
+Put it in single quotes so the shell leaves the double quotes alone. A query
+that does not parse is refused, with a `^` under the problem. `-stacks a,b`
+is a shorter way to write `-where 'stack in ("a", "b")'`; with both, a host
+must satisfy both. `-enable` sets where a collector runs, replacing what was
+there; for a group, it only adds hosts, as above.
 
 For a collector that takes a value, KryoState picks the name it is recorded
 under, such as `file.resolv_conf.exists`. Choose your own with `-attr`, or in
@@ -268,6 +322,7 @@ Each line means:
 | `parse` | Which part of the output to keep | See step 4 |
 | `type` | What kind of value it is | Use `"text"`. For a yes-or-no answer use `"bool"` (see "Yes-or-no answers" below) |
 | `stacks` | Optional. Only run on hosts in these stacks | A list of stack names, such as `["web-prod"]`. Leave it out to run on every host |
+| `where` | Optional. Only run on the hosts a query matches | A query, as in the Inventory search box, such as `"name in (\"web01\", \"web02\")"`. With `stacks` as well, a host must satisfy both |
 
 Here is the nginx collector, complete:
 
@@ -424,7 +479,7 @@ refusing to start.
 | `the parse rule (regex) found nothing` | The command worked, but the rule did not match | Compare the rule with the printed output. Test changes with `-sample` |
 | The output is empty | The program printed to the error stream | Add `2>&1` to the end of the command |
 | `NOTE: the host says it is ...` | The host's system is not in `os` | Add it to the `os` list |
-| The value never appears after `refresh` | The file was not found, the host is not in `os`, or the collector is limited to `stacks` the host is not in | Run `kryostate collectors` and check your collector is listed |
+| The value never appears after `refresh` | The file was not found, the host is not in `os`, or the host is outside the collector's `stacks` or `where` | Run `kryostate collectors` and check your collector is listed; its page in the web interface counts the hosts it runs on, and shows a `where` that does not parse |
 | `"C:/Program Files/Git/etc/..." is not allowed` | Git Bash on Windows rewrote a path that starts with `/` | Run `export MSYS_NO_PATHCONV=1` first, or use PowerShell or the web page |
 
 ## Adding more collectors to the file
@@ -567,6 +622,7 @@ the ones you list in `env`.
 | `type` | no | `text` (default), `version`, `path`, `number`, `bool` (the command prints `true` or `false`) or `list` |
 | `optional` | no | `true` when some hosts legitimately lack the value |
 | `stacks` | no | Only run on hosts in these stacks |
+| `where` | no | Only run on hosts this query matches, such as `stack == "web" && os.family == "Linux"`. A query that does not parse runs nowhere, and the collector's page says why |
 | `scope` | no | Separates several instances on one host |
 | `comment` | no | A note for people. KryoState ignores it |
 

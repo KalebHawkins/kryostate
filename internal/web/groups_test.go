@@ -21,12 +21,12 @@ func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 	if !strings.Contains(msg, "already covered") {
 		t.Errorf("message %q", msg)
 	}
-	runs := map[string][]string{}
+	runs := map[string]string{}
 	cs, _ := st.Choices(ctx)
 	for _, c := range cs {
-		runs[c.Template] = c.Stacks
+		runs[c.Template] = c.Target
 	}
-	if len(runs) != 3 || len(runs["python.version"]) != 0 || strings.Join(runs["java.version"], ",") != "data" {
+	if len(runs) != 3 || runs["python.version"] != "" || runs["java.version"] != `stack == "data"` {
 		t.Fatalf("after the group: %v", runs)
 	}
 
@@ -37,8 +37,8 @@ func TestGroupsOnlyWidenWhereCollectorsRun(t *testing.T) {
 	}
 	cs, _ = st.Choices(ctx)
 	for _, c := range cs {
-		if c.Template == "java.version" && strings.Join(c.Stacks, ",") != "data,edge" {
-			t.Errorf("java runs on %v", c.Stacks)
+		if c.Template == "java.version" && c.Target != `stack in ("data", "edge")` {
+			t.Errorf("java runs on %v", c.Target)
 		}
 	}
 	// Doing it again changes nothing, and says so.

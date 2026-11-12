@@ -36,6 +36,11 @@ type Spec struct {
 	// Stacks limits the spec to members of these stacks. Empty means every
 	// host whose system is listed in OS.
 	Stacks []string `json:"stacks,omitempty"`
+	// Where limits the spec to the hosts a query in the inventory's
+	// language matches, such as name in ("web01", "web02"). With Stacks as
+	// well, a host must satisfy both. A query that does not parse matches
+	// no host, and the collector's page says why.
+	Where string `json:"where,omitempty"`
 }
 
 type specFile struct {

@@ -388,12 +388,25 @@ entries (Splunk versions and install location) come last.
 DNS), **Language runtimes** and **Web servers**.
 
 **In the web interface:** open **Collectors**. Search or filter the list,
-select a collector, and under **Where it runs** open **Switch on**, choose
-**All hosts** or only some stacks, and select **Switch on**. (Groups are the
-buttons above the list.) Then choose a host next to it and select
-**Test** to see what it reads. A test saves nothing. You can also test from a
-host's own page, under **Test a collector**, and switch things on for one
-stack from its card on the **Stacks** page.
+select a collector, and under **Where it runs** open **Switch on**. Leave
+**Runs on** blank for every host, or write a query choosing the hosts, in the
+same language as the **Inventory** search box: `stack == "web"`,
+`name in ("web01", "web02")`, or `os.family == "Linux" && stack == "app"`.
+The buttons under the box add a stack or a system, and **Add a host by
+name** finds hosts as you type and adds them to a `name in (...)` list. A
+preview counts the hosts the query matches and names the first few; nothing
+ever lists every host. Select **Switch on**. (Groups are the buttons above
+the list.) Then type part of a host name under **Test on a host**, pick one
+of the suggestions and select **Test** to see what it reads. A test saves
+nothing. You can also test from a host's own page, under **Test a
+collector**, and switch things on for one stack from its card on the
+**Stacks** page.
+
+Each switched-on collector then shows where it runs, such as **Hosts in
+web**, with **matches N hosts**, which opens the **Inventory** filtered to
+those hosts. **Change where it runs** edits it. A collector with commands for
+several systems runs the right one on each host by itself: you do not need a
+query to separate Linux from Windows. The collector guide has more examples.
 
 **On the command line:**
 
@@ -402,6 +415,7 @@ kryostate collectors -catalog
 kryostate collectors -try memory.total -host web01
 kryostate collectors -enable memory.total
 kryostate collectors -enable group.web -stacks web
+kryostate collectors -enable nginx.version -where 'name in ("web01", "web02")'
 kryostate collectors -enable file.exists -param /etc/ssh/sshd_config.d/hardening.conf
 kryostate collectors -enable config.value -param /etc/app/app.conf \
     -section database -key host
@@ -582,10 +596,11 @@ Every query has the same shape: a comparison is a **name**, an
 
 ```text
 query       = condition { ("&&" | "||") condition }
-condition   = [ "!" ] ( name [ operator value ] | "has(" name ")" | "(" query ")" )
+condition   = [ "!" ] ( name [ operator value ] | name "in" list | "has(" name ")" | "(" query ")" )
 name        = os.version, stack, file.exists["/etc/hosts"], ...
 operator    = ==  !=  =~  !~  <  <=  >  >=
 value       = "text", 'text', `text`, a number, true or false
+list        = "(" value { "," value } ")", or the same in [ ]
 ```
 
 | Write | Means |
@@ -598,6 +613,7 @@ value       = "text", 'text', `text`, a number, true or false
 | `true` `false` `8` `-1.5` | literals. `true` and `false` match attributes that record `true` or `false`, such as **File exists**. |
 | `has(x)` | the host has a value for x. So does `x != ""`; `x == ""` finds hosts without one. |
 | `x` alone | the same as `x == true`. `!x` is the same as `x != true`. |
+| `x in ("a", "b")` | x equals any value in the list, as with `==`. `name in ("web01", "web02")` picks hosts by name, `stack in ("web", "edge")` the members of either stack. `!name in (...)` is everyone else. Square brackets work too. |
 
 Names are attribute names such as `os.version`, plus a few that are not
 attributes: `name` (the host's name), `id`, `stack` (any stack it is in),
@@ -617,6 +633,9 @@ host names.
 A query that does not parse is shown with the column where the problem is.
 Queries are evaluated in KryoState over the loaded values; none of it is
 passed to the database.
+
+The same queries choose where a catalog collector runs (section 6), so a
+query that lists the right hosts here is the one to give a collector.
 
 #### JSON export
 
@@ -679,7 +698,7 @@ kryostate restore -db new.db -in backup.json
 | Runs | The collection history, manual and scheduled | Start a collection |
 | Schedules | When each collector runs next, grouped by time, with a 24-hour timeline and busy slots marked | Change how often and when each collector runs; spread a busy slot out |
 | Collectors | Every collector: built-in, catalog, your own and external programs, with a search box and filters, and the groups | Switch a group on |
-| Collector page | One collector: what it records, where it runs, its commands, its **Schedule**, and **View definition** (the collector as it would be written in `collectors.json`) | Switch a catalog collector on or off and choose its stacks, test it on a host, change its schedule |
+| Collector page | One collector: what it records, where it runs, its commands, its **Schedule**, and **View definition** (the collector as it would be written in `collectors.json`) | Switch a catalog collector on or off and choose the hosts it runs on with a query and a live count, test it on a host found by name, change its schedule |
 | Guide | This document | |
 
 Every change is written to the audit log with the name of the person who

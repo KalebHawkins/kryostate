@@ -1277,3 +1277,32 @@ a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
   .schedules tr > :nth-child(3), .schedules tr > :nth-child(4) { display: none; }
 }
 /* ---------- end schedules ---------- */
+/* ---- Where it runs: targets, previews and host pickers ---- */
+.target { border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); margin: 0; display: grid; gap: var(--s-2); min-width: 0; }
+.target legend { font-size: 0.875rem; padding: 0 var(--s-1); }
+.target__expr { width: 100%; min-height: 3rem; resize: vertical; font-family: var(--font-mono); }
+.target__preview { min-height: 1.5rem; }
+.target__preview p { margin: 0 0 var(--s-1); }
+.target__sample { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); font-family: var(--font-mono); font-size: 0.8125rem; }
+.target__chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
+.target__chip { cursor: pointer; }
+.target__chip:hover, .target__chip:focus-visible { color: var(--text); border-color: var(--border); }
+.target__words { margin: 0; }
+.target__count { margin: var(--s-1) 0 0; }
+.target__code { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.target__err { margin: 0; color: var(--bad); }
+.target__caret { margin: var(--s-1) 0 0; font-family: var(--font-mono); font-size: 0.8125rem; white-space: pre; overflow-x: auto; }
+.target__edit { margin-top: var(--s-2); }
+.ctargets__where { min-width: 14rem; }
+.hostpick { position: relative; }
+.hostpick__input { min-width: 0; width: 14rem; max-width: 100%; }
+.hostpick__list { flex-basis: 100%; }
+.hostpick__list:empty { display: none; }
+.hostpick__items { list-style: none; margin: var(--s-1) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.hostpick__item { font: inherit; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text); background: var(--bg-inset); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 0.125rem var(--s-2); cursor: pointer; }
+.hostpick__item:hover, .hostpick__item:focus-visible { border-color: var(--accent); }
+.hostpick__list p { margin: var(--s-1) 0 0; }
+.cvariant__os { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); }
+.os-tag { display: inline-block; padding: 0.0625rem var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); font-size: 0.875rem; }
+.cvariant { padding-top: var(--s-2); }
+.cvariant + .cvariant { border-top: 1px solid var(--hairline); padding-top: var(--s-3); }

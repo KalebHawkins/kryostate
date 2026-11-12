@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -123,6 +125,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /collectors/choose", s.handleChoose)
 	mux.HandleFunc("POST /collectors/remove", s.handleUnchoose)
 	mux.HandleFunc("POST /collectors/try", s.handleTry)
+	mux.HandleFunc("POST /collectors/where", s.handleChooseWhere)
+	mux.HandleFunc("GET /collectors/target/preview", s.handleTargetPreview)
+	mux.HandleFunc("GET /collectors/target/hosts", s.handleTargetHosts)
+	mux.HandleFunc("GET /collectors/try/hosts", s.handleTryHosts)
 	mux.HandleFunc("POST /stacks/hosts", s.handleBulkHosts)
 	mux.HandleFunc("POST /stacks/collectors", s.handleStackCollectors)
 	mux.HandleFunc("POST /collectors/group", s.handleChooseGroup)
@@ -336,18 +342,31 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 		View       store.StackView
 		Members    []store.HostRow
 		Roles      map[string]string
-		Collectors []collect.Choice // catalog collectors limited to this stack
+		Collectors []collect.Choice // catalog collectors limited to some hosts, run on members of this stack
 	}
 	choices, err := s.Store.Choices(r.Context())
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	tg, err := s.targetsNow(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
 	var everywhere []collect.Choice
 	for _, c := range choices {
-		if len(c.Stacks) == 0 {
+		if c.Target == "" {
 			everywhere = append(everywhere, c)
 		}
+	}
+	// A collector is listed on a stack when it names the stack, or when its
+	// target matches any member, so the card says what really runs there.
+	runsOn := func(c collect.Choice, stack string, members []store.HostRow) bool {
+		if names, ok := query.ListOf(c.Target, "stack"); ok {
+			return slices.Contains(names, stack)
+		}
+		return slices.ContainsFunc(members, func(m store.HostRow) bool { return tg.Match(c.Target, m.CI.ID) })
 	}
 	out := make([]stackWithMembers, 0, len(views))
 	for _, v := range views {
@@ -363,10 +382,8 @@ func (s *Server) handleStacks(w http.ResponseWriter, r *http.Request) {
 		}
 		row := stackWithMembers{View: v, Members: m, Roles: roles}
 		for _, c := range choices {
-			for _, name := range c.Stacks {
-				if name == v.Stack.Name {
-					row.Collectors = append(row.Collectors, c)
-				}
+			if c.Target != "" && runsOn(c, v.Stack.Name, m) {
+				row.Collectors = append(row.Collectors, c)
 			}
 		}
 		out = append(out, row)

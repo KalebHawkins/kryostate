@@ -39,31 +39,18 @@ func (e *Engine) AllSpecs(ctx context.Context) (*collect.SpecSet, error) {
 }
 
 // specsForHost narrows AllSpecs to what applies to one host: its operating
-// system, and any stacks a spec is limited to.
-func (e *Engine) specsForHost(ctx context.Context, ciID, osFamily string) ([]collect.Spec, error) {
+// system, and the hosts a spec targets. tg is the run's view of every host;
+// when it is nil and some spec has a target, the hosts are loaded here.
+func (e *Engine) specsForHost(ctx context.Context, ciID, osFamily string, tg *Targets) ([]collect.Spec, error) {
 	all, err := e.AllSpecs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var member map[string]bool
-	var out []collect.Spec
-	for _, sp := range all.For(osFamily) {
-		if len(sp.Stacks) > 0 {
-			if member == nil {
-				member = map[string]bool{}
-				ms, err := e.Store.MembershipsOf(ctx, ciID)
-				if err != nil {
-					return nil, err
-				}
-				for _, m := range ms {
-					member[m.Stack] = true
-				}
-			}
-			if !slices.ContainsFunc(sp.Stacks, func(s string) bool { return member[s] }) {
-				continue
-			}
+	specs := all.For(osFamily)
+	if tg == nil && anyTarget(specs) {
+		if tg, err = e.LoadTargets(ctx); err != nil {
+			return nil, err
 		}
-		out = append(out, sp)
 	}
-	return out, nil
+	return slices.DeleteFunc(specs, func(sp collect.Spec) bool { return !tg.specApplies(sp, ciID) }), nil
 }

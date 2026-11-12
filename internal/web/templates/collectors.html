@@ -37,7 +37,7 @@
       <p class="muted small">Switches on: {{join .G.Titles ", "}}. A group only adds: anything already on keeps running where it does.</p>
       <form class="form" method="post" action="/collectors/group">
         <input type="hidden" name="group" value="{{.G.ID}}">
-        {{template "where-fields" dict "Stacks" $.Stacks "Selected" nil "ID" .G.ID}}
+        {{template "target-editor" dict "Key" (slug .G.ID) "Target" "" "ID" "" "Chips" $.Chips}}
         <div class="form__actions"><button class="btn btn--primary" type="submit">Switch on {{.G.Title}}</button></div>
       </form>
     </div>
@@ -97,29 +97,3 @@
 {{else}}<span class="chip chip--off">off</span>{{end}}
 {{end}}
 
-{{define "where-fields"}}
-<fieldset class="where">
-  <legend>Run on</legend>
-  <label class="check"><input type="radio" name="where" value="all" {{if not .Selected}}checked{{end}}> All hosts</label>
-  {{if .Stacks}}
-  <label class="check"><input type="radio" name="where" value="stacks" {{if .Selected}}checked{{end}}> Only hosts in these stacks:</label>
-  <div class="where__stacks">
-    {{$sel := .Selected}}
-    {{range .Stacks}}<label class="check"><input type="checkbox" name="stack" value="{{.}}" {{if has $sel .}}checked{{end}}> {{.}}</label>{{end}}
-  </div>
-  {{else}}
-  <p class="muted small">Create stacks to limit a collector to some hosts.</p>
-  {{end}}
-</fieldset>
-{{end}}
-
-{{define "try-form"}}
-{{if .Hosts}}
-<form class="form--inline" method="post" action="/collectors/try">
-  {{$name := .Name}}{{range .Values}}<input type="hidden" name="{{$name}}" value="{{.}}">{{end}}
-  <label class="visually-hidden" for="try-{{.Key}}">Host</label>
-  <select id="try-{{.Key}}" name="host">{{range .Hosts}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select>
-  <button class="btn btn--small" type="submit">Test</button>
-</form>
-{{else}}<span class="muted small">No host has a connection yet, so there is nothing to test on.</span>{{end}}
-{{end}}

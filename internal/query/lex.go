@@ -30,6 +30,7 @@ const (
 	tRParen
 	tLBrack
 	tRBrack
+	tComma
 )
 
 func (k kind) String() string {
@@ -76,6 +77,8 @@ func (k kind) String() string {
 		return "["
 	case tRBrack:
 		return "]"
+	case tComma:
+		return ","
 	}
 	return "?"
 }
@@ -255,6 +258,8 @@ func lex(src string) ([]token, error) {
 			k = tLBrack
 		case ']':
 			k = tRBrack
+		case ',':
+			k = tComma
 		case '=':
 			return nil, errAt(src, i, "a single = is not an operator: use == to compare, or =~ to match a pattern")
 		case '&':

@@ -13,6 +13,7 @@ import (
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/engine"
+	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -43,7 +44,8 @@ func cmdCollectors(ctx context.Context, args []string) error {
 	disable := fs.String("disable", "", "switch off a catalog collector, by its number in the list or its catalog name")
 	param := fs.String("param", "", "with -enable, -disable or -try: the path, variable or package a catalog template needs")
 	attr := fs.String("attr", "", "with -enable: the attribute to record it as, blank for a sensible default")
-	stacks := fs.String("stacks", "", "with -enable: comma-separated stacks to limit it to, blank for every host")
+	stacks := fs.String("stacks", "", "with -enable: comma-separated stacks to limit it to, the same as -where 'stack in (\"a\", \"b\")'")
+	where := fs.String("where", "", "with -enable: a query choosing the hosts it runs on, such as 'name in (\"web01\", \"web02\")' or 'stack == \"web\" && os.family == \"Linux\"'; blank for every host")
 	initFile := fs.Bool("init", false, "create a starter "+defaultCollectorsFile+" next to the database, for collectors of your own")
 	try := fs.String("try", "", "test a collector, by catalog name or id, and record nothing")
 	host := fs.String("host", "", "with -try: run the command on this host")
@@ -96,22 +98,25 @@ func cmdCollectors(ctx context.Context, args []string) error {
 		return listCatalog(ctx, st)
 
 	case *enable != "":
+		target, err := enableTarget(*stacks, *where)
+		if err != nil {
+			return err
+		}
 		if g, ok := collect.LookupGroup(*enable); ok {
-			return enableGroup(ctx, st, g, splitIDs(*stacks))
+			return enableGroup(ctx, st, g, target)
 		}
 		c, err := st.PutChoice(ctx, collect.Choice{Template: *enable, Param: *param, Attr: *attr,
-			Stacks: splitIDs(*stacks)}, actor())
+			Target: target}, actor())
 		if err != nil {
 			if _, ok := collect.Lookup(*enable); !ok {
 				return fmt.Errorf("%w; list the catalog with: kryostate collectors -catalog", err)
 			}
 			return err
 		}
-		where := "every host"
-		if len(c.Stacks) > 0 {
-			where = "hosts in " + strings.Join(c.Stacks, ", ")
+		fmt.Printf("%s is on for %s, recorded as %s.\n", c.Label(), runsOn(c.Target), c.Attr)
+		if c.Target != "" {
+			fmt.Printf("see them:    kryostate hosts -q '%s'\n", c.Target)
 		}
-		fmt.Printf("%s is on for %s, recorded as %s.\n", c.Label(), where, c.Attr)
 		fmt.Printf("try it now:  kryostate collectors -try %s%s -host <name>\n", c.Template, paramFlag(c.Param))
 		fmt.Println("collect:     kryostate refresh")
 		return nil
@@ -171,6 +176,31 @@ func showDefinition(w io.Writer, eng *engine.Engine, ref, param string) error {
 	return err
 }
 
+// enableTarget is where -enable switches a collector on: -stacks written as a
+// query, and -where, both of which a host must satisfy. A -where that does
+// not parse is refused with a caret under the problem.
+func enableTarget(stacks, where string) (string, error) {
+	where = strings.TrimSpace(where)
+	if where != "" {
+		if _, err := query.Parse(where); err != nil {
+			var qe *query.Error
+			if errors.As(err, &qe) {
+				return "", fmt.Errorf("-where: %s\n  %s\n  %s", qe.Msg, where, qe.Caret())
+			}
+			return "", fmt.Errorf("-where: %w", err)
+		}
+	}
+	return query.And(store.StacksTarget(splitIDs(stacks)), where), nil
+}
+
+// runsOn names a target in a sentence.
+func runsOn(target string) string {
+	if target == "" {
+		return "every host"
+	}
+	return "hosts matching " + target
+}
+
 func paramFlag(p string) string {
 	if p == "" {
 		return ""
@@ -181,14 +211,10 @@ func paramFlag(p string) string {
 // enableGroup switches on every entry in a group. It only ever widens: an
 // entry already on for every host is left alone, and one limited to other
 // stacks gains these.
-func enableGroup(ctx context.Context, st *store.Store, g collect.Group, stacks []string) error {
-	where := "every host"
-	if len(stacks) > 0 {
-		where = "hosts in " + strings.Join(stacks, ", ")
-	}
-	fmt.Printf("%s, for %s:\n", g.Title, where)
+func enableGroup(ctx context.Context, st *store.Store, g collect.Group, target string) error {
+	fmt.Printf("%s, for %s:\n", g.Title, runsOn(target))
 	for _, id := range g.Entries {
-		c, changed, err := st.EnableChoice(ctx, collect.Choice{Template: id, Stacks: stacks}, actor())
+		c, changed, err := st.EnableChoice(ctx, collect.Choice{Template: id, Target: target}, actor())
 		if err != nil {
 			return err
 		}
@@ -196,11 +222,7 @@ func enableGroup(ctx context.Context, st *store.Store, g collect.Group, stacks [
 		if !changed {
 			state = "already on"
 		}
-		runs := "every host"
-		if len(c.Stacks) > 0 {
-			runs = strings.Join(c.Stacks, ", ")
-		}
-		fmt.Printf("  %-40s %-11s runs on %s\n", c.Label(), state, runs)
+		fmt.Printf("  %-40s %-11s runs on %s\n", c.Label(), state, runsOn(c.Target))
 	}
 	fmt.Println("collect:     kryostate refresh")
 	return nil
@@ -306,6 +328,7 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 	fmt.Println("a config value:  kryostate collectors -enable config.value -param /etc/app/app.conf -section database -key host")
 	fmt.Println("with a value:    kryostate collectors -enable file.exists -param /etc/resolv.conf")
 	fmt.Println("for some stacks: kryostate collectors -enable package.version -param nginx -stacks web-prod")
+	fmt.Println(`for some hosts:  kryostate collectors -enable nginx.version -where 'name in ("web01", "web02")'`)
 	fmt.Println("try first:       kryostate collectors -try memory.total -host <name>")
 	fmt.Println("written out:     kryostate collectors -show file.exists -param /etc/hosts  (as you would write it in " + defaultCollectorsFile + ")")
 	return nil
@@ -324,8 +347,8 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 		fmt.Fprintln(tw, "  #\tCOLLECTOR\tRECORDED AS\tRUNS ON")
 		for _, c := range choices {
 			where := "all hosts"
-			if len(c.Stacks) > 0 {
-				where = strings.Join(c.Stacks, ",")
+			if c.Target != "" {
+				where = c.Target
 			}
 			fmt.Fprintf(tw, "  %d\t%s\t%s\t%s\n", c.ID, c.Label(), c.Attr, where)
 		}

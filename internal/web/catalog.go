@@ -13,6 +13,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/ingest"
+	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -33,13 +34,10 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, back, err)
 		return
 	}
-	var stacks []string
-	if r.FormValue("where") == "stacks" {
-		stacks = r.Form["stack"]
-		if len(stacks) == 0 {
-			refuse(w, r, back, errors.New("choose at least one stack, or All hosts"))
-			return
-		}
+	target, err := targetForm(r)
+	if err != nil {
+		refuse(w, r, back, err)
+		return
 	}
 	param := field(r, "param")
 	if t.Param != nil && t.Param.Config() {
@@ -50,18 +48,51 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 		param = collect.ConfigParam(param, field(r, "section"), field(r, "key"))
 	}
 	c, err := s.Store.PutChoice(r.Context(), collect.Choice{
-		Template: t.ID, Param: param, Attr: field(r, "attr"), Stacks: stacks,
+		Template: t.ID, Param: param, Attr: field(r, "attr"), Target: target,
 	}, actorOf(r))
 	if err != nil {
 		refuse(w, r, back, err)
 		return
 	}
-	where := "every host"
-	if len(c.Stacks) > 0 {
-		where = "hosts in " + strings.Join(c.Stacks, ", ")
-	}
-	done(w, r, collectorURL(t.ID)+"#where", c.Label()+" is on for "+where+". It is recorded as "+c.Attr+
+	done(w, r, collectorURL(t.ID)+"#where", c.Label()+" is on for "+targetPhrase(c.Target)+". It is recorded as "+c.Attr+
 		" from the next collection. Use Test to try it on one host now.")
+}
+
+// targetPhrase names a target in a sentence.
+func targetPhrase(target string) string {
+	if target == "" {
+		return "every host"
+	}
+	return "hosts matching " + target
+}
+
+// handleChooseWhere changes where one switched-on catalog collector runs,
+// keeping its value and the name it records under.
+func (s *Server) handleChooseWhere(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(field(r, "id"), 10, 64)
+	if err != nil {
+		refuse(w, r, "/collectors", errors.New("bad collector id"))
+		return
+	}
+	c, err := s.Store.Choice(r.Context(), id)
+	if err != nil {
+		refuse(w, r, "/collectors", errors.New("that collector is not switched on"))
+		return
+	}
+	back := collectorURL(c.Template) + "#where"
+	if t, ok := collect.Lookup(c.Template); ok && t.Reveals && !s.AllowRevealing {
+		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so where it runs is changed from the command line, or the server must be started with -allow-content-collectors"))
+		return
+	}
+	if c.Target, err = targetForm(r); err != nil {
+		refuse(w, r, back, err)
+		return
+	}
+	if c, err = s.Store.PutChoice(r.Context(), c, actorOf(r)); err != nil {
+		refuse(w, r, back, err)
+		return
+	}
+	done(w, r, back, c.Label()+" now runs on "+targetPhrase(c.Target)+".")
 }
 
 func (s *Server) handleUnchoose(w http.ResponseWriter, r *http.Request) {
@@ -252,10 +283,10 @@ func fixedEntries() []collect.Template {
 	return out
 }
 
-// enableFor switches on a group, or one fixed catalog entry, for the given
-// stacks (none meaning every host). It only widens where things run. It
+// enableFor switches on a group, or one fixed catalog entry, for the hosts
+// a target matches (blank meaning every host). It only widens where things run. It
 // returns a sentence for the flash message.
-func (s *Server) enableFor(r *http.Request, what string, stacks []string) (string, error) {
+func (s *Server) enableFor(r *http.Request, what, target string) (string, error) {
 	var ids []string
 	title := ""
 	if g, ok := collect.LookupGroup(what); ok {
@@ -267,7 +298,7 @@ func (s *Server) enableFor(r *http.Request, what string, stacks []string) (strin
 	}
 	var on, already []string
 	for _, id := range ids {
-		c, changed, err := s.Store.EnableChoice(r.Context(), collect.Choice{Template: id, Stacks: stacks}, actorOf(r))
+		c, changed, err := s.Store.EnableChoice(r.Context(), collect.Choice{Template: id, Target: target}, actorOf(r))
 		if err != nil {
 			return "", err
 		}
@@ -277,9 +308,9 @@ func (s *Server) enableFor(r *http.Request, what string, stacks []string) (strin
 			already = append(already, c.Label())
 		}
 	}
-	where := "every host"
-	if len(stacks) > 0 {
-		where = strings.Join(stacks, ", ")
+	where := targetPhrase(target)
+	if names, ok := query.ListOf(target, "stack"); ok {
+		where = strings.Join(names, ", ")
 	}
 	msg := title + ": "
 	switch {
@@ -304,15 +335,12 @@ func (s *Server) handleChooseGroup(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, back, err)
 		return
 	}
-	var stacks []string
-	if r.FormValue("where") == "stacks" {
-		stacks = r.Form["stack"]
-		if len(stacks) == 0 {
-			refuse(w, r, back, errors.New("choose at least one stack, or All hosts"))
-			return
-		}
+	target, err := targetForm(r)
+	if err != nil {
+		refuse(w, r, back, err)
+		return
 	}
-	msg, err := s.enableFor(r, field(r, "group"), stacks)
+	msg, err := s.enableFor(r, field(r, "group"), target)
 	if err != nil {
 		refuse(w, r, back, err)
 		return
@@ -329,7 +357,7 @@ func (s *Server) handleStackCollectors(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, "/stacks", errors.New("no such stack"))
 		return
 	}
-	msg, err := s.enableFor(r, field(r, "what"), []string{stack})
+	msg, err := s.enableFor(r, field(r, "what"), store.StacksTarget([]string{stack}))
 	if err != nil {
 		refuse(w, r, back, err)
 		return
