@@ -480,18 +480,48 @@ people look after:
   scheduled starts while it runs.
 - The shortest interval allowed is 5 minutes.
 
-The **Schedules** page shows these limits at the top.
+So collectors do run concurrently across hosts, but never more than 4
+sessions at a time; the rest wait their turn. The **Schedules** page shows
+these limits at the top.
 
-**In the web interface:** **Schedules** lists each collector with its last
-run and next due time. Type an interval such as `30m`, `6h` or `1d`, and for
-whole days optionally a time, then **Save**; or choose **Manual only**.
-**Default** goes back to the default. Each collector's own page has the same
-controls in its **Schedule** card.
+**When a collector runs.** A schedule with a time of day (`-at 02:00`) runs
+at exactly that time. A schedule without one, which includes every default,
+runs at a time picked from the collector's name, the way Jenkins reads `H` in
+a cron line: `builtin.os` might run daily at 16:04 and `builtin.hw` at 17:39,
+every day, the same each day. An interval shorter than a day gets an offset
+the same way, counted from midnight, so "every 6 hours" might mean 01:23,
+07:23, 13:23 and 19:23. Without this, every collector a full collection had
+just run would come due again in the same minute. A collector that has never
+run is due straight away; after that it keeps to its own time. A slot less
+than an hour after the last run (half the interval, for intervals under two
+hours) is skipped, so an evening **Collect now** does not cause a second run
+straight after.
+
+**In the web interface:** **Schedules** is a timetable. A strip at the top
+shows how many runs start in each of the next 24 hours, with busy hours
+marked; select an hour to jump to it. Below it, collectors are listed soonest
+first by clock time ("Today 14:00", "Tomorrow 02:00", "Thu 02:00", in the
+server's time zone), and collectors whose runs start within 15 minutes of
+each other are grouped under one heading with how many hosts they reach, how
+many sessions they open and roughly how long those take, measured from
+recent scheduled runs. A group that opens more than ten times the session
+limit, or that has four or more collectors needing more sessions than can be
+open at once, is marked **Busy slot**; when two or more of them run daily or
+less often, **Spread these over 2h** gives each its own time across the two
+hours from where the group starts.
+
+To change one, select **Edit** on its row and pick how often it runs: the
+default, **Manual only**, every 15 or 30 minutes, every 1, 2, 4, 6 or 12
+hours, daily, every 2 days, weekly, or **Custom** for any other interval
+such as `90m` or `3d`. For daily or longer, pick an hour and minute, or leave
+the hour on **Picked for it**; **Use a quiet time** picks the quarter hour
+with the fewest other runs near it. Then **Save**. Each collector's own page
+has the same editor in its **Schedule** card.
 
 **On the command line:**
 
 ```sh
-kryostate collectors -schedules                               # list them
+kryostate collectors -schedules                               # list them, grouped by time
 kryostate collectors -schedule builtin.os -every 1d -at 02:00
 kryostate collectors -schedule cpu.cores -every 6h
 kryostate collectors -schedule cpu.cores -manual              # or -default
@@ -647,7 +677,7 @@ kryostate restore -db new.db -in backup.json
 | Charts | One chart for each attribute: a donut for a few values, ranked bars for more, a histogram for numbers. Attributes that identify a host are listed, not charted. Open a chart for a larger view and a table; each value links to its hosts | |
 | Changes | Collected values that changed, by time window | |
 | Runs | The collection history, manual and scheduled | Start a collection |
-| Schedules | Each collector's schedule, last run and next due time | Change how often each collector runs |
+| Schedules | When each collector runs next, grouped by time, with a 24-hour timeline and busy slots marked | Change how often and when each collector runs; spread a busy slot out |
 | Collectors | Every collector: built-in, catalog, your own and external programs, with a search box and filters, and the groups | Switch a group on |
 | Collector page | One collector: what it records, where it runs, its commands, its **Schedule**, and **View definition** (the collector as it would be written in `collectors.json`) | Switch a catalog collector on or off and choose its stacks, test it on a host, change its schedule |
 | Guide | This document | |

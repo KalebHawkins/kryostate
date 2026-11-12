@@ -32,9 +32,25 @@ type scheduleRow struct {
 	LastRun  time.Time
 	Outcome  string
 	Detail   string
-	Next     string
-	Overdue  bool
-	Running  bool
+	// Next is how long until the next run ("in 9h"); When is its clock
+	// time ("Tomorrow 02:00"), in the server's location.
+	Next    string
+	When    string
+	NextAt  time.Time
+	Overdue bool
+	Running bool
+	// Spread is the time picked for a schedule with none of its own.
+	Spread   string
+	WholeDay bool
+	// Hosts is how many hosts a run logs in to.
+	Hosts int
+	// Quiet is the least busy time of day, for a whole-day collector.
+	Quiet string
+	// The editor's choices, with what is in force now selected.
+	Options     []option
+	CustomEvery string
+	HourOpts    []option
+	MinuteOpts  []option
 }
 
 func untilText(t, now time.Time) string {
@@ -56,72 +72,19 @@ func untilText(t, now time.Time) string {
 	}
 }
 
+// scheduleRows lists every collector's schedule in plan order, for the
+// collector page's Schedule card.
 func (s *Server) scheduleRows(ctx context.Context) ([]scheduleRow, error) {
-	if s.Scheduler == nil {
-		return nil, nil
-	}
-	plan, err := s.Scheduler.Plan(ctx)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now()
-	out := make([]scheduleRow, 0, len(plan))
-	for _, p := range plan {
-		r := scheduleRow{
-			Key: p.Key, Anchor: anchorFor(p.Key), Kind: p.Kind, Title: p.Title,
-			Describe: p.Schedule.Describe(), Default: p.Default.Describe(),
-			Custom: p.Custom, Manual: p.Schedule.Manual(), At: p.Schedule.At,
-			LastRun: p.State.LastStarted, Outcome: p.State.Outcome, Detail: p.State.Detail,
-			Running: p.Running,
-		}
-		if r.LastRun.IsZero() {
-			r.LastRun = p.Last
-		}
-		if p.Running {
-			r.Outcome = "running"
-		}
-		if !r.Manual {
-			r.Every = engine.FormatEvery(p.Schedule.Every)
-		} else {
-			r.Every = engine.FormatEvery(p.Default.Every)
-		}
-		r.Next = untilText(p.Next, now)
-		r.Overdue = !p.Next.IsZero() && !p.Next.After(now)
-		if r.Manual {
-			r.Next = "only when asked"
-		}
-		out = append(out, r)
-	}
-	return out, nil
-}
-
-func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.scheduleRows(r.Context())
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	d := struct {
-		Rows        []scheduleRow
-		Scheduling  bool
-		MinEvery    string
-		MaxSessions int
-		PerHost     int
-		Spread      string
-		Backoff     string
-		BackoffMax  string
-	}{Rows: rows, MinEvery: engine.FormatEvery(engine.MinEvery)}
-	if sc := s.Scheduler; sc != nil {
-		d.Scheduling = sc.Running()
-		d.MaxSessions, d.PerHost = sc.MaxSessions, sc.PerHost
-		d.Spread = engine.FormatEvery(sc.Spread)
-		d.Backoff, d.BackoffMax = engine.FormatEvery(sc.BackoffBase), engine.FormatEvery(sc.BackoffMax)
-	}
-	s.render(w, r, "schedules.html", "Schedules", "schedules", d)
+	v, err := s.scheduleView(ctx)
+	return v.Rows, err
 }
 
 // handleSetSchedule changes one collector's schedule. The collector must be
 // one that exists; the form cannot name a command, only pick a collector.
+//
+// The editor posts a preset (with a custom interval, hour and minute where
+// they apply). The older fields, mode with every and at, are still read, so
+// a form or script written for them keeps working.
 func (s *Server) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
 	back := "/schedules"
 	if b := field(r, "back"); strings.HasPrefix(b, "/collectors/") && !strings.ContainsAny(b, `\?#`) && !strings.Contains(b, "//") {
@@ -135,12 +98,49 @@ func (s *Server) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	key := field(r, "collector")
 	actor := actorOf(r)
+	mode, sc := field(r, "mode"), engine.Schedule{}
+	if preset := field(r, "preset"); preset != "" {
+		form := scheduleForm{Preset: preset, Every: field(r, "every"), Hour: field(r, "hour"), Minute: field(r, "minute")}
+		quiet := mode == "quiet"
+		if quiet {
+			form.Hour = "" // the quiet time replaces whatever the boxes say
+		}
+		var err error
+		if mode, sc, err = parseScheduleForm(form); err != nil {
+			refuse(w, r, back, err)
+			return
+		}
+		if quiet {
+			if mode != "set" || sc.Every%(24*time.Hour) != 0 {
+				refuse(w, r, back, errors.New("a quiet time goes with a daily (or longer) interval; choose Daily first"))
+				return
+			}
+			o, err := s.Scheduler.Outlook(ctx)
+			if err != nil {
+				s.fail(w, err)
+				return
+			}
+			c, err := s.Scheduler.Find(ctx, key)
+			if err != nil {
+				refuse(w, r, back, err)
+				return
+			}
+			sc.At = engine.QuietClock(o.Occurrences, o.Load, c.Key, s.Scheduler.Loc())
+		}
+	} else if mode != "default" && mode != "manual" {
+		every, err := engine.ParseEvery(field(r, "every"))
+		if err != nil {
+			refuse(w, r, back, err)
+			return
+		}
+		mode, sc = "set", engine.Schedule{Every: every, At: field(r, "at")}
+	}
 	var (
 		c   engine.Collector
 		err error
 		msg string
 	)
-	switch field(r, "mode") {
+	switch mode {
 	case "default":
 		c, err = s.Scheduler.ResetSchedule(ctx, key, actor)
 		msg = "back to its default, " + c.Default.Describe()
@@ -148,15 +148,13 @@ func (s *Server) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
 		c, err = s.Scheduler.SetSchedule(ctx, key, engine.Schedule{}, actor)
 		msg = "manual only"
 	default:
-		var every time.Duration
-		every, err = engine.ParseEvery(field(r, "every"))
-		if err == nil {
-			sc := engine.Schedule{Every: every, At: field(r, "at")}
-			c, err = s.Scheduler.SetSchedule(ctx, key, sc, actor)
-			if at, aerr := engine.NormalizeClock(sc.At); aerr == nil {
-				sc.At = at
-			}
-			msg = sc.Describe()
+		c, err = s.Scheduler.SetSchedule(ctx, key, sc, actor)
+		if at, aerr := engine.NormalizeClock(sc.At); aerr == nil {
+			sc.At = at
+		}
+		msg = sc.Describe()
+		if t := engine.SpreadText(c.Key, sc); t != "" && err == nil {
+			msg += " (" + t + ", picked for it)"
 		}
 	}
 	if err != nil {

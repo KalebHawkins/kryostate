@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -77,8 +78,7 @@ func TestNextDue(t *testing.T) {
 	}{
 		{"manual is never due", Schedule{}, at("2026-11-01 00:00"), time.Time{}},
 		{"never run is due now", Schedule{Every: time.Hour}, time.Time{}, now},
-		{"an interval after the last start", Schedule{Every: 6 * time.Hour}, at("2026-11-12 09:00"), at("2026-11-12 15:00")},
-		{"overdue stays in the past, run once", Schedule{Every: time.Hour}, at("2026-11-01 00:00"), at("2026-11-01 01:00")},
+		{"never run without a time is due now", Schedule{Every: 24 * time.Hour}, time.Time{}, now},
 		{"never run with a time waits for it", Schedule{Every: 24 * time.Hour, At: "02:00"}, time.Time{}, at("2026-11-13 02:00")},
 		{"never run, time later today", Schedule{Every: 24 * time.Hour, At: "23:30"}, time.Time{}, at("2026-11-12 23:30")},
 		{"a late start does not drift", Schedule{Every: 24 * time.Hour, At: "02:00"}, at("2026-11-12 02:03"), at("2026-11-13 02:00")},
@@ -86,10 +86,87 @@ func TestNextDue(t *testing.T) {
 		{"every two days", Schedule{Every: 48 * time.Hour, At: "02:00"}, at("2026-11-12 02:00"), at("2026-11-14 02:00")},
 	}
 	for _, c := range cases {
-		got := NextDue(c.s, c.last, now, loc)
+		got := NextDue("builtin.os", c.s, c.last, now, loc)
 		if !got.Equal(c.want) {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// TestSpreadOffsets: a schedule without a time of day runs at a time picked
+// from a hash of the collector's key, the same every time, and different
+// collectors land at different times, so that defaults do not all fire in
+// the minute after a full collection.
+func TestSpreadOffsets(t *testing.T) {
+	loc := time.FixedZone("test", 2*3600)
+	last := time.Date(2026, 11, 12, 14, 0, 0, 0, loc) // a full collection
+	now := last.Add(time.Minute)
+
+	// Deterministic, and the same as what the page says.
+	if SpreadClock("builtin.os") != SpreadClock("builtin.os") {
+		t.Fatal("SpreadClock is not deterministic")
+	}
+	daily := Schedule{Every: 24 * time.Hour}
+	next := NextDue("builtin.os", daily, last, now, loc)
+	if got := next.In(loc).Format("15:04"); got != SpreadClock("builtin.os") {
+		t.Errorf("daily runs at %s, SpreadClock says %s", got, SpreadClock("builtin.os"))
+	}
+	if d := next.Sub(last); d < time.Hour || d >= 25*time.Hour {
+		t.Errorf("daily after a run: %v later", d)
+	}
+	if SpreadText("builtin.os", daily) != SpreadClock("builtin.os") {
+		t.Errorf("SpreadText = %q", SpreadText("builtin.os", daily))
+	}
+	// Once on its slot it keeps to it, a day at a time.
+	if again := NextDue("builtin.os", daily, next.Add(20*time.Second), next.Add(time.Minute), loc); again.Sub(next) != 24*time.Hour {
+		t.Errorf("the next day's run is %v after, want 24h", again.Sub(next))
+	}
+
+	// An explicit time is kept exactly.
+	if got := NextDue("builtin.os", Schedule{Every: 24 * time.Hour, At: "02:00"}, last, now, loc); got.In(loc).Format("15:04") != "02:00" {
+		t.Errorf("explicit at moved to %v", got)
+	}
+	if SpreadText("builtin.os", Schedule{Every: 24 * time.Hour, At: "02:00"}) != "" {
+		t.Error("an explicit time is described as spread")
+	}
+
+	// Shorter intervals keep the same offset into each period, counted from
+	// local midnight.
+	six := Schedule{Every: 6 * time.Hour}
+	n1 := NextDue("catalog.file.exists.3", six, last, now, loc)
+	if d := n1.Sub(last); d < time.Hour || d >= 7*time.Hour {
+		t.Errorf("6h after a run: %v later", d)
+	}
+	mid := time.Date(n1.Year(), n1.Month(), n1.Day(), 0, 0, 0, 0, loc)
+	if off := n1.Sub(mid) % (6 * time.Hour); off != spreadOffset("catalog.file.exists.3", 6*time.Hour) {
+		t.Errorf("6h slot is %v into its period, want %v", off, spreadOffset("catalog.file.exists.3", 6*time.Hour))
+	}
+	if n2 := NextDue("catalog.file.exists.3", six, n1.Add(30*time.Second), n1.Add(time.Minute), loc); n2.Sub(n1) != 6*time.Hour {
+		t.Errorf("6h runs %v apart", n2.Sub(n1))
+	}
+	if txt := SpreadText("catalog.file.exists.3", six); !strings.HasPrefix(txt, "from ") {
+		t.Errorf("SpreadText for 6h = %q", txt)
+	}
+	// An interval that does not divide a day still advances by it.
+	odd := Schedule{Every: 36 * time.Hour}
+	o1 := NextDue("spec.odd", odd, last, now, loc)
+	if o2 := NextDue("spec.odd", odd, o1, o1, loc); o2.Sub(o1) != 36*time.Hour {
+		t.Errorf("36h runs %v apart", o2.Sub(o1))
+	}
+
+	// Forty collectors run together by a full collection come due spread
+	// over the day, not in one burst.
+	hours := map[int]int{}
+	for i := range 40 {
+		key := fmt.Sprintf("catalog.file.exists.%d", i)
+		hours[NextDue(key, daily, last, now, loc).In(loc).Hour()]++
+	}
+	busiest := 0
+	for _, n := range hours {
+		busiest = max(busiest, n)
+	}
+	if len(hours) < 12 || busiest > 8 {
+		t.Errorf("forty defaults landed in %d hours, %d in the busiest", len(hours), busiest)
 	}
 }
 
@@ -319,7 +396,7 @@ func TestScheduledRunIsOnlyThatCollector(t *testing.T) {
 	if keys, _ := fx.s.RunDue(ctx); len(keys) != 0 {
 		t.Errorf("ran again immediately: %v", keys)
 	}
-	fx.clock.add(61 * time.Minute)
+	fx.clock.add(91 * time.Minute) // its own slot comes round within an interval and a half
 	keys, err = fx.s.RunDue(ctx)
 	fx.s.Wait()
 	if err != nil || len(keys) != 1 {
@@ -469,8 +546,8 @@ func TestUnreachableHostIsBackedOff(t *testing.T) {
 		t.Error("a healthy host was put in backoff")
 	}
 
-	// Due again in 31 minutes, but the down host is still being left alone.
-	fx.clock.add(31 * time.Minute)
+	// Due again within 45 minutes (its slot), but the down host is still being left alone.
+	fx.clock.add(46 * time.Minute)
 	run()
 	if fx.f.dials["down"] != 1 {
 		t.Errorf("down host dialled %d times while backing off", fx.f.dials["down"])

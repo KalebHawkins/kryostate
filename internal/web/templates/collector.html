@@ -122,17 +122,10 @@
   {{if not .Scheduling}}<p class="notice small">Scheduling is off in this server, so this collector runs only when someone collects.</p>{{end}}
   {{range .Schedules}}
   <div class="csched">
-    <p><strong>{{.Title}}</strong> runs {{.Describe}}{{if .Custom}} <span class="chip chip--human" title="default: {{.Default}}">chosen</span>{{else}} <span class="muted small">(default)</span>{{end}}.
-      Last run {{if .LastRun.IsZero}}never{{else}}{{ago .LastRun}}{{end}}{{if .Outcome}} ({{.Outcome}}){{end}}; next {{.Next}}.</p>
-    <form class="form--inline sched-form" method="post" action="/schedules">
-      <input type="hidden" name="collector" value="{{.Key}}">
-      <input type="hidden" name="back" value="/collectors/{{$.Row.ID}}">
-      <label>Every <input type="text" name="every" value="{{.Every}}" size="5" class="mono" title="30m, 6h, 1d, 7d"></label>
-      <label>at <input type="time" name="at" value="{{.At}}" title="Time of day, only with whole days"></label>
-      <button class="btn btn--small" type="submit" name="mode" value="every">Save</button>
-      {{if not .Manual}}<button class="btn btn--small btn--ghost" type="submit" name="mode" value="manual">Manual only</button>{{end}}
-      {{if .Custom}}<button class="btn btn--small btn--ghost" type="submit" name="mode" value="default" title="{{.Default}}">Default</button>{{end}}
-    </form>
+    <p><strong>{{.Title}}</strong> runs {{.Describe}}{{with .Spread}}, {{.}} (picked for it){{end}}{{if .Custom}} <span class="chip chip--human" title="default: {{.Default}}">chosen</span>{{else}} <span class="muted small">(default)</span>{{end}}.</p>
+    <p class="csched__when"><span class="{{if .Overdue}}sched--due{{end}}">Next: <strong>{{.When}}</strong>{{if not .Manual}}{{if not .Running}} <span class="muted small">{{.Next}}</span>{{end}}{{end}}</span>
+      <span class="muted small">· last run {{if .LastRun.IsZero}}never{{else}}{{ago .LastRun}}{{end}}{{if .Outcome}} ({{.Outcome}}){{end}}{{if not .Manual}} · {{.Hosts}} host{{if ne .Hosts 1}}s{{end}}{{end}}</span></p>
+    {{template "sched-editor" dict "R" . "Back" (printf "/collectors/%s" $.Row.ID)}}
   </div>
   {{else}}
   <p class="muted">{{if eq .Row.Source "catalog"}}Not switched on, so it has no schedule yet. Switch it on above, then set how often it runs here.{{else}}No schedule for this collector.{{end}}</p>

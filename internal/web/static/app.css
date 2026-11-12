@@ -1166,3 +1166,114 @@ input.qbar__input { flex: 1 1 28rem; min-width: 0; font-family: var(--font-mono)
 .csched + .csched { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--hairline); }
 .csched .sched-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-2) 0; }
 .csched .sched-form label { display: inline-flex; align-items: center; gap: var(--s-1); margin: 0; }
+
+/* ---------- schedules: timetable, clusters and editor ----------
+   The schedules page and the collector page's Schedule card. Kept in one
+   block so it can be read (and merged) on its own. */
+
+/* Row headers and cells share padding and alignment. */
+.schedules tbody th[scope="row"],
+.schedules tbody td {
+  padding: calc(var(--s-1) + 2px) var(--s-3);
+  border-bottom: 1px solid rgb(255 255 255 / 0.04);
+  vertical-align: top;
+  text-align: left;
+}
+.schedules tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.schedules thead th:nth-child(3) { text-align: right; }
+.schedules th[scope="col"]:first-child { width: 34%; }
+.sched-when { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sched-edit-cell { width: 1%; white-space: nowrap; }
+
+.sched-limits { margin: 0 0 var(--s-2); padding: var(--s-2) var(--s-3); border-left: 3px solid var(--accent); background: var(--bg-raised); border-radius: var(--r-sm); }
+
+/* The next 24 hours, one bar per hour. */
+.sched-timeline { margin: var(--s-5) 0 var(--s-4); }
+.sched-timeline__title { font-size: 1rem; margin: 0 0 var(--s-2); }
+.sched-timeline__title .muted { font-weight: 400; margin-left: var(--s-2); }
+.sched-hours {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  padding: var(--s-2) var(--s-2) var(--s-1);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.sched-hour { display: grid; gap: 2px; text-decoration: none; color: var(--text-faint); border-radius: var(--r-sm); }
+a.sched-hour { color: var(--text-dim); }
+a.sched-hour:hover, a.sched-hour:focus-visible { color: var(--text); background: rgb(255 255 255 / 0.05); }
+.sched-hour__bar { display: flex; align-items: flex-end; height: 3rem; border-bottom: 1px solid var(--hairline); }
+.sched-hour__fill { display: block; width: 100%; background: rgb(106 167 232 / 0.55); border-radius: 2px 2px 0 0; }
+a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
+.sched-hour--busy .sched-hour__fill { background: var(--warn); }
+.sched-hour--busy { color: var(--warn); }
+.sched-hour__label { font-size: 0.6875rem; text-align: center; font-variant-numeric: tabular-nums; }
+@media (max-width: 40rem) {
+  .sched-hour:not(:nth-child(3n+1)) .sched-hour__label { visibility: hidden; }
+}
+
+/* One cluster of runs starting close together. */
+.sched-cluster { margin-top: var(--s-5); scroll-margin-top: calc(var(--nav-h) + var(--s-4)); }
+.sched-cluster__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-3); font-size: 1rem; margin: 0 0 var(--s-2); }
+.sched-cluster__when { font-size: 1.125rem; font-variant-numeric: tabular-nums; }
+.sched-cluster__meta { color: var(--text-dim); font-weight: 500; }
+.sched-cluster__in { font-weight: 400; font-size: 0.8125rem; }
+.sched-cluster__cost { margin: 0 0 var(--s-2); }
+.sched-cluster:target .sched-cluster__when { color: var(--accent-strong); }
+.sched-cluster--busy .sched-cluster__when { color: var(--warn); }
+.sched-storm {
+  margin: 0 0 var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid rgb(216 161 63 / 0.35);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-sm);
+  background: rgb(216 161 63 / 0.06);
+}
+.sched-storm p { margin: 0 0 var(--s-1); }
+.sched-storm form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.sched-also { margin: var(--s-2) 0 0; }
+
+/* The editor: closed it is one small button; open it is a short form. */
+.sched-editor > summary { list-style: none; cursor: pointer; border-color: var(--border); }
+.sched-editor > summary::-webkit-details-marker { display: none; }
+.sched-editor[open] > summary { color: var(--text); background: rgb(255 255 255 / 0.07); }
+.sched-editor .sched-form {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  margin: var(--s-2) 0 0;
+  padding: var(--s-3);
+  min-width: 15rem;
+  white-space: normal;
+  background: var(--bg-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.sched-field { display: grid; gap: var(--s-1); font-size: 0.8125rem; color: var(--text-dim); }
+.sched-field select { min-width: 12rem; }
+.sched-field .hint, .sched-clock .hint { font-size: 0.75rem; color: var(--text-faint); }
+.sched-form input[name="every"] { width: 7rem; }
+.sched-clock { display: flex; align-items: center; gap: var(--s-1); margin: 0; padding: 0; border: 0; font-size: 0.8125rem; color: var(--text-dim); }
+.sched-clock legend { float: left; margin-right: var(--s-2); padding: 0; }
+.sched-clock select { min-width: 0; width: auto; }
+.sched-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.csched .sched-editor { margin-top: var(--s-2); }
+.csched .sched-editor .sched-form { display: grid; }
+.csched .sched-editor .sched-field { display: grid; }
+.csched__when { margin-top: var(--s-1) !important; }
+
+/* Show the custom interval and the time of day only when the choice needs
+   them. Without :has every field shows, and the server ignores the ones
+   that do not apply. */
+@supports selector(:has(a)) {
+  .sched-editor .sched-form .sched-field.sched-custom { display: none; }
+  .sched-editor .sched-form:has(option[value="custom"]:checked) .sched-field.sched-custom { display: grid; }
+  .sched-editor .sched-form .sched-clock, .sched-editor .sched-form .sched-quiet { display: none; }
+  .sched-editor .sched-form:has(option[value="1d"]:checked, option[value="2d"]:checked, option[value="7d"]:checked, option[value="custom"]:checked) .sched-clock { display: flex; }
+  .sched-editor .sched-form:has(option[value="1d"]:checked, option[value="2d"]:checked, option[value="7d"]:checked) .sched-quiet { display: inline-flex; }
+}
+@media (max-width: 40rem) {
+  .schedules tr > :nth-child(3), .schedules tr > :nth-child(4) { display: none; }
+}
+/* ---------- end schedules ---------- */
