@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"sort"
+
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,81 +16,6 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
-// catalogRow is one catalog entry as the collectors page shows it.
-type catalogRow struct {
-	T collect.Template
-	// On lists the choices made from this entry: at most one for a fixed
-	// entry, one per value for a template.
-	On []collect.Choice
-	// Allowed is false for an entry that reveals content when the server
-	// was not started with permission to offer those.
-	Allowed bool
-}
-
-type catalogGroup struct {
-	Category string
-	Rows     []catalogRow
-}
-
-// choiceRow is a switched-on collector with what the page needs to show it.
-type choiceRow struct {
-	C       collect.Choice
-	Title   string
-	Missing []string // stacks it is limited to that no longer exist
-	Reveals bool
-}
-
-func (s *Server) catalogData(ctx context.Context) ([]catalogGroup, []choiceRow, []string, error) {
-	choices, err := s.Store.Choices(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	views, err := s.Store.Stacks(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	stackNames := make([]string, 0, len(views))
-	exists := map[string]bool{}
-	for _, v := range views {
-		stackNames = append(stackNames, v.Stack.Name)
-		exists[v.Stack.Name] = true
-	}
-
-	var groups []catalogGroup
-	index := map[string]int{}
-	for _, t := range collect.Catalog {
-		row := catalogRow{T: t, Allowed: !t.Reveals || s.AllowRevealing}
-		for _, c := range choices {
-			if c.Template == t.ID {
-				row.On = append(row.On, c)
-			}
-		}
-		i, ok := index[t.Category]
-		if !ok {
-			i = len(groups)
-			index[t.Category] = i
-			groups = append(groups, catalogGroup{Category: t.Category})
-		}
-		groups[i].Rows = append(groups[i].Rows, row)
-	}
-
-	var on []choiceRow
-	for _, c := range choices {
-		r := choiceRow{C: c, Title: c.Label()}
-		if t, ok := collect.Lookup(c.Template); ok {
-			r.Reveals = t.Reveals
-		}
-		for _, st := range c.Stacks {
-			if !exists[st] {
-				r.Missing = append(r.Missing, st)
-			}
-		}
-		on = append(on, r)
-	}
-	sort.SliceStable(on, func(i, j int) bool { return strings.ToLower(on[i].Title) < strings.ToLower(on[j].Title) })
-	return groups, on, stackNames, nil
-}
-
 // handleChoose switches a catalog collector on, or changes where it runs.
 func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 	back := "/collectors"
@@ -98,7 +24,7 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, back, errors.New("no such collector in the catalog"))
 		return
 	}
-	back += "#cat-" + slug(t.ID, map[string]int{})
+	back = collectorURL(t.ID) + "#where"
 	if t.Reveals && !s.AllowRevealing {
 		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so it is switched on from the command line, or the server must be started with -allow-content-collectors"))
 		return
@@ -134,7 +60,7 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 	if len(c.Stacks) > 0 {
 		where = "hosts in " + strings.Join(c.Stacks, ", ")
 	}
-	done(w, r, "/collectors#on", c.Label()+" is on for "+where+". It is recorded as "+c.Attr+
+	done(w, r, collectorURL(t.ID)+"#where", c.Label()+" is on for "+where+". It is recorded as "+c.Attr+
 		" from the next collection. Use Test to try it on one host now.")
 }
 
@@ -153,7 +79,7 @@ func (s *Server) handleUnchoose(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, "/collectors", err)
 		return
 	}
-	done(w, r, "/collectors#on", c.Label()+" is off. Values it already collected are kept.")
+	done(w, r, collectorURL(c.Template)+"#where", c.Label()+" is off. Values it already collected are kept.")
 }
 
 type tryData struct {
@@ -165,6 +91,23 @@ type tryData struct {
 	Value   string
 	Problem string
 	Hint    string
+	Back    string // the page of the collector tested
+}
+
+// collectorURL is the page of one collector.
+func collectorURL(id string) string { return "/collectors/" + id }
+
+// specURL is the page of the collector a loaded spec belongs to: the built-in
+// collector for its attribute, or the spec itself when it is one of yours.
+func specURL(sp collect.Spec) string {
+	if builtin, err := collect.BuiltinSpecs(); err == nil {
+		for _, b := range builtin.Specs {
+			if b.ID == sp.ID {
+				return collectorURL(collect.RefBuiltin + sp.Attr)
+			}
+		}
+	}
+	return collectorURL(collect.RefSpec + sp.ID)
 }
 
 // handleTry runs one collector against one host and shows the result, saving
@@ -176,7 +119,7 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var specs []collect.Spec
-	title := ""
+	title, back := "", "/collectors"
 	// The host page offers both kinds in one list, as choice:ID or spec:ID.
 	if v := field(r, "collector"); v != "" {
 		kind, id, _ := strings.Cut(v, ":")
@@ -188,31 +131,39 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 		id, _ := strconv.ParseInt(v, 10, 64)
 		c, err := s.Store.Choice(ctx, id)
 		if err != nil {
-			refuse(w, r, "/collectors", errors.New("that collector is not switched on"))
+			refuse(w, r, back, errors.New("that collector is not switched on"))
 			return
 		}
+		back = collectorURL(c.Template)
 		if specs, err = c.Specs(); err != nil {
-			refuse(w, r, "/collectors", err)
+			refuse(w, r, back, err)
 			return
 		}
 		title = c.Label()
-	} else if id := field(r, "spec"); id != "" && s.Engine != nil && s.Engine.Specs != nil {
+	} else if ids := r.Form["spec"]; len(ids) > 0 && s.Engine != nil && s.Engine.Specs != nil {
+		// A built-in collector is several specs, one per system; the one
+		// for the host's system is the one that runs.
 		for _, sp := range s.Engine.Specs.Specs {
-			if sp.ID == id {
+			if slices.Contains(ids, sp.ID) {
 				specs = append(specs, sp)
-				title = sp.ID
+			}
+		}
+		if len(specs) > 0 {
+			title, back = specs[0].ID, specURL(specs[0])
+			if len(specs) > 1 {
+				title = attrLabel(specs[0].Attr)
 			}
 		}
 	}
 	if len(specs) == 0 {
-		refuse(w, r, "/collectors", errors.New("choose a collector to test"))
+		refuse(w, r, back, errors.New("choose a collector to test"))
 		return
 	}
 
 	hostRef := field(r, "host")
 	ciID, err := s.Store.LookupCI(ctx, hostRef)
 	if err != nil {
-		refuse(w, r, "/collectors", err)
+		refuse(w, r, back, err)
 		return
 	}
 	targets, err := s.Store.CollectTargets(ctx, "")
@@ -228,7 +179,7 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ci, _ := s.Store.CI(ctx, ciID)
-	d := tryData{Host: ci.Label, HostID: ciID, Title: title}
+	d := tryData{Host: ci.Label, HostID: ciID, Title: title, Back: back}
 	if prof == nil {
 		d.Err = ci.Label + " has no enabled connection, so nothing can be run on it."
 	} else if res, err := s.Engine.TrySpecs(ctx, *prof, specs); err != nil {
@@ -366,7 +317,7 @@ func (s *Server) handleChooseGroup(w http.ResponseWriter, r *http.Request) {
 		refuse(w, r, back, err)
 		return
 	}
-	done(w, r, "/collectors#on", msg)
+	done(w, r, "/collectors#groups", msg)
 }
 
 // handleStackCollectors switches a group or collector on for one stack, from

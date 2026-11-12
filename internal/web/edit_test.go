@@ -224,21 +224,26 @@ func TestRetireAndRestoreFromTheBrowser(t *testing.T) {
 func TestCollectorsPageOffersOnlyTheCatalog(t *testing.T) {
 	_, h, _ := testServer(t)
 	body := get(t, h, "/collectors", nil).Body.String()
-	for _, want := range []string{"linux.os.version", "kryostate collectors -init", "CPU cores", "Splunk Universal Forwarder version", `id="cat-file-exists"`} {
+	for _, want := range []string{"builtin.os.version", "kryostate collectors -init", "CPU cores", "Splunk Universal Forwarder version", `href="/collectors/file.exists"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the collectors page is missing %q", want)
 		}
 	}
-	if strings.Contains(body, `name="command"`) || strings.Contains(body, `name="pattern"`) {
-		t.Error("the collectors page has a field for a command or a parse rule")
+	pages := []string{body}
+	for _, id := range []string{"file.exists", "config.value", "builtin.os.version", "cpu.cores"} {
+		pages = append(pages, get(t, h, "/collectors/"+id, nil).Body.String())
+	}
+	if !strings.Contains(pages[3], "linux.os.version") {
+		t.Error("the built-in OS version page does not name its specs")
+	}
+	for _, p := range pages {
+		if strings.Contains(p, `name="command"`) || strings.Contains(p, `name="pattern"`) {
+			t.Error("a collectors page has a field for a command or a parse rule")
+		}
 	}
 	// Entries that reveal content are not offered as forms by default.
-	i := strings.Index(body, `id="cat-file-contents"`)
-	if i < 0 {
-		t.Fatal("file contents entry missing")
-	}
-	card := body[i : i+strings.Index(body[i:], `class="card catalog__item"`)+1]
-	if strings.Contains(card, `action="/collectors/choose"`) || !strings.Contains(card, "kryostate collectors -enable file.contents") {
+	page := get(t, h, "/collectors/file.contents", nil).Body.String()
+	if strings.Contains(page, `action="/collectors/choose"`) || !strings.Contains(page, "kryostate collectors -enable file.contents") {
 		t.Error("the file contents collector is offered from the page without permission")
 	}
 	guide := get(t, h, "/guide/collectors", nil)

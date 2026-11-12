@@ -84,9 +84,12 @@ func TestConfigValueFromTheWeb(t *testing.T) {
 	if cs, _ := st.Choices(context.Background()); len(cs) != 1 {
 		t.Errorf("choices %+v", cs)
 	}
-	page := get(t, h, "/collectors", nil).Body.String()
-	if !strings.Contains(page, `name="section"`) || !strings.Contains(page, "Host basics") {
-		t.Error("the collectors page lacks the config fields or the groups")
+	if !strings.Contains(get(t, h, "/collectors", nil).Body.String(), "Host basics") {
+		t.Error("the collectors page lacks the groups")
+	}
+	page := get(t, h, "/collectors/config.value", nil).Body.String()
+	if !strings.Contains(page, `name="section"`) || !strings.Contains(page, "server.conf [general] serverName") {
+		t.Error("the config value page lacks the config fields or the switched-on setting")
 	}
 }
 

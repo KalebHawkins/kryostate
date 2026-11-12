@@ -51,10 +51,11 @@ func cmdCollectors(ctx context.Context, args []string) error {
 	collectors := fs.String("collectors", "", "collector spec file, instead of "+defaultCollectorsFile+" next to the database")
 	key := fs.String("key", "", "with config.value: the key to read, such as serverName")
 	section := fs.String("section", "", "with config.value: only read the key inside this [section]")
+	show := fs.String("show", "", "print a collector written out as in "+defaultCollectorsFile+": a catalog name (with -param, or its example value), builtin.<attribute>, spec.<id>, external.<name>, or any spec id")
 	fs.Parse(args)
 
 	// A config.value template takes its file, key and section as one value.
-	for _, ref := range []string{*enable, *disable, *try} {
+	for _, ref := range []string{*enable, *disable, *try, *show} {
 		if t, ok := collect.Lookup(ref); ok && t.Param != nil && t.Param.Config() && *key != "" {
 			*param = collect.ConfigParam(*param, *section, *key)
 		}
@@ -126,6 +127,9 @@ func cmdCollectors(ctx context.Context, args []string) error {
 		return err
 	}
 
+	if *show != "" {
+		return showDefinition(os.Stdout, eng, *show, *param)
+	}
 	if *try != "" {
 		specs, err := specsToTry(ctx, eng, *try, *param)
 		if err != nil {
@@ -138,6 +142,20 @@ func cmdCollectors(ctx context.Context, args []string) error {
 		return tryCollector(ctx, eng, st, specs, *host, *sample, hint)
 	}
 	return listCollectors(ctx, eng, st, path)
+}
+
+// showDefinition prints one collector as it would be written in a file, so a
+// catalog entry or a built-in can be copied as the start of one's own. The
+// definition goes to standard output on its own, so it can be redirected into
+// a file; the note about which file goes to standard error.
+func showDefinition(w io.Writer, eng *engine.Engine, ref, param string) error {
+	file, b, err := eng.Definition(ref, param)
+	if err != nil {
+		return fmt.Errorf("%w; see them with: kryostate collectors, and the catalog with: kryostate collectors -catalog", err)
+	}
+	fmt.Fprintf(os.Stderr, "# %s as written in %s\n", ref, file)
+	_, err = w.Write(b)
+	return err
 }
 
 func paramFlag(p string) string {
@@ -276,6 +294,7 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 	fmt.Println("with a value:    kryostate collectors -enable file.exists -param /etc/resolv.conf")
 	fmt.Println("for some stacks: kryostate collectors -enable splunk.uf.version -stacks splunk-prod")
 	fmt.Println("try first:       kryostate collectors -try memory.total -host <name>")
+	fmt.Println("written out:     kryostate collectors -show file.exists -param /etc/hosts  (as you would write it in " + defaultCollectorsFile + ")")
 	return nil
 }
 

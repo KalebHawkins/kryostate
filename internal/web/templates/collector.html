@@ -1,0 +1,142 @@
+{{define "collector.html"}}
+<p><a href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">← Collectors</a></p>
+<div class="chead">
+  <h1>{{.Row.Title}}</h1>
+  <div class="chead__chips">
+    {{template "collector-status" .Row}}
+    <span class="chip chip--quiet">{{.Row.SourceLabel}}</span>
+    <a class="chip chip--quiet" href="/collectors?cat={{.Row.CategoryKey}}" hx-get="/collectors?cat={{.Row.CategoryKey}}" hx-target="#main" hx-push-url="true">{{.Row.Category}}</a>
+    {{if .Row.Reveals}}<span class="chip chip--unknown" title="Shows what is inside a file or variable, which may be a secret">content</span>{{end}}
+  </div>
+</div>
+{{with .Row.Description}}<p class="chead__desc">{{.}}</p>{{end}}
+{{with .FileProblem}}<div class="notice notice--bad" role="alert"><strong>collectors.json:</strong> {{.}}</div>{{end}}
+
+<div class="cdetail">
+<section class="card" aria-labelledby="h-records">
+  <h2 id="h-records">What it records</h2>
+  <dl class="facts">
+    {{if .External}}
+    <dt>Attributes</dt><dd>Whatever the program reports: each fact in its envelope becomes an attribute.</dd>
+    {{else}}
+    <dt>Attribute</dt>
+    <dd class="mono">{{if .Choices}}{{range $i, $c := .Choices}}{{if $i}}, {{end}}{{$c.C.Attr}}{{end}}{{else}}{{join .Row.Attrs ", "}}{{if .Row.AttrExample}} <span class="muted">(for the example value; it is named after the value you give)</span>{{end}}{{end}}{{with .Scope}} <span class="muted">[{{.}}]</span>{{end}}</dd>
+    {{end}}
+    {{with .Type}}<dt>Type</dt><dd>{{.}}</dd>{{end}}
+    {{with .Example}}<dt>Example value</dt><dd><span class="mono cexample">{{.}}</span></dd>{{end}}
+    {{with .ExampleParam}}<dt>Example {{if $.T}}{{lower $.T.Param.Label}}{{end}}</dt><dd class="mono">{{.}}</dd>{{end}}
+    <dt>Systems</dt><dd>{{join .Row.Systems ", "}}</dd>
+    <dt>Id</dt><dd class="mono">{{.Row.ID}}</dd>
+    <dt>Defined</dt>
+    <dd>{{if eq .Row.Source "catalog"}}In KryoState's catalog.{{else if eq .Row.Source "builtin"}}Built into KryoState. It always runs.{{else}}In <span class="mono">{{if .File}}{{.File}}{{else}}a file on the server{{end}}</span>. Read-only here.{{end}}
+      {{if .Optional}}<span class="muted">A host without the program is left blank, not counted as a failure.</span>{{end}}</dd>
+  </dl>
+</section>
+
+<section class="card" id="where" aria-labelledby="h-where">
+  <h2 id="h-where">Where it runs</h2>
+  {{if eq .Row.Source "catalog"}}
+    {{if .Choices}}
+    <div class="table-wrap table-wrap--full"><table>
+      <thead><tr>{{if not .T.Fixed}}<th scope="col">{{.T.Param.Label}}</th>{{end}}<th scope="col">Recorded as</th><th scope="col">Runs on</th><th scope="col">Test on a host</th><th scope="col"><span class="visually-hidden">Turn off</span></th></tr></thead>
+      <tbody>
+      {{range .Choices}}
+        <tr>
+          {{if not $.T.Fixed}}<td class="mono">{{.C.ParamText}}</td>{{end}}
+          <td class="mono">{{.C.Attr}}</td>
+          <td>{{if .C.Stacks}}{{$cv := .}}{{range $i, $st := .C.Stacks}}{{if $i}}, {{end}}{{if has $cv.Missing $st}}<span class="chip chip--bad" title="This stack no longer exists">{{$st}} is gone</span>{{else}}<a href="/stacks#stack-{{slug $st}}">{{$st}}</a> <span class="muted small">({{index $cv.Members $st}} hosts)</span>{{end}}{{end}}{{else}}All hosts{{end}}</td>
+          <td>{{template "try-form" dict "Hosts" $.Hosts "Name" "choice" "Values" (list .C.ID) "Key" (printf "choice-%d" .C.ID)}}</td>
+          <td><form method="post" action="/collectors/remove"><input type="hidden" name="id" value="{{.C.ID}}">
+            <button class="btn btn--ghost btn--small" type="submit">Turn off</button></form></td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table></div>
+    {{else}}
+    <p class="muted">Off. Nothing collects this yet.</p>
+    {{end}}
+
+    {{if .Allowed}}
+    {{$t := .T}}
+    <details class="disclosure cswitch" {{if not .Choices}}open{{end}}>
+      <summary><strong>{{if $t.Fixed}}{{if .Choices}}Change where it runs{{else}}Switch on{{end}}{{else}}{{if .Choices}}Add another{{else}}Switch on{{end}}{{end}}</strong></summary>
+      <form class="form" method="post" action="/collectors/choose">
+        <input type="hidden" name="template" value="{{$t.ID}}">
+        {{with $t.Param}}
+        <label>{{.Label}} <span class="hint">{{.Help}}</span>
+          <input type="text" name="param" required class="mono" placeholder="{{.Placeholder}}"></label>
+        {{if .Config}}
+        <div class="form__row">
+          <label>Key <span class="hint">The name left of the =.</span>
+            <input type="text" name="key" required class="mono" placeholder="{{.KeyPlaceholder}}"></label>
+          <label>Section <span class="hint">Optional. The [name] the key sits under.</span>
+            <input type="text" name="section" class="mono" placeholder="{{.SectionPlaceholder}}"></label>
+        </div>
+        {{end}}
+        <label>Record as <span class="hint">Optional. Blank picks a name from the value, such as {{defaultAttr $t $t.ExampleParam}}.</span>
+          <input type="text" name="attr" class="mono" placeholder="{{defaultAttr $t $t.ExampleParam}}"></label>
+        {{end}}
+        {{template "where-fields" dict "Stacks" .Stacks "Selected" (onStacks (choicesOf .Choices)) "ID" $t.ID}}
+        <div class="form__actions"><button class="btn btn--primary" type="submit">{{if and $t.Fixed .Choices}}Save{{else}}Switch on{{end}}</button></div>
+      </form>
+    </details>
+    {{else}}
+    <div class="notice">
+      <p>This shows what is inside files or variables, which may be secrets, so it is not switched on from this page. On the KryoState server, run:</p>
+      <pre><code>kryostate collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}{{if .T.Param.Config}} -section {{.T.Param.SectionPlaceholder}} -key {{.T.Param.KeyPlaceholder}}{{end}}</code></pre>
+      <p class="muted small">Or start the server with <span class="mono">-allow-content-collectors</span> to offer it here.</p>
+    </div>
+    {{end}}
+  {{else if eq .Row.Source "external"}}
+    <p>Every host, once per collection. The program runs on the KryoState server, not on the host, and is told only which host to describe.</p>
+  {{else}}
+    <p>{{if eq .Row.Where "All hosts"}}Every host running {{join .Row.Systems " or "}}.{{else}}Hosts running {{join .Row.Systems " or "}} in these stacks: {{.Row.Where}}.{{end}}
+    {{if eq .Row.Source "own"}}<span class="muted">Set by <span class="mono">os</span> and <span class="mono">stacks</span> in the file.</span>{{end}}</p>
+    <div class="ctry"><span class="small">Test on a host:</span> {{template "try-form" dict "Hosts" .Hosts "Name" "spec" "Values" .TrySpecs "Key" "spec"}}</div>
+  {{end}}
+</section>
+
+<section class="card" aria-labelledby="h-commands">
+  <h2 id="h-commands">{{if .External}}Program{{else}}Command{{if gt (len .Variants) 1}}s{{end}}{{end}}</h2>
+  {{with .External}}
+  <dl class="facts">
+    <dt>Program</dt><dd class="mono">{{.Path}}</dd>
+    {{with .Args}}<dt>Arguments</dt><dd class="mono">{{join . " "}}</dd>{{end}}
+    {{with .Env}}<dt>Environment</dt><dd class="mono">{{join . " "}}</dd>{{end}}
+    {{with .Timeout}}<dt>Time limit</dt><dd>{{.}}</dd>{{end}}
+  </dl>
+  <p class="muted small">It prints a JSON envelope of facts; each fact becomes an attribute. What it records depends on the program.</p>
+  {{end}}
+  {{range .Variants}}
+  <div class="cvariant">
+    <h3>{{join .Systems " · "}}{{with .SpecID}} <span class="mono muted small">{{.}}</span>{{end}}</h3>
+    <pre><code>{{.Command}}</code></pre>
+    <p class="muted small">Keeps {{.Parse}}.</p>
+  </div>
+  {{end}}
+  {{if and .T (not .T.Fixed)}}<p class="muted small">{{"{{param}}"}} is replaced by the value you give, inside single quotes, after it is checked to look like a {{lower .T.Param.Label}}.</p>{{end}}
+</section>
+
+{{/* SCHEDULE: placeholder for per-collector schedules. The /schedules page is
+     built separately; wire it in here at merge time. */}}
+<section class="card cschedule" id="schedule" data-slot="schedule" data-collector="{{.Row.ID}}" aria-labelledby="h-schedule">
+  <h2 id="h-schedule">Schedule</h2>
+  <p class="muted">When this collector runs is set on the <a href="/schedules#{{.Row.ID}}">Schedules page</a>.</p>
+</section>
+
+<section class="card" id="definition" aria-labelledby="h-definition">
+  <details class="cdef" {{if ne .Row.Source "catalog"}}open{{end}}>
+    <summary><h2 id="h-definition">View definition</h2> <span class="muted small">as written in {{.DefFile}}</span></summary>
+    {{if .DefErr}}<p class="flash flash--error">{{.DefErr}}</p>{{else}}
+    <div class="cdef__bar">
+      <span class="mono small">{{.DefFile}}</span>
+      <button class="btn btn--small" type="button" data-copy="#def-json">Copy</button>
+    </div>
+    <pre class="cdef__code" id="def-json"><code>{{.Def}}</code></pre>
+    {{end}}
+    {{with .DefNote}}<p class="muted small">{{.}}</p>{{end}}
+    <p class="muted small">From the command line: <span class="mono">{{.ShowCmd}}</span>. The <a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">collector guide</a> explains each field.</p>
+  </details>
+</section>
+</div>
+{{end}}

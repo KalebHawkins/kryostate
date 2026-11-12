@@ -39,6 +39,15 @@ func funcs() template.FuncMap {
 			return nil
 		},
 		"multiline": func(s string) bool { return len(s) > 48 || strings.Contains(s, "\n") },
+		"lower":     strings.ToLower,
+		"list":      func(v ...any) []any { return v },
+		"choicesOf": func(cs []choiceView) []collect.Choice {
+			out := make([]collect.Choice, len(cs))
+			for i, c := range cs {
+				out[i] = c.C
+			}
+			return out
+		},
 	}
 }
 

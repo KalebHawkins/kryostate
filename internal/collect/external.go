@@ -29,6 +29,9 @@ type External struct {
 	// Windows is the one exception: Go supplies SystemRoot when it is absent,
 	// because a process without it cannot load a DLL and so cannot start.
 	Env []string
+	// Comment is the note its author wrote beside it, shown on the
+	// collectors page.
+	Comment string
 }
 
 // RunExternal executes the program for one target and returns its envelope.

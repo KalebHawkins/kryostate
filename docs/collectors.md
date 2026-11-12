@@ -62,15 +62,21 @@ runs it on both.
 
 ### Switching one on in the web interface
 
-1. Open **Collectors**.
-2. Find the collector in the catalog and open **Switch on** (or **Add one**
-   for the ones that need a path or a name).
+1. Open **Collectors**. It lists every collector: the built-in ones, the
+   catalog, your own and external programs. Type in the search box, or narrow
+   the list by category, source (built-in, catalog, your own, external) or
+   status (on or off).
+2. Select the collector to open its page. Under **Where it runs**, open
+   **Switch on** (or **Add another** for the ones that take a path or a name).
 3. Under **Run on**, keep **All hosts**, or choose **Only hosts in these
    stacks**. For example, run the Splunk forwarder version only on your Splunk
    stacks.
 4. Select **Switch on**.
-5. In the **Switched on** list, choose a host and select **Test** to see what
-   it reads. Nothing is saved by a test.
+5. Back under **Where it runs**, choose a host and select **Test** to see what
+   it reads. Nothing is saved by a test. **Turn off** is next to it.
+
+The groups are the buttons above the list: open one, choose where it runs and
+switch it on.
 
 Two shortcuts do the same thing from elsewhere. On the **Stacks** page, each
 stack's card has **Also collect on**, which switches a group or a collector on
@@ -162,6 +168,25 @@ For example:
 nginx is also in the catalog; it is used as the example here because its
 output has a typical shape. The six steps below take you from nothing to a
 working collector. You do not need to write a program.
+
+### Start from a worked example
+
+Every collector's page in the web interface has **View definition**: that
+collector written out exactly as you would write it in your own
+`collectors.json`, with a **Copy** button. The catalog entries and the
+built-in collectors are written in the same format as yours, so the nearest
+one to what you want is a good starting point. Entries that take a path or a
+name are shown with an example value, such as `/etc/resolv.conf`. The same
+is printed on the command line:
+
+```
+kryostate collectors -show cpu.cores
+kryostate collectors -show file.exists -param /etc/hosts
+kryostate collectors -show builtin.os.version
+```
+
+Copy the specs into your file and give each one an `id` of its own: ids must
+be unique, and the built-in ones are taken.
 
 ### Before you start
 
@@ -354,8 +379,10 @@ Your value now appears:
 
 If `kryostate serve` was already running when you created or changed the file,
 restart it so that the web interface uses the new version. The
-**Collectors** page in the web interface lists every collector that will run,
-and has a **Test** button for each of yours.
+**Collectors** page in the web interface lists every collector that will run;
+choose **your own** under the source filter to see yours, each with its
+command, its rule and a **Test** button. If the file has a mistake, the page
+says what and where, rather than the server refusing to start.
 
 ## When it does not work
 

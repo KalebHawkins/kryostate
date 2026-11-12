@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -88,5 +90,50 @@ func TestTryAndDisableFindCatalogCollectors(t *testing.T) {
 	}
 	if c, err := findChoice(ctx, st, strconv.FormatInt(a.ID, 10), ""); err != nil || c.ID != a.ID {
 		t.Errorf("by number: %v", err)
+	}
+}
+
+// TestShowPrintsALoadableDefinition: -show is the command-line way to see a
+// collector written out, and what it prints must load as a collectors file.
+func TestShowPrintsALoadableDefinition(t *testing.T) {
+	specs, err := collect.BuiltinSpecs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := &engine.Engine{Specs: specs}
+	for _, c := range []struct{ ref, param, want string }{
+		{"cpu.cores", "", `"id": "cpu.cores.linux"`},
+		{"file.exists", "/etc/hosts", `'/etc/hosts'`},
+		{"builtin.os.version", "", `"id": "aix.os.version"`},
+		{"linux.os.family", "", `"command": "uname -s"`},
+	} {
+		var out strings.Builder
+		if err := showDefinition(&out, eng, c.ref, c.param); err != nil {
+			t.Errorf("%s: %v", c.ref, err)
+			continue
+		}
+		if !strings.Contains(out.String(), c.want) {
+			t.Errorf("%s lacks %s:\n%s", c.ref, c.want, out.String())
+		}
+		if _, err := collect.LoadSpecs([]byte(out.String())); err != nil {
+			t.Errorf("%s does not load: %v", c.ref, err)
+		}
+	}
+	if err := showDefinition(io.Discard, eng, "made.up", ""); err == nil {
+		t.Error("an unknown collector was shown")
+	}
+}
+
+// TestServeSurvivesABrokenCollectorsFile: the check serve makes before
+// deciding to run without the file.
+func TestServeSurvivesABrokenCollectorsFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "collectors.json")
+	os.WriteFile(p, []byte(`{"version":1,"specs":[{"id":"x","optinal":true}]}`), 0o600)
+	if err := checkCollectorsFile(p); err == nil || !strings.Contains(err.Error(), "optinal") {
+		t.Errorf("a broken file gave %v", err)
+	}
+	os.WriteFile(p, []byte(starterCollectors), 0o600)
+	if err := checkCollectorsFile(p); err != nil {
+		t.Errorf("the starter file gave %v", err)
 	}
 }
