@@ -89,6 +89,7 @@
     {{if .Config.Externals}}Read from <span class="mono">{{.Config.Externals}}</span>.{{else}}None configured: list them in externals.json next to the database.{{end}}</p>
   </div>
 </div>
+{{template "cli" (list "kryostate collectors" "kryostate collectors -catalog" "kryostate collectors -enable <id> -where 'stack == \"web\"'" "kryostate collectors -show <id>")}}
 {{end}}
 
 {{define "collector-status"}}

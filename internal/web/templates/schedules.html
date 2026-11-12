@@ -1,6 +1,6 @@
 {{define "schedules.html"}}
 <h1>Schedules</h1>
-<p class="muted">When each collector runs on its own, soonest first. Collectors that start within {{.Window}} of each other are grouped, so runs that pile up are easy to see and spread out. Times are the server's ({{.Location}}).</p>
+<p class="muted">When each collector runs on its own, soonest first. Collectors that start within {{.Window}} of each other share a line down the left, amber when the slot is busy. Times are the server's ({{.Location}}).</p>
 {{if not .Scheduling}}<div class="notice">Scheduling is off in this server (it was started with <span class="mono">-no-schedule</span>). Schedules can still be set here; they take effect in a server that runs them.</div>{{end}}
 <p class="sched-limits small"><strong>Collectors run on many hosts at once, but never more than {{.MaxSessions}} sessions across the estate and {{.PerHost}} per host;</strong> anything more waits its turn. Collectors due in the same minute share one session per host.</p>
 <p class="muted small">Hosts are also spread over up to {{.Spread}} at random, and a host that cannot be reached is left alone for {{.Backoff}}, doubling each time up to {{.BackoffMax}}. Nothing runs more often than every {{.MinEvery}}. A schedule without a time of day gets one picked from the collector's name, so defaults do not all run together.</p>
@@ -23,14 +23,12 @@
 <table class="schedules">
   <thead><tr><th scope="col">Collector</th><th scope="col">Runs</th><th scope="col" class="num">Hosts</th><th scope="col">Last run</th><th scope="col"><span class="visually-hidden">Change</span></th></tr></thead>
   {{range .Clusters}}
-  <tbody class="sched-cluster{{if .Storm}} sched-cluster--busy{{end}}" id="{{.ID}}">
-    <tr class="sched-group"><th scope="colgroup" colspan="5" id="{{.ID}}-h">
-      <span class="sched-cluster__when">{{.When}}{{with .Until}}<span class="muted">–{{.}}</span>{{end}}</span>
-      <span class="sched-cluster__meta">{{.Summary}}</span>
-      <span class="sched-cluster__in muted">{{.In}}{{if and (not .Storm) (gt (len .Rows) 1)}} · ~{{.Sessions}} sessions, {{.Duration}}{{end}}</span>
-      {{if .Storm}}
+  <tbody class="sched-cluster{{if gt (len .Rows) 1}} sched-cluster--multi{{end}}{{if .Storm}} sched-cluster--busy{{end}}" id="{{.ID}}"{{if gt (len .Rows) 1}} title="{{.Summary}} start within {{$.Window}} of each other"{{end}}>
+    {{range .Rows}}{{template "sched-row" .}}{{end}}
+    {{if .Storm}}
+    <tr class="sched-storm-row"><td colspan="5">
       <div class="sched-storm small">
-        <p><strong>Busy slot.</strong> About {{.Sessions}} sessions start here and take {{.Duration}} to work through. Spreading them out is gentler on the hosts.</p>
+        <p><strong>Busy slot at {{.When}}.</strong> {{.Summary}}: about {{.Sessions}} sessions, {{.Duration}} to work through. Spreading them out is gentler on the hosts.</p>
         {{if ge (len .SpreadKeys) 2}}
         <form method="post" action="/schedules/spread">
           {{range .SpreadKeys}}<input type="hidden" name="collector" value="{{.}}">{{end}}
@@ -43,15 +41,12 @@
         <p class="muted">Move one with <strong>Edit</strong> and <strong>Use a quiet time</strong>, or give it a longer interval.</p>
         {{end}}
       </div>
-      {{end}}
-      {{with .Also}}<div class="muted small sched-also">Also running then: {{join . "; "}}.</div>{{end}}
-    </th></tr>
-    {{range .Rows}}{{template "sched-row" .}}{{end}}
+    </td></tr>
+    {{end}}
   </tbody>
   {{end}}
   {{with .Manual}}
-  <tbody class="sched-cluster" id="manual">
-    <tr class="sched-group"><th scope="colgroup" colspan="5"><span class="sched-cluster__when">Manual only</span> <span class="sched-cluster__meta">{{len .}} collector{{if ne (len .) 1}}s{{end}}</span></th></tr>
+  <tbody class="sched-cluster sched-cluster--manual" id="manual">
     {{range .}}{{template "sched-row" .}}{{end}}
   </tbody>
   {{end}}
@@ -66,7 +61,7 @@
 </table></div>
 {{end}}
 {{end}}
-<p class="muted small">The same from the command line: <span class="mono">kryostate collectors -schedules</span>, <span class="mono">kryostate collectors -schedule builtin.os -every 1d -at 02:00</span>, <span class="mono">-manual</span> or <span class="mono">-default</span>.</p>
+{{template "cli" (list "kryostate collectors -schedules" "kryostate collectors -schedule builtin.os -every 1d -at 02:00" "kryostate collectors -schedule cpu.cores -manual" "kryostate collectors -schedule cpu.cores -default")}}
 {{end}}
 
 {{define "sched-row"}}

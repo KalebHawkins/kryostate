@@ -1,6 +1,12 @@
 {{define "guide.html"}}
 <div class="guide">
   <nav class="guide__toc" aria-label="Contents">
+    <p class="guide__toc-title">Guides</p>
+    <ul class="guide__docs">
+      <li><a href="/guide" hx-get="/guide" hx-target="#main" hx-push-url="true">User guide</a></li>
+      <li><a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">Writing collectors</a></li>
+      <li><a href="/guide/queries" hx-get="/guide/queries" hx-target="#main" hx-push-url="true">Queries</a></li>
+    </ul>
     <p class="guide__toc-title">Contents</p>
     <ul>
     {{range .TOC}}<li class="toc-l{{.Level}}"><a href="#{{.ID}}">{{.Text}}</a></li>{{end}}

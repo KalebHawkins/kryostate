@@ -295,7 +295,8 @@ output only.
 
 When the catalog has nothing suitable, a collector specification is a
 command, a parse rule and an attribute name. The [collector
-guide](docs/collectors.md) explains how to write one, step by step.
+guide](docs/collectors.md) explains how to write one, step by step, and the
+[query guide](docs/queries.md) covers the query language.
 
 ```sh
 ./kryostate collectors -init                       # creates collectors.json next to the database

@@ -1,0 +1,8 @@
+{{/* cli shows the command-line equivalent of a page: a list of commands,
+     each on its own line. Only on key pages; every command shown exists. */}}
+{{define "cli"}}
+<aside class="cli" aria-label="The same from the command line">
+  <p class="cli__title">From the command line</p>
+  {{range .}}<code class="cli__cmd">{{.}}</code>{{end}}
+</aside>
+{{end}}

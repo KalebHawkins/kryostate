@@ -68,6 +68,8 @@ type Server struct {
 
 	collectorGuide    template.HTML
 	collectorGuideTOC []tocEntry
+	queryGuide        template.HTML
+	queryGuideTOC     []tocEntry
 	hub               *hub
 	mu                sync.Mutex
 	// running guards against two collection runs at once. Opening a second
@@ -139,6 +141,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /changes", s.handleChanges)
 	mux.HandleFunc("GET /guide", s.handleGuide)
 	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)
+	mux.HandleFunc("GET /guide/queries", s.handleQueryGuide)
 	mux.HandleFunc("POST /collect", s.handleCollect)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.Handle("GET /static/", http.FileServerFS(staticFS))

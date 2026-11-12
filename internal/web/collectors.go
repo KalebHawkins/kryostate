@@ -558,8 +558,17 @@ func (s *Server) handleCollectorGuide(w http.ResponseWriter, r *http.Request) {
 	}{s.collectorGuide, s.collectorGuideTOC})
 }
 
+// handleQueryGuide serves the query language reference.
+func (s *Server) handleQueryGuide(w http.ResponseWriter, r *http.Request) {
+	s.render(w, r, "guide.html", "Queries", "guide", struct {
+		Body template.HTML
+		TOC  []tocEntry
+	}{s.queryGuide, s.queryGuideTOC})
+}
+
 // renderDocs renders the embedded documents once, at start-up.
 func (s *Server) renderDocs() {
 	s.guide, s.guideTOC = renderMarkdown(docs.UserGuide)
 	s.collectorGuide, s.collectorGuideTOC = renderMarkdown(docs.Collectors)
+	s.queryGuide, s.queryGuideTOC = renderMarkdown(docs.Queries)
 }

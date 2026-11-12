@@ -5,6 +5,9 @@ tool is built on, then walks through adding a host, putting hosts in a stack,
 and adding a collector of your own. The guide is also served by the web
 interface at `/guide`.
 
+The [query guide](queries.md) is the reference for the query language, and
+the [collector guide](collectors.md) explains writing collectors of your own.
+
 For the reasoning behind each design decision, read the files in
 `docs/adr/`. For the security assumptions, read `docs/threat-model.md`.
 
@@ -576,66 +579,27 @@ A query is a condition on each host's current values, in the style of a
 Prometheus label matcher. The inventory shows the hosts for which it is true.
 
 ```text
-os.version == "Red Hat 7.9 (Ootpa)"
+os.version == "AlmaLinux 9.8"
 os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"
 stack == "data" && role == "database"
-name =~ "^web" || application == "nginx"
-hw.cpu.cores >= 8 && os.kernel < "4"
+name in ("web01", "web02")
+hw.cpu.cores >= 8 && nginx.version < "1.24"
 !has(os.version)
 ```
 
-Read the second one as: the host runs Linux, and the file
-`/etc/ssh/sshd_config.d/hardening.conf` is not there. That is, Linux hosts
-missing the SSH hardening drop-in. It needs the **File exists** collector switched
-on for that path (section 6), so that every host has recorded `true` or
-`false` for it.
+Compare with `==` `!=`, match patterns with `=~` `!~`, order numbers and
+versions with `<` `<=` `>` `>=`, test a list with `in`, and join with `&&`,
+`||`, `!` and parentheses. Names are attributes such as `os.version`, plus
+`name`, `id`, `stack`, `role` and `application`. Text with none of the query
+symbols in it, such as `web`, searches host names.
 
-Every query has the same shape: a comparison is a **name**, an
-**operator** and a **value**, and comparisons are joined with `&&` (and) and
-`||` (or), turned around with `!` (not), and grouped with parentheses:
+The same queries choose where a collector runs (section 6), so a query that
+lists the right hosts here is the one to give a collector.
 
-```text
-query       = condition { ("&&" | "||") condition }
-condition   = [ "!" ] ( name [ operator value ] | name "in" list | "has(" name ")" | "(" query ")" )
-name        = os.version, stack, file.exists["/etc/hosts"], ...
-operator    = ==  !=  =~  !~  <  <=  >  >=
-value       = "text", 'text', `text`, a number, true or false
-list        = "(" value { "," value } ")", or the same in [ ]
-```
-
-| Write | Means |
-|---|---|
-| `==` `!=` | equal, not equal. Text is exact and case sensitive. |
-| `=~` `!~` | matches, does not match a Go regular expression. Patterns are **not anchored**: `"web"` matches anywhere in the value, `"^web"` only at the start. `(?i)` ignores case. |
-| `<` `<=` `>` `>=` | numbers compare as numbers (`8 < 16`), versions in version order (`"7.9" < "7.10"`). A value that is neither does not match. |
-| `&&` `\|\|` `!` `( )` | and, or, not, grouping. `&&` binds tighter than `\|\|`; `!` applies to the whole comparison after it. |
-| `"text"` `'text'` | a string; `\"`, `\\`, `\n` and `\t` are escapes. A pattern full of backslashes is easier as a raw string in backquotes, which has no escapes. |
-| `true` `false` `8` `-1.5` | literals. `true` and `false` match attributes that record `true` or `false`, such as **File exists**. |
-| `has(x)` | the host has a value for x. So does `x != ""`; `x == ""` finds hosts without one. |
-| `x` alone | the same as `x == true`. `!x` is the same as `x != true`. |
-| `x in ("a", "b")` | x equals any value in the list, as with `==`. `name in ("web01", "web02")` picks hosts by name, `stack in ("web", "edge")` the members of either stack. `!name in (...)` is everyone else. Square brackets work too. |
-
-Names are attribute names such as `os.version`, plus a few that are not
-attributes: `name` (the host's name), `id`, `stack` (any stack it is in),
-`role` (its role in any stack) and `application` (the application you
-recorded for it). `stack != "x"` means "not in stack x".
-
-A collector that takes a path or a name records an attribute named after it,
-such as `file.hardening_conf.exists` for
-`/etc/ssh/sshd_config.d/hardening.conf`. You can use that name, or name the
-collector and its parameter:
-`file.exists["/etc/ssh/sshd_config.d/hardening.conf"] == true`. The shorter
-`file.exists == "/etc/ssh/sshd_config.d/hardening.conf"` means the same, and
-`package.version == "openssl"` means the openssl version collector has a
-value. Text with none of the query symbols in it, such as `web`, searches
-host names.
-
-A query that does not parse is shown with the column where the problem is.
-Queries are evaluated in KryoState over the loaded values; none of it is
-passed to the database.
-
-The same queries choose where a catalog collector runs (section 6), so a
-query that lists the right hosts here is the one to give a collector.
+The [query guide](queries.md) is the full reference: every operator, how
+missing values, versions and several stacks compare, collectors that take a
+path, recipes and common mistakes. In the web interface it is at
+**Guide → Queries** (`/guide/queries`).
 
 #### JSON export
 

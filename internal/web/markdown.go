@@ -196,7 +196,7 @@ func safeHref(h string) bool {
 // that serves it here.
 func docRoute(h string) string {
 	file, frag, _ := strings.Cut(h, "#")
-	routes := map[string]string{"user-guide.md": "/guide", "collectors.md": "/guide/collectors"}
+	routes := map[string]string{"user-guide.md": "/guide", "collectors.md": "/guide/collectors", "queries.md": "/guide/queries"}
 	r, ok := routes[file]
 	if !ok {
 		return h

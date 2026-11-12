@@ -35,7 +35,7 @@
 {{define "target-editor"}}
 <fieldset class="target">
   <legend>Runs on</legend>
-  <label for="target-{{.Key}}">Hosts matching <span class="hint">A query, as in the inventory's search box. Blank means every host it has a command for.</span></label>
+  <label for="target-{{.Key}}">Hosts matching <span class="hint">A query, as in the inventory's search box (<a href="/guide/queries" target="_blank" rel="noopener">query guide</a>). Blank means every host it has a command for.</span></label>
   <textarea id="target-{{.Key}}" name="target" rows="2" class="mono target__expr" spellcheck="false" autocomplete="off"
     placeholder='stack == "web" || name in ("db01", "db02")'
     hx-get="/collectors/target/preview?id={{.ID}}" hx-trigger="focus once, input changed delay:300ms" hx-target="#target-{{.Key}}-preview" hx-sync="this:replace">{{.Target}}</textarea>

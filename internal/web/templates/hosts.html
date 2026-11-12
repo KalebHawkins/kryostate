@@ -61,6 +61,7 @@
     <ul class="qhelp__examples">
       {{range .Examples}}<li><a class="mono" href="{{.Href}}" hx-get="{{.Href}}" hx-target="#main" hx-push-url="true">{{.Q}}</a> <span class="muted">{{.Note}}</span></li>{{end}}
     </ul>
+    <p class="small"><a href="/guide/queries" hx-get="/guide/queries" hx-target="#main" hx-push-url="true">The full query guide</a>: every operator, how missing values and versions compare, recipes and common mistakes.</p>
   </div>
 </details>
 
@@ -99,4 +100,5 @@
   </tbody>
 </table>
 </div>
+{{template "cli" (list (printf "kryostate hosts%s -cols %s" (or (and .Expr (printf " -q %s" (shq .Expr))) "") (join .Columns ",")) (printf "kryostate hosts%s -json" (or (and .Expr (printf " -q %s" (shq .Expr))) "")))}}
 {{end}}

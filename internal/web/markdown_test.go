@@ -142,3 +142,19 @@ func TestDocLinksBecomeRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestQueryGuideIsServed(t *testing.T) {
+	_, h, _ := testServer(t)
+	body := get(t, h, "/guide/queries", nil).Body.String()
+	for _, want := range []string{"Where queries are used", `href="/guide/collectors"`, "How the edge cases work"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("query guide lacks %s", want)
+		}
+	}
+	if !strings.Contains(get(t, h, "/guide", nil).Body.String(), `href="/guide/queries"`) {
+		t.Error("the user guide does not link to the query guide")
+	}
+	if !strings.Contains(get(t, h, "/hosts", nil).Body.String(), `href="/guide/queries"`) {
+		t.Error("the inventory does not link to the query guide")
+	}
+}

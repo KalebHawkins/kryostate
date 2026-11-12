@@ -13,3 +13,8 @@ var UserGuide string
 //
 //go:embed collectors.md
 var Collectors string
+
+// Queries is docs/queries.md, served at /guide/queries.
+//
+//go:embed queries.md
+var Queries string

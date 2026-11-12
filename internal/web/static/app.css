@@ -1307,25 +1307,22 @@ a.sched-hour:hover .sched-hour__fill { background: var(--accent); }
 .cvariant { padding-top: var(--s-2); }
 .cvariant + .cvariant { border-top: 1px solid var(--hairline); padding-top: var(--s-3); }
 
-/* Schedules: one table, a header row per group of runs starting together. */
+/* Schedules: one table in time order. Runs that start together share a
+   thin accent down the left, and a busy slot gets a warning row. */
 .schedules tbody.sched-cluster { scroll-margin-top: calc(var(--nav-h) + var(--s-4)); }
-.schedules tr.sched-group > th {
-  padding-top: var(--s-4);
-  background: var(--bg-raised);
-  border-top: 1px solid var(--border);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.9375rem;
-  color: var(--text);
-}
-.schedules tr.sched-group .sched-cluster__when { margin-right: var(--s-2); }
-.schedules tr.sched-group .sched-cluster__meta,
-.schedules tr.sched-group .sched-cluster__in { font-weight: 400; margin-right: var(--s-2); }
-.schedules tr.sched-group .sched-storm { margin-top: var(--s-2); font-weight: 400; }
-.schedules tbody.sched-cluster:target tr.sched-group .sched-cluster__when { color: var(--accent-strong); }
+.schedules tbody.sched-cluster--multi > tr > :first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.schedules tbody.sched-cluster--busy > tr > :first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.schedules tbody.sched-cluster--manual > tr:first-child > * { border-top: 1px solid var(--border); }
+.schedules tr.sched-storm-row > td { padding-top: 0; }
+.schedules tbody.sched-cluster:target > tr > :first-child { box-shadow: inset 3px 0 0 var(--accent-strong); }
 /* Long names wrap inside the overview's run list instead of spilling out. */
 .ov-next__what { overflow-wrap: anywhere; min-width: 0; }
 /* The test box inside the where-it-runs table stays narrow so the row fits. */
 td .hostpick { flex-wrap: wrap; }
 td .hostpick__input { width: 11rem; min-width: 0; }
+.guide__docs { margin-bottom: var(--s-4); }
+
+/* ---------- command-line hints on key pages ---------- */
+.cli { margin: var(--s-5) 0 0; padding: var(--s-2) var(--s-3); border-left: 3px solid var(--hairline); display: grid; gap: 2px; justify-items: start; }
+.cli__title { margin: 0 0 var(--s-1); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); }
+.cli__cmd { font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text-dim); background: none; padding: 0; overflow-wrap: anywhere; }

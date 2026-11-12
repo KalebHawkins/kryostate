@@ -202,6 +202,7 @@
     {{end}}
   </div>
 </div>
+{{template "cli" (list (printf "kryostate show %s" (shq .CI.Label)) (printf "kryostate refresh -only %s" (shq .CI.Label)) (printf "kryostate set %s application=<name>" (shq .CI.Label)))}}
 {{end}}
 
 {{define "long-value"}}{{if multiline .}}<details class="fact-full"><summary>{{short . 40}}</summary><pre>{{.}}</pre></details>{{else}}{{.}}{{end}}{{end}}

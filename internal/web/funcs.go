@@ -31,6 +31,7 @@ func funcs() template.FuncMap {
 		"defaultAttr": collect.DefaultAttr,
 		"multiline":   func(s string) bool { return len(s) > 48 || strings.Contains(s, "\n") },
 		"lower":       strings.ToLower,
+		"shq":         shellQuote,
 		"list":        func(v ...any) []any { return v },
 		// insertStack and insertSystem are the query a target editor's chip
 		// adds.
@@ -167,4 +168,13 @@ func (s *Server) label(attr string) string {
 		}
 	}
 	return attrLabel(attr)
+}
+
+// shellQuote writes s for a POSIX shell, in single quotes, for the
+// command-line hints. A plain word is left as it is.
+func shellQuote(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/,:") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
