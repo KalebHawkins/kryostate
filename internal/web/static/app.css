@@ -1326,3 +1326,4 @@ td .hostpick__input { width: 11rem; min-width: 0; }
 .cli { margin: var(--s-5) 0 0; padding: var(--s-2) var(--s-3); border-left: 3px solid var(--hairline); display: grid; gap: 2px; justify-items: start; }
 .cli__title { margin: 0 0 var(--s-1); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-faint); }
 .cli__cmd { font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text-dim); background: none; padding: 0; overflow-wrap: anywhere; }
+.guide__toc .guide__toc-title { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin: 0 0 var(--s-1); }
