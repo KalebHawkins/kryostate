@@ -167,6 +167,10 @@ type Scheduler struct {
 	Rand func(n int64) int64
 	// OnProgress receives each host's result, for a live view.
 	OnProgress func(Progress)
+	// OnTick, when set, is called on every tick with the scheduler's clock
+	// and location, for work that runs at a time of day, such as the daily
+	// digest. It must not block for long.
+	OnTick func(ctx context.Context, now time.Time, loc *time.Location)
 
 	gate    *Gate
 	started atomic.Bool
@@ -476,6 +480,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 	for {
 		if _, err := s.RunDue(ctx); err != nil {
 			s.Engine.logf("scheduler", err)
+		}
+		if s.OnTick != nil {
+			s.OnTick(ctx, s.now(), s.loc())
 		}
 		select {
 		case <-ctx.Done():

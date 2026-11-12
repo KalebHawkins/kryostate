@@ -25,6 +25,7 @@ import (
 
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/notify"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -56,6 +57,8 @@ type Server struct {
 	// Scheduler runs collectors on their schedules. The schedules page reads
 	// it whether or not it was started, and a manual run passes its gate.
 	Scheduler *engine.Scheduler
+	// Notifier sends the daily digest; the scheduler drives it.
+	Notifier *notify.Notifier
 
 	tmpl *template.Template
 	// guide is the rendered user guide. It is fixed at build time, so it is
@@ -85,6 +88,8 @@ func New(st *store.Store, eng *engine.Engine, log *slog.Logger) (*Server, error)
 		eng.Wire()
 		s.Scheduler = engine.NewScheduler(eng, nil)
 		s.Scheduler.OnProgress = s.hub.broadcast
+		s.Notifier = notify.New(st, eng.Secret, log)
+		s.Scheduler.OnTick = s.Notifier.TickAsync
 	}
 	t, err := template.New("").Funcs(s.funcs()).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
@@ -139,6 +144,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /schedules", s.handleSetSchedule)
 	mux.HandleFunc("POST /schedules/spread", s.handleSpreadSchedules)
 	mux.HandleFunc("GET /changes", s.handleChanges)
+	mux.HandleFunc("GET /notifications", s.handleNotifications)
+	mux.HandleFunc("POST /notifications", s.handleNotifySettings)
+	mux.HandleFunc("POST /notifications/test", s.handleNotifyTest)
 	mux.HandleFunc("GET /guide", s.handleGuide)
 	mux.HandleFunc("GET /guide/collectors", s.handleCollectorGuide)
 	mux.HandleFunc("GET /guide/queries", s.handleQueryGuide)
