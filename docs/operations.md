@@ -31,7 +31,8 @@ systemctl status kryostate
 journalctl -u kryostate -f
 ```
 
-It listens on `127.0.0.1:8099`. The web interface has no login, so keep it on
+It listens on `127.0.0.1:8099`. The web interface has no login, and neither does the
+read-only API under `/api/v1` (see [the API guide](api.md)), so keep it on
 localhost and put a reverse proxy that asks people to sign in in front of it.
 If the proxy serves it under another name, tell KryoState so form posts from
 that name are accepted:

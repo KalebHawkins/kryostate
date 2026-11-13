@@ -699,7 +699,7 @@ Each host in scope is in one of three lists:
 |---|---|
 | **Done** | It matches the expect query. |
 | **Not yet** | Its values say it does not match yet, such as nginx 1.20 when 1.24 is expected. |
-| **Unknown** | It has not reported a value the expect query needs, so it cannot be told either way. Usually the collector is not switched on, or has not run on it yet. The list says which value is missing. |
+| **Unknown** | It has not reported a value the expect query needs, so it cannot be told either way. Usually the collector is not switched on, has not run on it yet, or could not read the value on its last try (see 2.5, Unknown is not blank). The list says which value is missing, or what the host said. |
 
 A rule is **complete** when every host in scope is done: none not yet and
 none unknown. The badge says since when. A rule whose scope matches no host
@@ -735,8 +735,8 @@ value** for that key).
 
 The **Rules** page lists every rule with a progress bar, a small trend line
 and when its counts last moved; the Overview shows open rules under
-**Rollouts**. A rule's own page lists the hosts in each bucket (fifty of each,
-with a link to the inventory for the rest) and a chart of how the counts
+**Rollouts**. A rule's own page lists the hosts in each bucket, with the values that put
+each one there (fifty of each, with a link to the inventory for the rest) and a chart of how the counts
 moved. A point is kept whenever a collection run finishes with different
 counts, and once a day otherwise. Changing a rule's queries starts its trend
 again, since the old points answered another question.

@@ -172,6 +172,11 @@ Other properties worth knowing:
 - An inventory query is parsed and evaluated in Go over values already
   loaded; no part of it reaches SQL. Its patterns are Go regular
   expressions, which run in time linear in the input.
+- The JSON API under `/api/v1` is read-only: anything but `GET` is
+  refused with 405. It is reached on the same port with the same lack of
+  login, so it is protected by the same proxy. It leaves out what the pages
+  would not hand to another tool: credential references, host keys,
+  notification destinations and passwords.
 - The progress stream drops updates to a slow client rather than blocking a
   collection run.
 - Every asset ships in the binary. The interface makes no request to the
