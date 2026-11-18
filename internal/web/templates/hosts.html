@@ -5,11 +5,11 @@
   <form class="form" method="post" action="/hosts">
     <div class="form__row">
       <label>Name <input type="text" name="name" required placeholder="web01"></label>
-      <label>Fully qualified name <span class="hint">optional, stronger evidence of identity</span>
+      <label>Fully qualified name
         <input type="text" name="fqdn" placeholder="web01.example.com"></label>
     </div>
     <div class="form__actions"><button class="btn btn--primary" type="submit">Add host</button>
-      <span class="muted">You can add its connection, stacks and checks on the next page.</span></div>
+      <span class="muted">Then give it a connection with <span class="mono">kryostate target add &lt;name&gt;</span>.</span></div>
   </form>
 </details>
 <div class="filterbar">
