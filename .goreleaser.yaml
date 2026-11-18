@@ -3,8 +3,8 @@
 #   goreleaser check
 #   goreleaser release --snapshot --clean     # everything, nothing published
 #
-# A tag v* pushed to GitHub runs .github/workflows/release.yml, which runs
-# this for real: archives, .deb and .rpm packages, checksums and SBOMs on the
+# Every push to main that passes ci, and every tag v* pushed by hand, runs
+# .github/workflows/release.yml, which runs this for real: archives, .deb and .rpm packages, checksums and SBOMs on the
 # GitHub release, and the image on ghcr.io/kalebhawkins/kryostate.
 #
 # AIX is not built: modernc.org/libc, under the pure Go SQLite driver, has no

@@ -206,6 +206,12 @@ plain build reports its version from the commit it was built from
 (`.goreleaser.yaml`), and `goreleaser release --snapshot --clean` builds every
 archive, package and image locally without publishing anything.
 
+Every push to `main` that passes CI is released automatically: the
+**release** workflow bumps the patch number of the newest `v*` tag (starting at
+`v0.1.0`), tags the commit, and publishes the GitHub release and the image. For
+a minor or major bump, push the tag yourself (`git tag v1.0.0 && git push
+origin v1.0.0`); later automatic releases count up from it.
+
 ### 4.1 Podman or Docker
 
 The image has no shell and runs as an unprivileged user (uid 65532). The
