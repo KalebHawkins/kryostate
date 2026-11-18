@@ -117,7 +117,13 @@ func (e *Engine) connectGuarded(ctx context.Context, runID string, p store.ConnP
 		case <-ctx.Done():
 			return nil, "", ctx.Err()
 		}
-		defer func() { <-st.slot }()
+		// Whoever held the turn may have proven the password meanwhile; then
+		// there is no reason to keep everyone else waiting behind this host.
+		if st.proven(runID) {
+			<-st.slot
+		} else {
+			defer func() { <-st.slot }()
+		}
 	}
 	rec := context.WithoutCancel(ctx)
 	if h, ok, err := e.Store.CredentialHoldFor(rec, p.CredentialRef, p.Username); err != nil {

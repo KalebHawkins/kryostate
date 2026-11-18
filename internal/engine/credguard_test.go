@@ -93,9 +93,12 @@ func TestWorkingPasswordConnectsInParallel(t *testing.T) {
 					break
 				}
 			}
-			// The first connection returns at once; the rest linger, so
+			// The first connection is slow enough that every other host is
+			// already waiting its turn when it finishes; the rest linger, so
 			// any that are allowed to run together are seen to.
-			if !first.CompareAndSwap(true, false) {
+			if first.CompareAndSwap(true, false) {
+				time.Sleep(20 * time.Millisecond)
+			} else {
 				time.Sleep(30 * time.Millisecond)
 			}
 			if !ok {
