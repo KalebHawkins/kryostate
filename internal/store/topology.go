@@ -128,6 +128,23 @@ func (s *Store) PutConnProfile(ctx context.Context, p ConnProfile) error {
 	return err
 }
 
+// SetCredentialForUser points every connection that logs in as username at
+// ref, leaving everything else about them alone, and reports how many it
+// changed. An empty transport means every transport.
+func (s *Store) SetCredentialForUser(ctx context.Context, username, transport, ref string) (int64, error) {
+	q := `UPDATE conn_profile SET credential_ref=? WHERE username=?`
+	args := []any{ref, username}
+	if transport != "" {
+		q += ` AND transport=?`
+		args = append(args, transport)
+	}
+	res, err := s.db.ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // ConnProfiles returns the enabled profiles for a CI.
 func (s *Store) ConnProfiles(ctx context.Context, ciID string) ([]ConnProfile, error) {
 	rows, err := s.db.QueryContext(ctx,

@@ -30,6 +30,16 @@ CREATE TABLE IF NOT EXISTS host_backoff (
 	last_error TEXT NOT NULL DEFAULT '',
 	updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS credential_hold (
+	ref        TEXT NOT NULL,
+	username   TEXT NOT NULL,
+	fails      INTEGER NOT NULL,
+	held       INTEGER NOT NULL DEFAULT 0,
+	last_host  TEXT NOT NULL DEFAULT '',
+	last_error TEXT NOT NULL DEFAULT '',
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (ref, username)
+);
 `
 
 func (s *Store) migrateCoordination(ctx context.Context) error {

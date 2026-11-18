@@ -853,16 +853,20 @@ func cmdHost(ctx context.Context, args []string) error {
 func cmdTarget(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("target", flag.ExitOnError)
 	db := dbFlag(fs)
-	ci := hostFlag(fs, "host to reach")
+	ci := hostFlag(fs, "host to reach; several may be given, separated by commas")
 	transport := fs.String("transport", "ssh", "ssh or winrm")
 	address := fs.String("address", "", "address or name to connect to, blank for the host's fqdn or name")
 	port := fs.Int("port", 0, "port, zero for the transport default")
 	user := fs.String("user", "", "username")
 	cred := fs.String("credential", "agent:", "credential reference, for example agent: or keyring:kryostate/ops")
+	password := fs.Bool("password", false, "log in with a password: prompt for it, keep it in the OS credential store as kryostate/<user>, and use keyring:kryostate/<user>. Run again when the password changes")
+	forUser := fs.String("for-user", "", "instead of adding a target, change the credential of every target that logs in as this user, to -credential or -password")
 	bastion := fs.String("bastion", "", "bastion as user@host:port/credential-ref")
 	disable := fs.Bool("disable", false, "record the profile but never collect through it")
 	forget := fs.Bool("forget-host-key", false, "with -host: clear the pinned host key, so the next collection trusts whatever key the host presents. Use it only after checking the host was really rebuilt")
 	fs.Parse(args)
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
 	st, err := openStore(*db)
 	if err != nil {
@@ -870,72 +874,193 @@ func cmdTarget(ctx context.Context, args []string) error {
 	}
 	defer st.Close()
 
+	if *forUser != "" {
+		if !*password && !set["credential"] {
+			return errors.New("-for-user changes the credential: give -credential or -password")
+		}
+		ref := *cred
+		if *password {
+			if ref, err = storePassword(ctx, st, "kryostate", *forUser); err != nil {
+				return err
+			}
+		}
+		only := ""
+		if set["transport"] {
+			only = *transport
+		}
+		n, err := st.SetCredentialForUser(ctx, *forUser, only, ref)
+		if err != nil {
+			return err
+		}
+		if err := st.Audit(ctx, actor(), "set credential", ref, fmt.Sprintf("%d targets logging in as %s", n, *forUser)); err != nil {
+			return err
+		}
+		fmt.Printf("%d targets logging in as %s now use %s\n", n, *forUser, ref)
+		return nil
+	}
+
 	if *ci == "" {
-		profiles, err := st.CollectTargets(ctx, "")
-		if err != nil {
-			return err
-		}
-		if len(profiles) == 0 {
-			fmt.Println("no enabled targets; add one with: kryostate target -host <name> -user <user>")
-			return nil
-		}
-		tw := newTable(os.Stdout)
-		fmt.Fprintln(tw, "HOST\tID\tTRANSPORT\tCONNECT AS\tCREDENTIAL")
-		for _, p := range profiles {
-			name := p.CIID
-			if c, err := st.CI(ctx, p.CIID); err == nil {
-				name = c.Label
-			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s@%s%s\t%s\n", name, shortID(p.CIID), p.Transport,
-				p.Username, p.Address, portSuffix(p.Port), p.CredentialRef)
-		}
-		return tw.Flush()
+		return listTargets(ctx, st)
 	}
-	ref := *ci
-	if *ci, err = st.LookupCI(ctx, *ci); err != nil {
-		return err
-	}
+	refs := splitIDs(*ci)
 	if *forget {
-		profiles, err := st.ConnProfiles(ctx, *ci)
-		if err != nil {
-			return err
+		if len(refs) != 1 {
+			return errors.New("-forget-host-key takes one host")
 		}
-		for _, p := range profiles {
-			if p.Transport != *transport {
-				continue
-			}
-			if p.HostKey == "" {
-				fmt.Printf("%s has no pinned %s host key; the next collection will pin one.\n", ref, p.Transport)
-				return nil
-			}
-			if err := st.PinHostKey(ctx, *ci, p.Transport, ""); err != nil {
-				return err
-			}
-			if err := st.Audit(ctx, actor(), "forget host key", *ci, p.Transport+" "+p.HostKey); err != nil {
-				return err
-			}
-			fmt.Printf("forgot the %s host key of %s. The next collection pins the key it presents then.\n", p.Transport, ref)
-			fmt.Printf("collect now: kryostate refresh -only %s\n", ref)
-			return nil
-		}
-		return fmt.Errorf("%s has no %s connection", ref, *transport)
+		return forgetHostKey(ctx, st, refs[0], *transport)
 	}
-	if *address == "" {
-		*address = defaultAddress(ctx, st, *ci)
-	}
-	if *address == "" || *user == "" || *cred == "" {
+	if *user == "" {
 		return errors.New("a target needs -user (and -address when the host has no name to connect to)")
 	}
-	p := store.ConnProfile{
-		CIID: *ci, Transport: *transport, Address: *address, Port: *port,
-		Username: *user, CredentialRef: *cred, BastionRef: *bastion,
-		Enabled: !*disable,
+	if *address != "" && len(refs) > 1 {
+		return errors.New("-address names one host; leave it out to connect to each host by its own name")
 	}
-	if err := st.PutConnProfile(ctx, p); err != nil {
+	ids, err := st.LookupCIs(ctx, refs)
+	if err != nil {
 		return err
 	}
-	fmt.Printf("recorded: %s via %s as %s@%s using %s\n", ref, p.Transport, p.Username, p.Address, p.CredentialRef)
-	fmt.Printf("try it with: kryostate refresh -only %s\n", ref)
+	if *password {
+		if *cred, err = storePassword(ctx, st, "kryostate", *user); err != nil {
+			return err
+		}
+	}
+	if *cred == "" {
+		return errors.New("-credential cannot be empty")
+	}
+	for i, id := range ids {
+		addr := *address
+		if addr == "" {
+			addr = defaultAddress(ctx, st, id)
+		}
+		if addr == "" {
+			return fmt.Errorf("%s has no name to connect to: give -address", refs[i])
+		}
+		p := store.ConnProfile{
+			CIID: id, Transport: *transport, Address: addr, Port: *port,
+			Username: *user, CredentialRef: *cred, BastionRef: *bastion,
+			Enabled: !*disable,
+		}
+		if err := st.PutConnProfile(ctx, p); err != nil {
+			return err
+		}
+		fmt.Printf("recorded: %s via %s as %s@%s using %s\n", refs[i], p.Transport, p.Username, p.Address, p.CredentialRef)
+	}
+	fmt.Printf("try it with: kryostate refresh -only %s\n", strings.Join(refs, ","))
+	return nil
+}
+
+func listTargets(ctx context.Context, st *store.Store) error {
+	profiles, err := st.CollectTargets(ctx, "")
+	if err != nil {
+		return err
+	}
+	if len(profiles) == 0 {
+		fmt.Println("no enabled targets; add one with: kryostate target -host <name> -user <user>")
+		return nil
+	}
+	holds, err := st.CredentialHolds(ctx)
+	if err != nil {
+		return err
+	}
+	held := map[string]bool{}
+	for _, h := range holds {
+		if h.Held {
+			held[h.Ref+"\x00"+h.Username] = true
+		}
+	}
+	tw := newTable(os.Stdout)
+	fmt.Fprintln(tw, "HOST\tID\tTRANSPORT\tCONNECT AS\tCREDENTIAL")
+	for _, p := range profiles {
+		name := p.CIID
+		if c, err := st.CI(ctx, p.CIID); err == nil {
+			name = c.Label
+		}
+		credential := p.CredentialRef
+		if held[p.CredentialRef+"\x00"+p.Username] {
+			credential += " (on hold)"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s@%s%s\t%s\n", name, shortID(p.CIID), p.Transport,
+			p.Username, p.Address, portSuffix(p.Port), credential)
+	}
+	return tw.Flush()
+}
+
+func forgetHostKey(ctx context.Context, st *store.Store, ref, transport string) error {
+	id, err := st.LookupCI(ctx, ref)
+	if err != nil {
+		return err
+	}
+	profiles, err := st.ConnProfiles(ctx, id)
+	if err != nil {
+		return err
+	}
+	for _, p := range profiles {
+		if p.Transport != transport {
+			continue
+		}
+		if p.HostKey == "" {
+			fmt.Printf("%s has no pinned %s host key; the next collection will pin one.\n", ref, p.Transport)
+			return nil
+		}
+		if err := st.PinHostKey(ctx, id, p.Transport, ""); err != nil {
+			return err
+		}
+		if err := st.Audit(ctx, actor(), "forget host key", id, p.Transport+" "+p.HostKey); err != nil {
+			return err
+		}
+		fmt.Printf("forgot the %s host key of %s. The next collection pins the key it presents then.\n", p.Transport, ref)
+		fmt.Printf("collect now: kryostate refresh -only %s\n", ref)
+		return nil
+	}
+	return fmt.Errorf("%s has no %s connection", ref, transport)
+}
+
+// storePassword prompts for a password, keeps it in the OS credential store
+// as service/account, lifts any hold on it, and returns its reference. At a
+// terminal it asks twice: a mistyped password would otherwise be tried
+// against every host until the account locked.
+func storePassword(ctx context.Context, st *store.Store, service, account string) (string, error) {
+	v, err := readSecret(fmt.Sprintf("password for %s: ", account))
+	if err != nil {
+		return "", err
+	}
+	if v == "" {
+		return "", errors.New("refusing to store an empty password")
+	}
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		again, err := readSecret("again: ")
+		if err != nil {
+			return "", err
+		}
+		if again != v {
+			return "", errors.New("the two entries differ; nothing stored")
+		}
+	}
+	if err := secret.StoreKeyring(service, account, v); err != nil {
+		return "", err
+	}
+	ref := "keyring:" + service + "/" + account
+	if err := releaseHold(ctx, st, ref); err != nil {
+		return "", err
+	}
+	if err := st.Audit(ctx, actor(), "store credential", ref, ""); err != nil {
+		return "", err
+	}
+	fmt.Printf("stored the password in the OS credential store; reference it as %s\n", ref)
+	return ref, nil
+}
+
+func releaseHold(ctx context.Context, st *store.Store, ref string) error {
+	n, err := st.ClearCredentialHold(ctx, ref, "")
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		if err := st.Audit(ctx, actor(), "release credential", ref, ""); err != nil {
+			return err
+		}
+		fmt.Printf("released %s: hosts are tried with it again\n", ref)
+	}
 	return nil
 }
 
@@ -966,7 +1091,8 @@ func cmdStack(ctx context.Context, args []string) error {
 	add := fs.String("add", "", "comma-separated hosts to add, each as name or name:role")
 	file := fs.String("file", "", "file listing hosts to add, one per line: name, then role, optionally an fqdn; - reads standard input")
 	create := fs.Bool("create", false, "with -add or -file: record hosts that are not known yet")
-	user := fs.String("user", "", "with -add or -file: give hosts with no connection one that logs in as this user through ssh-agent")
+	user := fs.String("user", "", "with -add or -file: give hosts with no connection one that logs in as this user, with -credential")
+	stackCred := fs.String("credential", "agent:", "with -user: the credential those connections use, such as keyring:kryostate/<user>")
 	remove := fs.String("remove", "", "comma-separated hosts (names or ids) to take out")
 	role := fs.String("role", "", "role for added members that do not name their own")
 	app := fs.String("application", "", "with -add or -file: the application the added hosts run")
@@ -1039,7 +1165,7 @@ func cmdStack(ctx context.Context, args []string) error {
 	}
 	if len(lines) > 0 {
 		res, err := ingest.AddHostsToStack(ctx, st, *name, lines,
-			ingest.BulkOptions{Create: *create, User: *user, Application: *app, By: actor()})
+			ingest.BulkOptions{Create: *create, User: *user, Credential: *stackCred, Application: *app, By: actor()})
 		if err != nil {
 			return err
 		}
@@ -1108,9 +1234,11 @@ func listStacks(ctx context.Context, st *store.Store) error {
 func cmdSecret(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("secret", flag.ExitOnError)
 	db := dbFlag(fs)
-	set := fs.String("set", "", "store material in the OS credential store, as service/account")
+	set := fs.String("set", "", "store material in the OS credential store, as service/account; also releases a hold on keyring:service/account")
 	del := fs.String("delete", "", "remove material from the OS credential store, as service/account")
 	test := fs.String("test", "", "resolve a reference and report only whether it worked")
+	holds := fs.Bool("holds", false, "list password credentials that failed to log in, and which are on hold")
+	release := fs.String("release", "", "lift the hold on a credential reference, so hosts are tried with it again")
 	fs.Parse(args)
 
 	st, err := openStore(*db)
@@ -1127,19 +1255,42 @@ func cmdSecret(ctx context.Context, args []string) error {
 			return errors.New("-set takes service/account")
 		}
 		// Read from the terminal rather than a flag, because a flag value is
-		// in the process list and in the shell history. Nothing is echoed, and
-		// the whole line is taken, so a passphrase may contain spaces.
-		v, err := readSecret("value: ")
+		// in the process list and in the shell history.
+		_, err := storePassword(ctx, st, service, account)
+		return err
+	case *holds:
+		hs, err := st.CredentialHolds(ctx)
 		if err != nil {
 			return err
 		}
-		if v == "" {
-			return errors.New("refusing to store an empty value")
+		if len(hs) == 0 {
+			fmt.Println("no credential has failed to log in")
+			return nil
 		}
-		if err := secret.StoreKeyring(service, account, v); err != nil {
+		tw := newTable(os.Stdout)
+		fmt.Fprintln(tw, "CREDENTIAL\tUSER\tFAILURES\tSTATE\tLAST HOST\tWHEN\tLAST ERROR")
+		for _, h := range hs {
+			state := "counting"
+			if h.Held {
+				state = "on hold"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\n", h.Ref, h.Username, h.Fails, state,
+				dash(h.LastHost), h.UpdatedAt.Local().Format("2006-01-02 15:04"), dash(h.LastError))
+		}
+		return tw.Flush()
+	case *release != "":
+		n, err := st.ClearCredentialHold(ctx, *release, "")
+		if err != nil {
 			return err
 		}
-		fmt.Printf("stored; reference it as keyring:%s/%s\n", service, account)
+		if n == 0 {
+			fmt.Printf("%s was not on hold\n", *release)
+			return nil
+		}
+		if err := st.Audit(ctx, actor(), "release credential", *release, ""); err != nil {
+			return err
+		}
+		fmt.Printf("released %s: hosts are tried with it again\n", *release)
 		return nil
 	case *del != "":
 		service, account, ok := strings.Cut(*del, "/")

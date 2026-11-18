@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -156,11 +157,45 @@ func sshAuth(ctx context.Context, ref string, reg *secret.Registry) ([]ssh.AuthM
 	case secret.KindPassword:
 		pw := string(s.Bytes)
 		s.Zero()
-		return []ssh.AuthMethod{ssh.Password(pw)}, noop, nil
+		return passwordAuth(pw), noop, nil
 	default:
 		return nil, noop, fmt.Errorf("credential %s cannot be used for ssh", ref)
 	}
 }
+
+// passwordAuth offers a password both as "password" and as an answer to a
+// keyboard-interactive prompt, because many PAM and directory-joined hosts
+// accept only the second. It is sent at most once per connection: when the
+// server refuses it by one method and then asks by the other, the second ask
+// is declined, since each refusal counts towards locking the account.
+func passwordAuth(pw string) []ssh.AuthMethod {
+	var sent atomic.Bool
+	password := ssh.PasswordCallback(func() (string, error) {
+		if !sent.CompareAndSwap(false, true) {
+			return "", errPasswordRefused
+		}
+		return pw, nil
+	})
+	interactive := ssh.KeyboardInteractive(func(_, _ string, questions []string, echos []bool) ([]string, error) {
+		answers := make([]string, len(questions))
+		for i := range questions {
+			if echos[i] {
+				return nil, fmt.Errorf("ssh: server asked %q, which a stored password cannot answer", questions[i])
+			}
+			if !sent.CompareAndSwap(false, true) {
+				return nil, errPasswordRefused
+			}
+			answers[i] = pw
+		}
+		return answers, nil
+	})
+	return []ssh.AuthMethod{password, interactive}
+}
+
+// errPasswordRefused stops a second offer of a password the server already
+// turned down in this connection. Its text is what outcomeFor recognises as
+// an authentication failure.
+var errPasswordRefused = errors.New("ssh: unable to authenticate: password refused, not offered a second time")
 
 // dialBastion parses "user@host:port/credential-ref" and connects, pinning the
 // jump host's key under the same rules as a target.

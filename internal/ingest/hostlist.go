@@ -76,8 +76,11 @@ type BulkOptions struct {
 	// matches nothing is reported as a problem.
 	Create bool
 	// User, when set, gives every host without an ssh connection one that
-	// logs in as this user through ssh-agent.
+	// logs in as this user, with Credential.
 	User string
+	// Credential is the reference those connections use; empty means
+	// "agent:".
+	Credential string
 	// Application, when set, is recorded as the application every listed
 	// host runs.
 	Application string
@@ -150,8 +153,12 @@ func AddHostsToStack(ctx context.Context, st *store.Store, stack string, hosts [
 				if addr == "" {
 					addr = h.Name
 				}
+				cred := opt.Credential
+				if cred == "" {
+					cred = "agent:"
+				}
 				if err := st.PutConnProfile(ctx, store.ConnProfile{CIID: id, Transport: "ssh",
-					Address: addr, Username: opt.User, CredentialRef: "agent:", Enabled: true}); err != nil {
+					Address: addr, Username: opt.User, CredentialRef: cred, Enabled: true}); err != nil {
 					return res, err
 				}
 				res.Connected++

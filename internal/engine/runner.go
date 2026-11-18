@@ -47,7 +47,12 @@ type Engine struct {
 	// Dial replaces the real SSH and WinRM connection, for tests. It returns
 	// the transport and the operating system family the host reports.
 	Dial func(ctx context.Context, p store.ConnProfile) (collect.Transport, string, error)
+	// CredentialFailLimit is how many authentication failures in a row put a
+	// password credential on hold; zero means DefaultCredentialFailLimit.
+	CredentialFailLimit int
 
+	// creds keeps password logins in step within a run.
+	creds credGate
 	// warned holds the switched-on catalog collectors already reported as no
 	// longer in the catalog, so the warning is logged once, not on every run.
 	warned sync.Map
@@ -244,6 +249,8 @@ func outcomeFor(err error) model.Outcome {
 		return model.OutcomeOK
 	case errors.Is(err, context.DeadlineExceeded):
 		return model.OutcomeTimeout
+	case isCredentialHeld(err):
+		return model.OutcomeAuthFail
 	case errors.Is(err, collect.ErrHostKeyChanged), errors.Is(err, collect.ErrHostKeyUnknown):
 		return model.OutcomeError
 	}
@@ -287,7 +294,12 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 	// reported as one nobody has ever tried to reach.
 	rec := context.WithoutCancel(ctx)
 
-	t, osFamily, err := e.connect(ctx, p)
+	t, osFamily, err := e.connectGuarded(ctx, runID, p)
+	if isCredentialHeld(err) {
+		// Nothing was sent to the host, so there is nothing to say about it:
+		// no probe, and no backoff for a host that was never asked.
+		return 0, err
+	}
 	if err != nil {
 		if perr := e.Store.RecordProbe(rec, model.Probe{
 			CIID: p.CIID, Kind: probeKindFor(p.Transport), Outcome: outcomeFor(err),
@@ -480,6 +492,13 @@ func (e *Engine) dial(ctx context.Context, p store.ConnProfile) (collect.Transpo
 			CredentialRef: p.CredentialRef, HTTPS: true,
 		}, e.Secret)
 		if err != nil {
+			return nil, "", err
+		}
+		// WinRM authenticates every command separately, so a wrong password
+		// would fail once per collector, and each failure counts against the
+		// account. One trivial command first means it fails once.
+		if _, err := t.Run(ctx, "$null"); err != nil {
+			t.Close()
 			return nil, "", err
 		}
 		return t, "windows", nil

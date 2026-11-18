@@ -77,6 +77,26 @@ value truncated, the action, and whether it succeeded. The material is never
 written. The row records which credential was used. It does not record where
 that credential is kept.
 
+### Account lockout
+
+A password credential is usually a directory account, and a directory locks an
+account after a few bad passwords. A tool that logs in to every host is well
+placed to lock its own operator out within seconds of a password change, so
+password logins (`keyring:`, `env:`, `exec:`, and all WinRM) are rationed:
+
+- In each run, connections with a password not yet proven in that run go one
+  at a time (`engine.connectGuarded`).
+- SSH offers the password at most once per connection, by `password` or at a
+  keyboard-interactive prompt, never both (`collect.passwordAuth`).
+- WinRM runs one trivial command before the collectors, so a bad password is
+  one failure per host and not one per command.
+- Two authentication failures in a row put the credential on hold in the
+  `credential_hold` table, which every process sharing the database reads. A
+  held credential is not sent to any host until a person stores a new password
+  or releases the hold. Holding and releasing are audited.
+
+Keys and agents are not rationed: a refused key does not lock an account.
+
 ### Deliberate omissions
 
 - **No cryptography is implemented here.** Where material must rest on disk it

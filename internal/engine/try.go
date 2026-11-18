@@ -41,7 +41,7 @@ func (e *Engine) TrySpecs(ctx context.Context, p store.ConnProfile, specs []coll
 	if len(specs) == 0 {
 		return TryResult{}, errors.New("nothing to try")
 	}
-	t, family, err := e.dial(ctx, p)
+	t, family, err := e.connectGuarded(ctx, "", p)
 	if err != nil {
 		return TryResult{}, fmt.Errorf("connect to %s: %w", p.Address, err)
 	}

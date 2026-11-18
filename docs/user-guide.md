@@ -202,6 +202,62 @@ another machine from the web page.
 
 The database stores a credential **reference**, never the key or password.
 
+#### Logging in with a password
+
+Where you cannot put a key on every host, log in with your password instead:
+
+```sh
+kryostate target -host web01,web02,db01 -user svc-ro -password
+```
+
+`-password` asks for the password twice, keeps it in the operating system's
+credential store (Windows Credential Manager, the macOS keychain, or the
+Secret Service) as `kryostate/svc-ro`, and points the targets at
+`keyring:kryostate/svc-ro`. `-host` takes several hosts at once. A host that
+only asks for the password at a keyboard-interactive prompt, as PAM and
+directory-joined hosts often do, is answered there.
+
+To move every target that already logs in as a user onto the password, or
+onto any other credential:
+
+```sh
+kryostate target -for-user svc-ro -password
+kryostate target -for-user svc-ro -credential agent:
+```
+
+Hosts added in bulk with `kryostate stack -add … -create -user svc-ro` can be
+given it too, with `-credential keyring:kryostate/svc-ro`.
+
+**When the password changes,** store the new one. Every target that uses it
+reads the same entry, so this one command updates them all:
+
+```sh
+kryostate secret -set kryostate/svc-ro
+```
+
+**Lockout protection.** A directory account usually locks after a few wrong
+passwords, and a run that tried an old password on every host would lock it
+at once. So, for any credential that is a password (`keyring:`, `env:`,
+`exec:`, and every WinRM connection):
+
+- Within a run, hosts take turns until the password has worked once; after
+  that they connect in parallel as usual. A stale password is tried against
+  one host at a time, not eight at once.
+- Each connection offers the password once. A host that turns it down is not
+  offered it again by another method.
+- A WinRM connection checks the password with one command before running the
+  collectors, rather than failing once per command.
+- After **two** authentication failures in a row, on any hosts and across
+  runs and restarts, the credential is **put on hold**. No host is tried with
+  it again, and those hosts report "not tried: … is on hold". A successful
+  login resets the count.
+
+`kryostate secret -holds` lists credentials that have failed and which are on
+hold, and `kryostate target` marks their targets `(on hold)`. Storing a new
+password with `secret -set` or `-password` lifts the hold. If the password was
+right and the failures had another cause, lift it with
+`kryostate secret -release keyring:kryostate/svc-ro`.
+
 ### Step 3: collect
 
 **In the web interface:** open **Runs** and select **Collect now**.
