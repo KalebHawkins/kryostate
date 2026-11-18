@@ -87,7 +87,7 @@
         <span class="chip chip--human">{{.CredentialRef}}</span>
         {{if .BastionRef}}<span class="muted">via bastion</span>{{end}}
         {{if not .Enabled}}<span class="chip chip--unknown">disabled</span>{{end}}</p>
-      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it with <span class="mono">kryostate target -host {{$.CI.Label}} …</span></p>
+      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it with <span class="mono">kryostate target update {{$.CI.Label}} …</span></p>
     {{end}}{{end}}
     {{if not .SSHLocked}}
     {{$p := .SSH}}
@@ -209,7 +209,7 @@
     {{end}}
   </div>
 </div>
-{{template "cli" (list (printf "kryostate show %s" (shq .CI.Label)) (printf "kryostate refresh -only %s" (shq .CI.Label)) (printf "kryostate set %s application=<name>" (shq .CI.Label)))}}
+{{template "cli" (list (printf "kryostate host show %s" (shq .CI.Label)) (printf "kryostate refresh --only %s" (shq .CI.Label)) (printf "kryostate host update %s application=<name>" (shq .CI.Label)))}}
 {{end}}
 
 {{define "long-value"}}{{if multiline .}}<details class="fact-full"><summary>{{short . 40}}</summary><pre>{{.}}</pre></details>{{else}}{{.}}{{end}}{{end}}

@@ -71,7 +71,7 @@ func (s *Store) LookupCI(ctx context.Context, ref string) (string, error) {
 		if hint != "" {
 			return "", fmt.Errorf("%w %q; did you mean %s?", ErrNoSuchHost, ref, hint)
 		}
-		return "", fmt.Errorf("%w %q; list hosts with: kryostate hosts", ErrNoSuchHost, ref)
+		return "", fmt.Errorf("%w %q; list hosts with: kryostate host list", ErrNoSuchHost, ref)
 	default:
 		sort.Strings(ids)
 		var b strings.Builder

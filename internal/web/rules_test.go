@@ -76,7 +76,7 @@ func TestRulePages(t *testing.T) {
 		"Not yet <span", "Unknown <span", "Done <span",
 		"no value for <span class=\"mono\">nginx.version</span> yet",
 		`<span class="mono">nginx.version</span> is <span class="mono">1.20.1</span>`,
-		`class="rtrend"`, "From the command line", "kryostate rules -show &#39;nginx 1.24&#39;",
+		`class="rtrend"`, "From the command line", "kryostate rules show &#39;nginx 1.24&#39;",
 		"Edit rule", "Delete rule",
 	} {
 		if !strings.Contains(page, want) {
@@ -89,7 +89,7 @@ func TestRulePages(t *testing.T) {
 
 	// The list: progress bar, counts, sparkline and the scope in words.
 	body = get(t, h, "/rules", nil).Body.String()
-	for _, want := range []string{`href="/rules/1"`, "Stack web", `class="segbar rbar"`, `class="spark"`, "1 open", "kryostate rules -add"} {
+	for _, want := range []string{`href="/rules/1"`, "Stack web", `class="segbar rbar"`, `class="spark"`, "1 open", "kryostate rules add"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("list lacks %q", want)
 		}

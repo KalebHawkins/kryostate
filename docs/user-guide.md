@@ -48,7 +48,7 @@ number wins.
 | Source kind | Rank | Where it comes from |
 |---|---|---|
 | collector | first | A command run on the host |
-| human | 20 | A person, with `kryostate set` or the host page (application only) |
+| human | 20 | A person, with `kryostate host update` or the host page (application only) |
 | dns | 30 | A DNS lookup |
 | document | 40 | An imported document (application only) |
 | derived | 90 | Inferred from another value |
@@ -81,7 +81,7 @@ unknown too, not the old value. If the command ran and failed (for
 example, the user KryoState logs in as cannot look inside a folder that only
 root can read), the old answer is no longer known to be true. Queries treat
 the value as missing, and rules count the host as **Unknown**. The host page and
-`kryostate show` list it as unknown, with what the host said and since
+`kryostate host show` list it as unknown, with what the host said and since
 when. The next good reading brings the value back. If the connection drops
 partway through, that tells you nothing about the host, so values are left
 as they were.
@@ -118,11 +118,28 @@ version at the bottom.
 
 The database is a single SQLite file. By default it is in your user
 configuration directory. To use a different file, set `KRYOSTATE_DB` or pass
-`-db` to any command:
+`--db` to any command:
 
 ```sh
 export KRYOSTATE_DB=$HOME/kryostate/estate.db
 ```
+
+Settings you always use can also go in a config file,
+`kryostate/config.yaml` in your user configuration directory (or the file
+named by `--config` or `KRYOSTATE_CONFIG`). Its keys are flag names:
+
+```yaml
+db: /home/kim/kryostate/estate.db
+serve:
+  addr: 127.0.0.1:8099
+```
+
+A flag on the command line wins over a `KRYOSTATE_` environment variable,
+which wins over the file. `docs/operations.md` lists the settings.
+
+Commands are a noun and a verb, such as `kryostate host add`. Run
+`kryostate --help` for the list, and `kryostate <command> --help` for the
+flags of one command.
 
 Your name is written to the audit trail. KryoState reads it from
 `KRYOSTATE_ACTOR`, then `USER`, then `USERNAME`.
@@ -151,7 +168,7 @@ real read-only account.
 ### Step 0: start the web interface
 
 ```sh
-kryostate serve -addr 127.0.0.1:8099
+kryostate serve --addr 127.0.0.1:8099
 ```
 
 Open `http://127.0.0.1:8099` in a browser. The web interface has no login of
@@ -167,7 +184,7 @@ are taken to the host's page.
 **On the command line:**
 
 ```sh
-kryostate host web01 -fqdn web01.example.com
+kryostate host add web01 --fqdn web01.example.com
 ```
 
 Give the fully qualified name when you know it. It is stronger evidence of
@@ -190,15 +207,17 @@ runs `kryostate serve`.
 **On the command line:**
 
 ```sh
-kryostate target -host web01 -user svc-ro
+kryostate target add web01 --user svc-ro
 ```
 
 The command line can also use other credentials: `keyring:service/account`
 (the operating system's credential store), `file:/path/key`,
-`exec:/path/helper` and `env:VAR`, with `-credential`. Windows hosts use
-`-transport winrm`, which is HTTPS only. Connections that use these can only
+`exec:/path/helper` and `env:VAR`, with `--credential`. Windows hosts use
+`--transport winrm`, which is HTTPS only. Connections that use these can only
 be changed on the command line, because a password could otherwise be sent to
-another machine from the web page.
+another machine from the web page. `kryostate target update web01 --user other`
+changes only the settings you give; `kryostate target list` lists every
+connection.
 
 The database stores a credential **reference**, never the key or password.
 
@@ -207,13 +226,13 @@ The database stores a credential **reference**, never the key or password.
 Where you cannot put a key on every host, log in with your password instead:
 
 ```sh
-kryostate target -host web01,web02,db01 -user svc-ro -password
+kryostate target add web01 web02 db01 --user svc-ro --password
 ```
 
-`-password` asks for the password twice, keeps it in the operating system's
+`--password` asks for the password twice, keeps it in the operating system's
 credential store (Windows Credential Manager, the macOS keychain, or the
 Secret Service) as `kryostate/svc-ro`, and points the targets at
-`keyring:kryostate/svc-ro`. `-host` takes several hosts at once. A host that
+`keyring:kryostate/svc-ro`. `target add` takes several hosts at once. A host that
 only asks for the password at a keyboard-interactive prompt, as PAM and
 directory-joined hosts often do, is answered there.
 
@@ -221,18 +240,18 @@ To move every target that already logs in as a user onto the password, or
 onto any other credential:
 
 ```sh
-kryostate target -for-user svc-ro -password
-kryostate target -for-user svc-ro -credential agent:
+kryostate target set-credential --for-user svc-ro --password
+kryostate target set-credential --for-user svc-ro --credential agent:
 ```
 
-Hosts added in bulk with `kryostate stack -add … -create -user svc-ro` can be
-given it too, with `-credential keyring:kryostate/svc-ro`.
+Hosts added in bulk with `kryostate stack add <stack> … --create --user svc-ro`
+can be given it too, with `--credential keyring:kryostate/svc-ro`.
 
 **When the password changes,** store the new one. Every target that uses it
 reads the same entry, so this one command updates them all:
 
 ```sh
-kryostate secret -set kryostate/svc-ro
+kryostate secret set kryostate/svc-ro
 ```
 
 **Lockout protection.** A directory account usually locks after a few wrong
@@ -252,11 +271,11 @@ at once. So, for any credential that is a password (`keyring:`, `env:`,
   it again, and those hosts report "not tried: … is on hold". A successful
   login resets the count.
 
-`kryostate secret -holds` lists credentials that have failed and which are on
-hold, and `kryostate target` marks their targets `(on hold)`. Storing a new
-password with `secret -set` or `-password` lifts the hold. If the password was
+`kryostate secret holds` lists credentials that have failed and which are on
+hold, and `kryostate target list` marks their targets `(on hold)`. Storing a new
+password with `secret set` or `--password` lifts the hold. If the password was
 right and the failures had another cause, lift it with
-`kryostate secret -release keyring:kryostate/svc-ro`.
+`kryostate secret release keyring:kryostate/svc-ro`.
 
 ### Step 3: collect
 
@@ -266,13 +285,13 @@ Progress appears for each host as it finishes.
 **On the command line:**
 
 ```sh
-kryostate refresh -only web01
+kryostate refresh --only web01
 ```
 
 Both connect to the host and run the built-in read-only commands for its
 operating system, plus every collector you switched on. `refresh` also runs
 the health checks (step 6). Leave
-out `-only` to do every host.
+out `--only` to do every host.
 
 If the connection fails, the reason is shown. The most common causes are an
 ssh-agent that is not running and a host key that has changed.
@@ -285,7 +304,7 @@ every value, where it came from, and when.
 **On the command line:**
 
 ```sh
-kryostate show web01
+kryostate host show web01
 ```
 
 ### Step 5: state what a machine cannot know
@@ -299,13 +318,14 @@ the application.
 **On the command line:**
 
 ```sh
-kryostate set web01 application=payments
-kryostate set web01 stack=payments-prod role=app -reason "per CHG-1042"
+kryostate host update web01 application=payments
+kryostate host update web01 stack=payments-prod role=app --reason "per CHG-1042"
 ```
 
-Anything else, such as `env=production`, is refused.
+Anything else, such as `env=production`, is refused. (`kryostate set` is a
+shorter name for `kryostate host update`.)
 
-Every change goes into the audit log with your name. `-reason` adds an
+Every change goes into the audit log with your name. `--reason` adds an
 optional note to that entry, such as a ticket number.
 
 ### Step 6 (optional): add a health check
@@ -319,12 +339,13 @@ HTTP and enter a URL, or TCP and enter `host:port`.
 **On the command line:**
 
 ```sh
-kryostate check -host web01 -name https -http https://web01.example.com/health -expect 2xx
+kryostate check add web01 https --http https://web01.example.com/health --expect 2xx
 ```
 
 Checks run with `kryostate refresh`, or on their own with
-`kryostate check -run`. **Collect now** in the web interface and scheduled
-collections do not run them.
+`kryostate check`. `kryostate check list web01` lists a host's checks and
+`kryostate check rm web01 https` removes one. **Collect now** in the web
+interface and scheduled collections do not run them.
 
 ## 5. Tutorial: build a stack
 
@@ -362,13 +383,14 @@ To add more hosts later, open the stack from the **Stacks** list and use **Add s
 **On the command line:** put the same lines in a file, then:
 
 ```sh
-kryostate stack -name payments-prod -environment production \
-    -owner payments-team -file hosts.txt -create -user svc-ro -application payments
+kryostate stack add payments-prod --environment production \
+    --owner payments-team --file hosts.txt --create --user svc-ro --application payments
 ```
 
-`-create` adds hosts that are not recorded yet; without it, an unknown name is
-reported and skipped. A short list can go straight on the command line:
-`-add web01:app,db01:database`.
+`--create` adds hosts that are not recorded yet; without it, an unknown name is
+reported and skipped. A short list can go straight on the command line, after
+the stack's name: `kryostate stack add payments-prod web01:app db01:database`.
+The stack is created if it does not exist yet.
 
 ### One host at a time
 
@@ -382,7 +404,7 @@ reported and skipped. A short list can go straight on the command line:
 **On the command line:**
 
 ```sh
-kryostate stack -name payments-prod -add web01 -role app
+kryostate stack add payments-prod web01 --role app
 ```
 
 ### Every host a query matches
@@ -397,7 +419,7 @@ one-off: hosts that match the query later are not added by themselves.
 **On the command line:**
 
 ```sh
-kryostate stack -name payments-prod -q 'os.family == "Linux" && name in ("web01", "web02")' -role app
+kryostate stack add payments-prod -q 'os.family == "Linux" && name in ("web01", "web02")' --role app
 ```
 
 ### Look at it
@@ -409,11 +431,11 @@ on it, and why.
 
 To collect something more from just this stack, switch it on from the
 **Collectors** page with **Where it runs** set to the stack, or run
-`kryostate collectors -enable group.web -stacks payments-prod`. That only ever
+`kryostate collectors enable group.web --stacks payments-prod`. That only ever
 adds the stack: anything already collected on other hosts keeps running there.
 
-On the command line, `kryostate stack` lists the stacks and
-`kryostate hosts -stack payments-prod` lists the members.
+On the command line, `kryostate stack list` lists the stacks and
+`kryostate host list --stack payments-prod` lists the members.
 
 ### Changing a stack
 
@@ -424,11 +446,12 @@ stack**. Deleting a stack does not change its hosts.
 **On the command line:**
 
 ```sh
-kryostate stack -name payments-prod -remove lb01
-kryostate stack -name payments-prod -owner platform-team
+kryostate stack rm payments-prod lb01               # take a member out
+kryostate stack update payments-prod --owner platform-team
+kryostate stack delete payments-prod                # the stack itself; its hosts stay
 ```
 
-Flags you leave out keep their current values.
+Flags you leave out of `stack update` keep their current values.
 
 ### Importing stacks from a document
 
@@ -436,7 +459,7 @@ If your inventory already has a stack column, the importer creates the stacks
 for you:
 
 ```sh
-kryostate import -name inventory.md inventory.md
+kryostate import inventory.md --name inventory.md
 ```
 
 An inventory supplies the hosts, their names and addresses, the stack each
@@ -460,13 +483,13 @@ other names, write a mapping file that says which column means what:
 }
 ```
 
-and pass it with `-map`:
+and pass it with `--map`:
 
 ```sh
-kryostate import -name inventory.md -map mapping.json inventory.md
+kryostate import inventory.md --name inventory.md --map mapping.json
 ```
 
-The `-name` is the source name shown beside every application from this
+The `--name` is the source name shown beside every application from this
 file. Import the same file again after you edit it; unchanged values are not
 duplicated, and stack details you set by hand are kept. A CSV file works the
 same way.
@@ -513,20 +536,20 @@ query to separate Linux from Windows. The collector guide has more examples.
 **On the command line:**
 
 ```sh
-kryostate collectors -catalog
-kryostate collectors -try memory.total -host web01
-kryostate collectors -enable memory.total
-kryostate collectors -enable group.web -stacks web
-kryostate collectors -enable nginx.version -where 'name in ("web01", "web02")'
-kryostate collectors -enable file.exists -param /etc/ssh/sshd_config.d/hardening.conf
-kryostate collectors -enable config.value -param /etc/app/app.conf \
-    -section database -key host
+kryostate collectors catalog
+kryostate collectors try memory.total --host web01
+kryostate collectors enable memory.total
+kryostate collectors enable group.web --stacks web
+kryostate collectors enable nginx.version --where 'name in ("web01", "web02")'
+kryostate collectors enable file.exists --param /etc/ssh/sshd_config.d/hardening.conf
+kryostate collectors enable config.value --param /etc/app/app.conf \
+    --section database --key host
 ```
 
 The values come back on each host's page with readable names, such as
 **nginx version** or **host in app.conf [database]**. A version is grouped by
 its first two numbers, so the charts put 1.22.1 and 1.22.4 together. The full version is in the **Raw** column, and
-`kryostate show` prints it in brackets.
+`kryostate host show` prints it in brackets.
 
 ### Step 2: collect
 
@@ -544,12 +567,12 @@ server. You do not need to write a program.
 The easiest start is a collector that already exists. Open it on the
 **Collectors** page and open **View definition**: it is written out exactly as
 you would write it in your own file, with a **Copy** button.
-`kryostate collectors -show <id>` prints the same.
+`kryostate collectors show <id>` prints the same.
 
 ```sh
-kryostate collectors -init                                  # create the file
-kryostate collectors -show cpu.cores                        # a worked example to copy
-kryostate collectors -try example.nodename -host web01      # test, saves nothing
+kryostate collectors init                                   # create the file
+kryostate collectors show cpu.cores                         # a worked example to copy
+kryostate collectors try example.nodename --host web01      # test, saves nothing
 ```
 
 The **[collector guide](collectors.md)** explains the catalog in more detail
@@ -578,7 +601,7 @@ Only one collection runs against a database at a time, whichever process
 starts it. If `kryostate serve` is in the middle of a scheduled run (or
 somebody else's `refresh` is running), `refresh` and `collect` say who is
 collecting and since when, and wait for it to finish, up to 10 minutes;
-change that with `-wait 30m`, or give up at once with `-no-wait`. Equally,
+change that with `--wait 30m`, or give up at once with `--no-wait`. Equally,
 while a `refresh` from the command line runs, the server's schedule waits and
 **Collect now** on the **Runs** page says "A collection started from the
 command line by kim is running" instead of starting a second wave.
@@ -602,7 +625,7 @@ people look after:
 - A host that cannot be reached is left alone for 10 minutes, then 20, and
   so on, doubling each time up to 6 hours. This is kept in the database, so
   restarting the server does not try every failing host again at once. The
-  host's page and `kryostate show <host>` say so ("skipped by the schedule
+  host's page and `kryostate host show <host>` say so ("skipped by the schedule
   until 14:20 after 3 failed attempts: ..."). **Collect now** and `refresh`
   still try the host; one answer clears it.
 - **Collect now** waits for scheduled sessions to finish, and nothing
@@ -616,7 +639,7 @@ So collectors do run concurrently across hosts, but never more than 4
 sessions at a time; the rest wait their turn. The **Schedules** page shows
 these limits at the top.
 
-**When a collector runs.** A schedule with a time of day (`-at 02:00`) runs
+**When a collector runs.** A schedule with a time of day (`--at 02:00`) runs
 at exactly that time. A schedule without one, which includes every default,
 runs at a time picked from the collector's name, the way Jenkins reads `H` in
 a cron line: `builtin.os` might run daily at 16:04 and `builtin.hw` at 17:39,
@@ -653,18 +676,18 @@ has the same editor in its **Schedule** card.
 **On the command line:**
 
 ```sh
-kryostate collectors -schedules                               # list them, grouped by time
-kryostate collectors -schedule builtin.os -every 1d -at 02:00
-kryostate collectors -schedule cpu.cores -every 6h
-kryostate collectors -schedule cpu.cores -manual              # or -default
+kryostate collectors schedules                                # list them, grouped by time
+kryostate collectors schedule builtin.os --every 1d --at 02:00
+kryostate collectors schedule cpu.cores --every 6h
+kryostate collectors schedule cpu.cores --manual              # or --default
 ```
 
-Name a collector the way `-schedules` lists it: `builtin.os`, `builtin.hw` and
+Name a collector the way `collectors schedules` lists it: `builtin.os`, `builtin.hw` and
 `builtin.host` for the built-in groups, a catalog name such as `cpu.cores`,
 `spec.<id>` for one of your own, and `external.<name>` for an external
 program. A running server picks up a change within a minute.
 
-Start the server with `-no-schedule` to collect only when asked.
+Start the server with `--no-schedule` to collect only when asked.
 
 ### Changes
 
@@ -701,25 +724,28 @@ connection credentials: `env:NAME`, `file:/path`, `exec:…` or
 ```sh
 # Slack, or a classic Teams incoming webhook
 export KRYOSTATE_SLACK_URL='https://hooks.slack.com/services/…'
-kryostate notify -add-webhook -name ops -url-ref env:KRYOSTATE_SLACK_URL
+kryostate notify add-webhook ops --url-ref env:KRYOSTATE_SLACK_URL
 
 # Anything that takes JSON, such as a Teams workflow
-kryostate notify -add-webhook -name feed -url-ref file:/etc/kryostate/feed-url -format generic
+kryostate notify add-webhook feed --url-ref file:/etc/kryostate/feed-url --format generic
 
-# Email over SMTP with STARTTLS (or -tls for port 465)
-kryostate notify -add-email -name team -to ops@example.com,dba@example.com \
-  -from kryostate@example.com -smtp smtp.example.com:587 \
-  -user kryostate -password-ref env:KRYOSTATE_SMTP_PASSWORD -starttls
+# Email over SMTP with STARTTLS (or --tls for port 465)
+kryostate notify add-email team --to ops@example.com,dba@example.com \
+  --from kryostate@example.com --smtp smtp.example.com:587 \
+  --user kryostate --password-ref env:KRYOSTATE_SMTP_PASSWORD --starttls
 
-kryostate notify -base-url https://kryostate.example.com   # the link in each digest
-kryostate notify -list                 # destinations, settings and recent sends
-kryostate notify -test ops             # send a test message now
-kryostate notify -preview              # print the digest that would be sent now
-kryostate notify -remove ops
+kryostate notify set --base-url https://kryostate.example.com   # the link in each digest
+kryostate notify list                  # destinations, settings and recent sends
+kryostate notify test ops              # send a test message now
+kryostate notify preview               # print the digest that would be sent now
+kryostate notify rm ops
 ```
 
+`kryostate notify set` also turns the digest on or off (`--enable`,
+`--disable`) and sets its time of day (`--at 08:00`).
+
 A reference is resolved by the process that sends: the server for the daily
-digest, the command for `-test`. An `env:` reference must therefore be set
+digest, the command for `notify test`. An `env:` reference must therefore be set
 in the server's environment. A password is only sent over an encrypted
 connection, and a server that does not offer STARTTLS when it was asked for
 is refused rather than used in clear.
@@ -738,7 +764,7 @@ time, it goes when the server is next running that day. Every send is
 recorded, so a restart never sends the same day twice. A failed send is tried
 three times, a little longer apart each time, and then recorded with its
 error, which the page shows. The digest is sent by the scheduler, so a server
-started with `-no-schedule` sends none.
+started with `--no-schedule` sends none.
 
 ### Rules: tracking a rollout
 
@@ -800,11 +826,11 @@ again, since the old points answered another question.
 From the command line:
 
 ```sh
-kryostate rules                                   # every rule, with counts
-kryostate rules -add -name 'nginx 1.24' -scope 'stack == "web"' -expect 'nginx.version >= "1.24"'
-kryostate rules -show 'nginx 1.24'                # the hosts not yet done, and the unknown ones
-kryostate rules -show 'nginx 1.24' -json          # every host in scope, by list
-kryostate rules -delete 'nginx 1.24'
+kryostate rules list                              # every rule, with counts
+kryostate rules add 'nginx 1.24' --scope 'stack == "web"' --expect 'nginx.version >= "1.24"'
+kryostate rules show 'nginx 1.24'                 # the hosts not yet done, and the unknown ones
+kryostate rules show 'nginx 1.24' --json          # every host in scope, by list
+kryostate rules rm 'nginx 1.24'
 ```
 
 ### A host as it was on a past day
@@ -813,8 +839,8 @@ To see a host as it was on a past day, pick the date in the **As of** box
 above its Facts table, or run:
 
 ```sh
-kryostate show web01 -at 2026-03-01          # as at the end of 1 March
-kryostate show web01 -at 2026-03-01T15:04    # as at that minute
+kryostate host show web01 --at 2026-03-01          # as at the end of 1 March
+kryostate host show web01 --at 2026-03-01T15:04    # as at that minute
 ```
 
 Each attribute shows the value that won among what had been reported by
@@ -830,11 +856,11 @@ the address (`/hosts?q=...`), so a filtered view can be bookmarked or pasted
 to someone else. On the command line:
 
 ```sh
-kryostate hosts                          # every host
-kryostate hosts pay                      # names that contain "pay"
-kryostate hosts -q 'os.family == "Linux" && stack == "web"'
-kryostate hosts -cols os.version,application
-kryostate hosts -json                    # for scripts
+kryostate host list                      # every host
+kryostate host list pay                  # names that contain "pay"
+kryostate host list -q 'os.family == "Linux" && stack == "web"'
+kryostate host list --cols os.version,application
+kryostate host list --json               # for scripts
 ```
 
 #### Queries
@@ -872,7 +898,7 @@ paging, plus everything else the pages show. See the [API guide](api.md),
 which is also at **Guide → API** (`/guide/api`).
 
 `/hosts.json` takes the same `q` and `col` parameters as the Inventory page,
-and `kryostate hosts -json` prints the same shape:
+and `kryostate host list --json` prints the same shape:
 
 ```json
 [
@@ -890,7 +916,7 @@ and `kryostate hosts -json` prints the same shape:
 
 `values` holds the chosen columns, `null` where the host has no value; `col=*`
 chooses every attribute, and the command line includes every value unless
-`-cols` is given. `application` and `last_collected` are left out when there
+`--cols` is given. `application` and `last_collected` are left out when there
 is none.
 
 ### Retiring a host
@@ -904,15 +930,33 @@ find it again, use **Retired hosts** on the Inventory page; its page has
 **On the command line:**
 
 ```sh
-kryostate host -retire web01 -reason "decommissioned, CHG-2210"
-kryostate host -unretire web01
+kryostate host rm web01 --reason "decommissioned, CHG-2210"
+kryostate host restore web01
 ```
+
+`host rm` keeps the host's history: its values, probes, stored output and
+audit entries. It takes the host out of everything that still acts on it:
+its connections (and with them its pinned host keys), its stack
+memberships, its health checks and any schedule back-off. `host restore`
+brings the host back, but not those: add its connections and stacks again.
+
+To delete a host and its whole history for good, such as a host added by
+mistake, purge it:
+
+```sh
+kryostate host rm --purge web01        # asks first; --yes to skip the question
+```
+
+This removes every value, stored output, probe, identity, address, check,
+membership, connection and audit entry of the host, and writes one "purge"
+entry to the audit log in their place. It cannot be undone, and a purged
+host cannot be restored.
 
 ### Backing up
 
 ```sh
-kryostate export -out backup.json
-kryostate restore -db new.db -in backup.json
+kryostate export --out backup.json
+kryostate restore --db new.db --in backup.json
 ```
 
 `restore` needs an empty database.
@@ -952,7 +996,7 @@ under a different name than the one it forwards, list that name when
 starting:
 
 ```sh
-kryostate serve -trusted-origin https://cmdb.example.com
+kryostate serve --trusted-origin https://cmdb.example.com
 ```
 
 ## 9. Troubleshooting
@@ -968,7 +1012,7 @@ the host: `ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub`). If they match,
 clear the old key, and the next collection pins the new one:
 
 ```sh
-kryostate target -host web01 -forget-host-key
+kryostate target forget-host-key web01
 ```
 
 This is on the command line only, and is written to the audit log.
@@ -977,11 +1021,11 @@ This is on the command line only, and is written to the audit log.
 the error lists.
 
 **A value shows "not understood"**: the host answered, but no rule read the
-answer. Look at the raw output with `kryostate evidence -host <name> -show`,
+answer. Look at the raw output with `kryostate evidence list --host <name> --show`,
 then fix the parse rule (`reparse`) or the normaliser rule (`renormalize`).
 
-**My collector did not run**: run `kryostate collectors` and check that it is
-listed, then test it with `kryostate collectors -try <id> -host <name>`. The
+**My collector did not run**: run `kryostate collectors list` and check that it is
+listed, then test it with `kryostate collectors try <id> --host <name>`. The
 [collector guide](collectors.md#when-it-does-not-work) lists the common causes.
 
 **A host shows "never" collected**: it has no enabled connection. Add one on
@@ -989,23 +1033,23 @@ the host's page, under **Connection**.
 
 **"a scheduled run in another kryostate serve ... has been running since"**:
 `refresh` or `collect` found another process collecting from the same
-database and is waiting for it (up to `-wait`, 10 minutes by default). If it
-gives up, run it again later or with a longer `-wait`. A process that was
+database and is waiting for it (up to `--wait`, 10 minutes by default). If it
+gives up, run it again later or with a longer `--wait`. A process that was
 killed mid-run holds the database's collection lock for at most 2 minutes
 more; after that the lock is free again.
 
 **A host is "skipped by the schedule until ..."**: the schedule could not
 reach it, and is leaving it alone for a while, longer after each failure. Fix
 the cause (the error is in the message), then collect it by hand with
-`kryostate refresh -only <host>`; one success clears the wait.
+`kryostate refresh --only <host>`; one success clears the wait.
 
 **"Not saved: this connection uses a credential the web interface cannot
 change"**: the connection uses a password or a helper program. Change it with
-`kryostate target`.
+`kryostate target update`.
 
 **A form answers "403 Forbidden"**: the browser reached KryoState under a
 different name than the proxy forwards. Start it with
-`-trusted-origin https://<the name in the address bar>`.
+`--trusted-origin https://<the name in the address bar>`.
 
 **A path is refused as "C:/Program Files/Git/..."**: Git Bash on Windows
 rewrites arguments that start with `/`. Run `export MSYS_NO_PATHCONV=1`

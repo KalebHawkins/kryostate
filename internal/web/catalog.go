@@ -27,7 +27,7 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 	}
 	back = collectorURL(t.ID) + "#where"
 	if t.Reveals && !s.AllowRevealing {
-		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so it is switched on from the command line, or the server must be started with -allow-content-collectors"))
+		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so it is switched on from the command line, or the server must be started with --allow-content-collectors"))
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -81,7 +81,7 @@ func (s *Server) handleChooseWhere(w http.ResponseWriter, r *http.Request) {
 	}
 	back := collectorURL(c.Template) + "#where"
 	if t, ok := collect.Lookup(c.Template); ok && t.Reveals && !s.AllowRevealing {
-		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so where it runs is changed from the command line, or the server must be started with -allow-content-collectors"))
+		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so where it runs is changed from the command line, or the server must be started with --allow-content-collectors"))
 		return
 	}
 	if c.Target, err = targetForm(r); err != nil {

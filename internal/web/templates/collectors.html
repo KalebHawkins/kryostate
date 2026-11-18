@@ -26,7 +26,7 @@
     {{end}}
     </tbody>
   </table>
-  <p class="muted small">From the command line: <span class="mono">kryostate collectors</span> lists them; <span class="mono">kryostate collectors -disable &lt;#&gt;</span> turns one off.</p>
+  <p class="muted small">From the command line: <span class="mono">kryostate collectors list</span> lists them; <span class="mono">kryostate collectors disable &lt;#&gt;</span> turns one off.</p>
 </section>
 {{end}}
 
@@ -104,7 +104,7 @@
     <p class="muted small">{{.Own}} read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file on the server and restart to change them; this page never takes a command.</p>
     {{else}}
     <p class="muted small">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Every catalog entry's page shows its definition as a worked example to copy.</p>
-    <pre><code>kryostate collectors -init</code></pre>
+    <pre><code>kryostate collectors init</code></pre>
     {{with .WantPath}}<p class="muted small">That creates <span class="mono">{{.}}</span>.</p>{{end}}
     {{end}}
     <p class="small"><a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">The collector guide</a> explains each field.</p>
@@ -125,7 +125,7 @@
     <p class="small"><a href="/guide/collectors#external-programs">How to write an external program</a></p>
   </div>
 </div>
-{{template "cli" (list "kryostate collectors" "kryostate collectors -catalog" "kryostate collectors -enable <id> -where 'stack == \"web\"'" "kryostate collectors -show <id>")}}
+{{template "cli" (list "kryostate collectors list" "kryostate collectors catalog" "kryostate collectors enable <id> --where 'stack == \"web\"'" "kryostate collectors show <id>")}}
 {{end}}
 
 {{define "collector-status"}}

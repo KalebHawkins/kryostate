@@ -22,7 +22,7 @@ func (e *Engine) warnSkipped(c collect.Choice, err error) {
 	if errors.Is(err, collect.ErrNotInCatalog) {
 		e.Log.Warn("switched-on collector skipped: its catalog entry no longer exists in this build",
 			"template", c.Template, "choice", c.ID,
-			"remove", "Turn off on the Collectors page, or: kryostate collectors -disable "+strconv.FormatInt(c.ID, 10))
+			"remove", "Turn off on the Collectors page, or: kryostate collectors disable "+strconv.FormatInt(c.ID, 10))
 		return
 	}
 	e.Log.Warn("switched-on collector skipped", "collector", c.Label(), "choice", c.ID, "err", err)

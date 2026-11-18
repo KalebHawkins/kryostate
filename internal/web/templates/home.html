@@ -66,7 +66,7 @@
   <aside class="ov-side">
     <section class="card ov-card" aria-labelledby="ov-next">
       <h2 id="ov-next">Next runs</h2>
-      {{if not .Scheduling}}<p class="notice small">Scheduled runs are off in this server (it was started with <span class="mono">-no-schedule</span>), so collection only happens when someone starts it.</p>{{end}}
+      {{if not .Scheduling}}<p class="notice small">Scheduled runs are off in this server (it was started with <span class="mono">--no-schedule</span>), so collection only happens when someone starts it.</p>{{end}}
       {{if .Upcoming}}
       <ol class="ov-next">
         {{range .Upcoming}}
@@ -107,5 +107,5 @@
     {{end}}
   </div>
 </section>
-{{template "cli" (list "kryostate hosts" "kryostate refresh" "kryostate collectors -schedules")}}
+{{template "cli" (list "kryostate host list" "kryostate refresh" "kryostate collectors schedules")}}
 {{end}}

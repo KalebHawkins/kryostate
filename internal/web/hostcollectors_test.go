@@ -116,7 +116,7 @@ func TestRemovedCatalogChoiceIsShownAndRemovable(t *testing.T) {
 	}
 	page := get(t, h, "/collectors", nil).Body.String()
 	for _, want := range []string{"No longer in the catalog", "vendor.gone.version", "not in catalog",
-		`action="/collectors/remove"`, `name="id" value="` + itoa(gone) + `"`, "Turn off", "kryostate collectors -disable"} {
+		`action="/collectors/remove"`, `name="id" value="` + itoa(gone) + `"`, "Turn off", "kryostate collectors disable"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the collectors page lacks %q", want)
 		}

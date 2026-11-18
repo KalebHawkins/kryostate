@@ -13,4 +13,4 @@ USER 65532:65532
 VOLUME /data
 EXPOSE 8099
 ENTRYPOINT ["/usr/local/bin/kryostate"]
-CMD ["serve", "-addr", "0.0.0.0:8099"]
+CMD ["serve", "--addr", "0.0.0.0:8099"]

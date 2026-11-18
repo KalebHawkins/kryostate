@@ -14,7 +14,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
-// TestStarterFileWorks: the file -init writes is the first thing a new user
+// TestStarterFileWorks: the file "collectors init" writes is the first thing a new user
 // sees, so it must load and its example must read a value.
 func TestStarterFileWorks(t *testing.T) {
 	set, err := collect.LoadSpecs([]byte(starterCollectors))
@@ -57,7 +57,7 @@ func TestFilesNextToTheDatabaseAreFound(t *testing.T) {
 	}
 }
 
-// TestEnableTarget: -stacks becomes a query, -where is checked before
+// TestEnableTarget: --stacks becomes a query, --where is checked before
 // anything is saved, and both together must both hold.
 func TestEnableTarget(t *testing.T) {
 	for _, c := range []struct{ stacks, where, want, err string }{
@@ -119,7 +119,7 @@ func TestTryAndDisableFindCatalogCollectors(t *testing.T) {
 
 // TestListShowsARemovedCatalogEntry: a collector switched on from a catalog
 // entry this build no longer has is listed, marked, with how to remove it,
-// and -disable finds it by number.
+// and "collectors disable" finds it by number.
 func TestListShowsARemovedCatalogEntry(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(":memory:")
@@ -153,21 +153,21 @@ func TestListShowsARemovedCatalogEntry(t *testing.T) {
 		t.Fatal(lerr)
 	}
 	for _, want := range []string{"vendor.gone.version (no longer in the catalog, skipped)",
-		"kryostate collectors -disable " + strconv.FormatInt(id, 10)} {
+		"kryostate collectors disable " + strconv.FormatInt(id, 10)} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("listing lacks %q:\n%s", want, out)
 		}
 	}
 	c, err := findChoice(ctx, st, strconv.FormatInt(id, 10), "")
 	if err != nil || c.Template != "vendor.gone.version" {
-		t.Fatalf("-disable by number: %+v, %v", c, err)
+		t.Fatalf("disable by number: %+v, %v", c, err)
 	}
 	if err := st.DeleteChoice(ctx, c.ID, "test"); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// TestShowPrintsALoadableDefinition: -show is the command-line way to see a
+// TestShowPrintsALoadableDefinition: "collectors show" is the command-line way to see a
 // collector written out, and what it prints must load as a collectors file.
 func TestShowPrintsALoadableDefinition(t *testing.T) {
 	specs, err := collect.BuiltinSpecs()

@@ -32,7 +32,7 @@ func TestKeyPagesShowTheCommandLine(t *testing.T) {
 	}
 	q := `os.family == "Linux"`
 	body := html.UnescapeString(get(t, h, "/hosts?q="+url.QueryEscape(q), nil).Body.String())
-	if !strings.Contains(body, `kryostate hosts -q 'os.family == "Linux"' -cols`) {
+	if !strings.Contains(body, `kryostate host list -q 'os.family == "Linux"' --cols`) {
 		t.Error("the inventory hint does not carry the query")
 	}
 }

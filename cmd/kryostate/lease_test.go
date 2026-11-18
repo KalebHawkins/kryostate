@@ -31,7 +31,7 @@ func (s *syncBuffer) String() string {
 
 // TestRefreshWaitsForAnotherProcess: while another process (here a second
 // handle on the same file, standing in for kryostate serve) holds the
-// collection lease, refresh -no-wait fails at once saying who holds it, and
+// collection lease, refresh --no-wait fails at once saying who holds it, and
 // refresh without it waits and then runs once the lease is released.
 func TestRefreshWaitsForAnotherProcess(t *testing.T) {
 	ctx := context.Background()
@@ -53,15 +53,15 @@ func TestRefreshWaitsForAnotherProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = cmdRefresh(ctx, nil, []string{"-db", db, "-no-checks", "-quiet", "-no-wait"})
+	err = execute(t, "refresh", "--db", db, "--no-checks", "--quiet", "--no-wait")
 	if err == nil || !strings.Contains(err.Error(), "scheduled run in another kryostate serve") ||
 		!strings.Contains(err.Error(), "since") {
-		t.Fatalf("-no-wait: %v", err)
+		t.Fatalf("--no-wait: %v", err)
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		done <- cmdRefresh(ctx, nil, []string{"-db", db, "-no-checks", "-quiet", "-wait", "30s"})
+		done <- execute(t, "refresh", "--db", db, "--no-checks", "-q", "--wait", "30s")
 	}()
 	select {
 	case err := <-done:
@@ -85,14 +85,14 @@ func TestRefreshWaitsForAnotherProcess(t *testing.T) {
 		t.Errorf("refresh kept the lease: %+v", l)
 	}
 
-	// A short -wait gives up with a clear error.
+	// A short --wait gives up with a clear error.
 	release, err = srv.TryAcquire(ctx, engine.LeaseInfo{Origin: "schedule"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	err = cmdCollect(ctx, nil, []string{"-db", db, "-wait", "300ms"})
+	err = execute(t, "collect", "--db", db, "--wait", "300ms")
 	if err == nil || !strings.Contains(err.Error(), "gave up after waiting 300ms") {
-		t.Errorf("collect -wait 300ms: %v", err)
+		t.Errorf("collect --wait 300ms: %v", err)
 	}
 }

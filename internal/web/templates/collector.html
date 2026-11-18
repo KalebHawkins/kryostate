@@ -96,8 +96,8 @@
     {{else}}
     <div class="notice">
       <p>This shows what is inside files or variables, which may be secrets, so it is not switched on from this page. On the KryoState server, run:</p>
-      <pre><code>kryostate collectors -enable {{.T.ID}} -param {{.T.Param.Placeholder}}{{if .T.Param.Config}} -section {{.T.Param.SectionPlaceholder}} -key {{.T.Param.KeyPlaceholder}}{{end}}</code></pre>
-      <p class="muted small">Or start the server with <span class="mono">-allow-content-collectors</span> to offer it here.</p>
+      <pre><code>kryostate collectors enable {{.T.ID}} --param {{.T.Param.Placeholder}}{{if .T.Param.Config}} --section {{.T.Param.SectionPlaceholder}} --key {{.T.Param.KeyPlaceholder}}{{end}}</code></pre>
+      <p class="muted small">Or start the server with <span class="mono">--allow-content-collectors</span> to offer it here.</p>
     </div>
     {{end}}
   {{else if eq .Row.Source "external"}}

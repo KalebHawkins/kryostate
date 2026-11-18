@@ -33,13 +33,13 @@ func (e *CredentialHeldError) Error() string {
 		last += ": " + msg
 	}
 	return fmt.Sprintf("not tried: %s for %s is on hold after %d authentication failures in a row%s. "+
-		"Nothing logs in with it until the password is replaced (%s) or the hold released (kryostate secret -release %s)",
+		"Nothing logs in with it until the password is replaced (%s) or the hold released (kryostate secret release %s)",
 		h.Ref, h.Username, h.Fails, last, replaceHint(h.Ref), h.Ref)
 }
 
 func replaceHint(ref string) string {
 	if v, ok := strings.CutPrefix(ref, "keyring:"); ok {
-		return "kryostate secret -set " + v
+		return "kryostate secret set " + v
 	}
 	return "update what " + ref + " resolves to, then release the hold"
 }

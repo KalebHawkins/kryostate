@@ -132,11 +132,11 @@ func (s *Server) renderRules(w http.ResponseWriter, r *http.Request, f ruleForm,
 		}
 	}
 	d.CLI = []string{
-		"kryostate rules",
-		`kryostate rules -add -name 'nginx 1.24' -scope 'stack == "web"' -expect 'nginx.version >= "1.24"'`,
+		"kryostate rules list",
+		`kryostate rules add 'nginx 1.24' --scope 'stack == "web"' --expect 'nginx.version >= "1.24"'`,
 	}
 	if len(rows) > 0 {
-		d.CLI = append(d.CLI, "kryostate rules -show "+shellQuote(rows[0].Name))
+		d.CLI = append(d.CLI, "kryostate rules show "+shellQuote(rows[0].Name))
 	}
 	if status != http.StatusOK {
 		w.WriteHeader(status)
@@ -306,12 +306,12 @@ func (s *Server) renderRule(w http.ResponseWriter, r *http.Request, rule store.R
 	edit.Action, edit.Key = ruleURL(rule.ID), "edit"
 	d.Edit = edit
 	n := shellQuote(rule.Name)
-	d.CLI = []string{"kryostate rules -show " + n, "kryostate rules -show " + n + " -json"}
+	d.CLI = []string{"kryostate rules show " + n, "kryostate rules show " + n + " --json"}
 	if len(ev.NotYet) > 0 {
 		_, nq, _ := ruleQueries(rule, ev.Attrs)
-		d.CLI = append(d.CLI, "kryostate hosts -q "+shellQuote(nq))
+		d.CLI = append(d.CLI, "kryostate host list -q "+shellQuote(nq))
 	}
-	d.CLI = append(d.CLI, "kryostate rules -delete "+n)
+	d.CLI = append(d.CLI, "kryostate rules rm "+n)
 	if status != http.StatusOK {
 		w.WriteHeader(status)
 	}

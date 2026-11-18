@@ -67,7 +67,7 @@ up() {
 	start kryostate-lab --network "$net" -p "127.0.0.1:$port:8099" \
 		-v kryostate-lab-data:/data -v kryostate-lab-agent:/agent \
 		-e SSH_AUTH_SOCK=/agent/agent.sock -e KRYOSTATE_ACTOR=lab \
-		kryostate:latest serve -addr 0.0.0.0:8099 -allow-content-collectors
+		kryostate:latest serve --addr 0.0.0.0:8099 --allow-content-collectors
 
 	echo
 	echo "kryostate is on http://localhost:$port"
@@ -89,24 +89,24 @@ seed() {
 	# The inventory supplies the hosts, their stacks and roles, and the
 	# application each runs.
 	podman cp "$here/inventory.md" kryostate-lab:/data/inventory.md
-	hs import -name inventory.md /data/inventory.md
+	hs import --name inventory.md /data/inventory.md
 
 	# Each host gets a connection as the lab user, through the ssh-agent.
 	for h in "${hosts[@]}"; do
-		hs target -host "${h%% *}" -user kryostate
+		hs target add "${h%% *}" --user kryostate
 	done
 
 	# What to collect beyond the operating system.
-	hs collectors -enable group.basics
-	hs collectors -enable group.web -stacks web
-	hs collectors -enable package.version -param openssl
-	hs collectors -enable config.value -stacks data \
-		-param /var/lib/pgsql/data/postgresql.conf -key max_connections
-	hs collectors -enable config.value -stacks app \
-		-param /etc/app/app.conf -section database -key host
+	hs collectors enable group.basics
+	hs collectors enable group.web --stacks web
+	hs collectors enable package.version --param openssl
+	hs collectors enable config.value --stacks data \
+		--param /var/lib/pgsql/data/postgresql.conf --key max_connections
+	hs collectors enable config.value --stacks app \
+		--param /etc/app/app.conf --section database --key host
 	# true on web01 and app01, false on the others; try the inventory query
 	#   os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"
-	hs collectors -enable file.exists -param /etc/ssh/sshd_config.d/hardening.conf
+	hs collectors enable file.exists --param /etc/ssh/sshd_config.d/hardening.conf
 
 	hs refresh
 }

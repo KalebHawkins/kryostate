@@ -106,7 +106,7 @@
 </section>
 
 {{$n := shq $name}}
-{{template "cli" (list (printf "kryostate hosts -stack %s" $n) (printf "kryostate stack -name %s -add web01:app" $n) (printf "kryostate stack -name %s -q 'os.family == \"Linux\"' -role app" $n) (printf "kryostate stack -name %s -remove web01" $n) (printf "kryostate collectors -enable cpu.cores -stacks %s" $n))}}
+{{template "cli" (list (printf "kryostate host list --stack %s" $n) (printf "kryostate stack add %s web01:app" $n) (printf "kryostate stack add %s -q 'os.family == \"Linux\"' --role app" $n) (printf "kryostate stack rm %s web01" $n) (printf "kryostate collectors enable cpu.cores --stacks %s" $n))}}
 {{end}}
 
 {{/* stack-query-preview is the live answer of the add-by-query box. The

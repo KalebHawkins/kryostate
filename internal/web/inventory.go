@@ -262,7 +262,7 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 }
 
 // HostJSON is one host in the JSON export, /hosts.json and
-// "kryostate hosts -json":
+// "kryostate host list --json":
 //
 //	{
 //	  "id": "01J…",

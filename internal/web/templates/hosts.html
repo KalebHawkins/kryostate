@@ -106,10 +106,10 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="{{add (len .Columns) 3}}" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">kryostate import</span>, or add one with <span class="mono">kryostate host -name &lt;name&gt;</span>.</td></tr>
+    <tr><td colspan="{{add (len .Columns) 3}}" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">kryostate import</span>, or add one with <span class="mono">kryostate host add &lt;name&gt;</span>.</td></tr>
   {{end}}
   </tbody>
 </table>
 </div>
-{{template "cli" (list (printf "kryostate hosts%s -cols %s" (or (and .Expr (printf " -q %s" (shq .Expr))) "") (join .Columns ",")) (printf "kryostate hosts%s -json" (or (and .Expr (printf " -q %s" (shq .Expr))) "")))}}
+{{template "cli" (list (printf "kryostate host list%s --cols %s" (or (and .Expr (printf " -q %s" (shq .Expr))) "") (join .Columns ",")) (printf "kryostate host list%s --json" (or (and .Expr (printf " -q %s" (shq .Expr))) "")))}}
 {{end}}

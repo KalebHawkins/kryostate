@@ -86,5 +86,5 @@
 {{end}}
 </div>
 
-{{template "cli" (list "kryostate stack" "kryostate stack -name payments-prod -environment production -owner payments-team -add web01:app,db01:database -create")}}
+{{template "cli" (list "kryostate stack list" "kryostate stack add payments-prod web01:app db01:database --environment production --owner payments-team --create")}}
 {{end}}

@@ -57,7 +57,7 @@ func TestRemovedCatalogEntryIsSkipped(t *testing.T) {
 	if n := strings.Count(logged.String(), "vendor.gone.version"); n != 1 {
 		t.Errorf("warned %d times, want once:\n%s", n, logged.String())
 	}
-	if !strings.Contains(logged.String(), "no longer exists") || !strings.Contains(logged.String(), "-disable") {
+	if !strings.Contains(logged.String(), "no longer exists") || !strings.Contains(logged.String(), "collectors disable") {
 		t.Errorf("the warning does not say what happened or how to clear it:\n%s", logged.String())
 	}
 }

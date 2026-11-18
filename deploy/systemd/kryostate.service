@@ -28,8 +28,8 @@ Environment=KRYOSTATE_DB=/var/lib/kryostate/kryostate.db
 Environment=KRYOSTATE_ADDR=127.0.0.1:8099
 Environment=HOME=/var/lib/kryostate
 EnvironmentFile=-/etc/kryostate/kryostate.env
-# KRYOSTATE_OPTS carries any other serve flags, such as -trusted-origin.
-ExecStart=/usr/bin/kryostate serve -db ${KRYOSTATE_DB} -addr ${KRYOSTATE_ADDR} $KRYOSTATE_OPTS
+# KRYOSTATE_OPTS carries any other serve flags, such as --trusted-origin.
+ExecStart=/usr/bin/kryostate serve --db ${KRYOSTATE_DB} --addr ${KRYOSTATE_ADDR} $KRYOSTATE_OPTS
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s

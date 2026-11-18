@@ -168,7 +168,7 @@ $r.items | Select-Object name, @{n='os'; e={$_.values.'os.version'}}
 
 ### Ansible
 
-`kryostate hosts -json` already prints an inventory a script can turn into
+`kryostate host list --json` already prints an inventory a script can turn into
 Ansible's format. From another machine, the same list comes from
 `/api/v1/hosts?q=...`. Group the hosts by `stacks[].stack` and `role`.
 

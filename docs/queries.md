@@ -26,7 +26,7 @@ chosen:
 | Where a collector runs | On a collector's page, **Change where it runs** takes a query. A live preview under the box counts the hosts it matches and names the first few. |
 | Your own collectors | `"where"` in `collectors.json` (see the [collector guide](collectors.md)). |
 | **Rules** | A rule's scope chooses the hosts a rollout covers, and its expect query says what each should report once done, such as `nginx.version >= "1.24"`. A host whose answer needs a value it has not reported counts as unknown rather than not done. See [Rules: tracking a rollout](user-guide.md#rules-tracking-a-rollout). |
-| Command line | `kryostate hosts -q '...'`, `kryostate hosts -q '...' -json`, `kryostate collectors -enable <id> -where '...'` and `kryostate rules -add -scope '...' -expect '...'`. |
+| Command line | `kryostate host list -q '...'`, `kryostate host list -q '...' --json`, `kryostate collectors enable <id> --where '...'` and `kryostate rules add <name> --scope '...' --expect '...'`. |
 
 So a query that lists the right hosts on the Inventory page is exactly the one
 to give a collector.
@@ -86,7 +86,7 @@ To find an attribute's name:
   `os.version`.
 - The **Columns** list on the Inventory page names every attribute any host
   has.
-- `kryostate show <host>` prints every attribute by name.
+- `kryostate host show <host>` prints every attribute by name.
 - A collector's page says what it records, under **What it records**.
 
 ### Collectors that take a path or a name
@@ -206,10 +206,10 @@ name in ("web01", "web02", "app01")
 ## On the command line
 
 ```sh
-kryostate hosts -q 'os.family == "Linux" && stack == "web"'
-kryostate hosts -q 'hw.cpu.cores >= 8' -cols hw.cpu.cores,os.version
-kryostate hosts -q 'stack == "data"' -json > data.json
-kryostate collectors -enable nginx.version -where 'stack == "web"'
+kryostate host list -q 'os.family == "Linux" && stack == "web"'
+kryostate host list -q 'hw.cpu.cores >= 8' --cols hw.cpu.cores,os.version
+kryostate host list -q 'stack == "data"' --json > data.json
+kryostate collectors enable nginx.version --where 'stack == "web"'
 ```
 
 Put the query in single quotes so the shell leaves the double quotes and the

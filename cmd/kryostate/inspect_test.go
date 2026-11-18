@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"flag"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -28,15 +26,15 @@ func TestSetAcceptsOnlyApplicationStackAndRole(t *testing.T) {
 	}
 	st.Close()
 
-	if err := cmdSet(ctx, []string{"-db", db, "web01", "env=prod", "-reason", "r"}); err == nil ||
+	if err := execute(t, "host", "update", "--db", db, "web01", "env=prod", "--reason", "r"); err == nil ||
 		!strings.Contains(err.Error(), "cannot be set by hand") {
 		t.Errorf("env was accepted: %v", err)
 	}
-	if err := cmdSet(ctx, []string{"-db", db, "web01", "application=ledger", "stack=pay", "role=app", "-reason", "r"}); err != nil {
+	if err := execute(t, "set", "--db", db, "web01", "application=ledger", "stack=pay", "role=app", "--reason", "r"); err != nil {
 		t.Fatal(err)
 	}
 	// A role alone goes to the one stack the host is in. The reason is optional.
-	if err := cmdSet(ctx, []string{"-db", db, "web01", "role=api"}); err != nil {
+	if err := execute(t, "host", "update", "web01", "role=api", "--db", db); err != nil {
 		t.Fatal(err)
 	}
 
@@ -61,8 +59,8 @@ func TestSetAcceptsOnlyApplicationStackAndRole(t *testing.T) {
 	}
 }
 
-// TestStackAddsHostsByQuery: stack -q adds what a query matches, once, in
-// the -role role, and leaves members alone.
+// TestStackAddsHostsByQuery: stack add -q adds what a query matches, once,
+// in the --role role, and leaves members alone.
 func TestStackAddsHostsByQuery(t *testing.T) {
 	ctx := context.Background()
 	db := filepath.Join(t.TempDir(), "k.db")
@@ -80,13 +78,13 @@ func TestStackAddsHostsByQuery(t *testing.T) {
 	}
 	st.Close()
 
-	if err := cmdStack(ctx, []string{"-db", db, "-name", "pay", "-add", "web01:api"}); err != nil {
+	if err := execute(t, "stack", "add", "--db", db, "pay", "web01:api"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdStack(ctx, []string{"-db", db, "-name", "pay", "-q", `name in ("web01", "web02")`, "-role", "app"}); err != nil {
+	if err := execute(t, "stack", "add", "--db", db, "pay", "-q", `name in ("web01", "web02")`, "--role", "app"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cmdStack(ctx, []string{"-db", db, "-name", "pay", "-q", `name ==`}); err == nil || !strings.Contains(err.Error(), "query") {
+	if err := execute(t, "stack", "add", "--db", db, "pay", "--query", `name ==`); err == nil || !strings.Contains(err.Error(), "query") {
 		t.Errorf("a bad query gave %v", err)
 	}
 
@@ -101,21 +99,5 @@ func TestStackAddsHostsByQuery(t *testing.T) {
 	}
 	if len(roles) != 2 || roles[ids["web01"]] != "api" || roles[ids["web02"]] != "app" {
 		t.Errorf("roles %v", roles)
-	}
-}
-
-func TestFlagsMayFollowTheHost(t *testing.T) {
-	for _, args := range [][]string{
-		{"web01", "-json", "-reason", "why", "env=prod"},
-		{"-json", "web01", "-reason", "why", "env=prod"},
-		{"-json", "-reason", "why", "web01", "env=prod"},
-	} {
-		fs := flag.NewFlagSet("t", flag.ContinueOnError)
-		asJSON := fs.Bool("json", false, "")
-		reason := fs.String("reason", "", "")
-		pos := parseInterspersed(fs, args)
-		if !*asJSON || *reason != "why" || !slices.Equal(pos, []string{"web01", "env=prod"}) {
-			t.Errorf("%v: json=%v reason=%q pos=%v", args, *asJSON, *reason, pos)
-		}
 	}
 }

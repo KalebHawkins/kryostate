@@ -1,7 +1,7 @@
 {{define "notifications.html"}}
 <h1>Daily digest</h1>
 <p class="muted">Once a day KryoState can send what changed since the last digest: values that changed, hosts that started failing or recovered, and hosts never collected. <a href="/changes" hx-get="/changes" hx-target="#main" hx-push-url="true">Back to Changes</a>.</p>
-{{if .SchedulerOff}}<p class="notice small">Scheduling is off in this server (<span class="mono">-no-schedule</span>), so no digest is sent. Tests and the preview below still work.</p>{{end}}
+{{if .SchedulerOff}}<p class="notice small">Scheduling is off in this server (<span class="mono">--no-schedule</span>), so no digest is sent. Tests and the preview below still work.</p>{{end}}
 
 <section class="card" aria-labelledby="h-digest-settings">
   <h2 id="h-digest-settings">When and what</h2>
@@ -33,12 +33,12 @@
       <a class="btn btn--ghost" href="/notifications?preview=1#preview" hx-get="/notifications?preview=1" hx-target="#main" hx-push-url="true">Preview</a>
     </div>
   </form>
-  <p class="muted small">Link in each digest: {{with .Settings.BaseURL}}<span class="mono">{{.}}</span>{{else}}none; set one with <span class="mono">kryostate notify -base-url https://kryostate.example.com</span>{{end}}.</p>
+  <p class="muted small">Link in each digest: {{with .Settings.BaseURL}}<span class="mono">{{.}}</span>{{else}}none; set one with <span class="mono">kryostate notify set --base-url https://kryostate.example.com</span>{{end}}.</p>
 </section>
 
 <section class="card" aria-labelledby="h-dests">
   <h2 id="h-dests">Destinations</h2>
-  <p class="muted small">Destinations are added and removed from the command line only, so this page can never be used to point the server at an address: <span class="mono">kryostate notify -add-webhook</span>, <span class="mono">-add-email</span>, <span class="mono">-remove</span>. Webhook URLs and SMTP passwords are kept as credential references, never in the database.</p>
+  <p class="muted small">Destinations are added and removed from the command line only, so this page can never be used to point the server at an address: <span class="mono">kryostate notify add-webhook</span>, <span class="mono">add-email</span>, <span class="mono">rm</span>. Webhook URLs and SMTP passwords are kept as credential references, never in the database.</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Where</th><th scope="col">Last send</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
@@ -52,7 +52,7 @@
         <td><form method="post" action="/notifications/test"><input type="hidden" name="name" value="{{.Name}}"><button class="btn btn--small" type="submit">Send a test now<span class="visually-hidden"> to {{.Name}}</span></button></form></td>
       </tr>
     {{else}}
-      <tr><td colspan="5" class="muted">No destinations yet. Add one with <span class="mono">kryostate notify -add-webhook -name ops -url-ref env:KRYOSTATE_SLACK_URL</span>.</td></tr>
+      <tr><td colspan="5" class="muted">No destinations yet. Add one with <span class="mono">kryostate notify add-webhook ops --url-ref env:KRYOSTATE_SLACK_URL</span>.</td></tr>
     {{end}}
     </tbody>
   </table>

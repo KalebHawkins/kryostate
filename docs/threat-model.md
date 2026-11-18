@@ -65,8 +65,8 @@ not hand over access to the hosts the inventory describes.
 
 It also gives them up to 8 KB of output per host and collector spec.
 The shipped commands read release files and version strings, but a site that
-adds its own decides what ends up there. `kryostate evidence -show` is how you
-find out, `-forget` is how you remove it, and `collect -no-evidence` is how you
+adds its own decides what ends up there. `kryostate evidence list --show` is how you
+find out, `evidence rm` is how you remove it, and `collect --no-evidence` is how you
 never store it. The cost of that last option is that fixing a parse rule then
 requires connecting to every host again.
 
@@ -181,7 +181,7 @@ Other properties worth knowing:
   another site is refused, so another page cannot submit forms through a
   visitor's browser. It is not a token, and it does nothing about a client
   that is not a browser. Origins a proxy serves the page under are listed with
-  `serve -trusted-origin`.
+  `serve --trusted-origin`.
 - A second collection run cannot start while one is in progress, so clicking
   twice does not open two waves of sessions into the estate.
 - Scheduled collection is throttled: at most 4 sessions at once and 1 per
@@ -217,12 +217,12 @@ that cannot turn it into a way to run commands or to take credentials.
 - **Templates that read content are off by default on the page.** File
   contents, a setting from a config file and an environment variable can
   return secrets (an app's config file often holds its database password).
-  The page offers them only under `serve -allow-content-collectors`. The command line
+  The page offers them only under `serve --allow-content-collectors`. The command line
   always can, because whoever runs it already has the database.
 - **Connections it creates or edits use `agent:` only, without a bastion.** A
   page that could change a password-bearing connection's address could send
   that password to a machine of the attacker's choosing.
-- **It cannot clear a pinned host key.** `kryostate target -forget-host-key`
+- **It cannot clear a pinned host key.** `kryostate target forget-host-key`
   does that, on the command line, and the old key is written to the audit
   log. Otherwise a visitor could clear a pin and let an impersonating host
   answer the next collection.
@@ -239,7 +239,7 @@ that cannot turn it into a way to run commands or to take credentials.
 The process that listens on a port and the process that holds fleet
 credentials can be different. By default they are not: `serve` runs the
 collection schedules and the Runs page's **Collect now**, so it needs the
-ssh-agent. To split them, start `serve -no-schedule` as a user with no
+ssh-agent. To split them, start `serve --no-schedule` as a user with no
 credentials, and run `collect` or `refresh` on a timer as a different OS user
 that holds them. In that arrangement **Collect now** in the web interface
 cannot log in to any host; collection happens only through the timer.
@@ -260,9 +260,12 @@ These are the weaknesses known at the time of writing.
   are the control.
 - Trust-on-first-use for SSH host keys. A changed key stops collection from
   that host, with the new key's fingerprint in the error, until someone runs
-  `target -forget-host-key`; nothing checks that they compared it first.
+  `target forget-host-key`; nothing checks that they compared it first.
 - Audit rows live in the same database as the data they describe, so an
   attacker who can write to it can edit them.
+- `kryostate host rm --purge` deletes a host's audit rows along with the rest
+  of its history, leaving a single "purge" record. Whoever can run the
+  command line against the database can do it.
 - `env:` credential references sit in process memory for the process lifetime.
 - No rate limiting of web requests. Scheduled collection is throttled, but
   anyone who reaches the page can start a full collection run, one at a time,

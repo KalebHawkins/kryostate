@@ -3,24 +3,25 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
-// leaseFlags are -wait and -no-wait, on every command that opens sessions
+// leaseFlags are --wait and --no-wait, on every command that opens sessions
 // into the estate.
 type leaseFlags struct {
 	wait   *time.Duration
 	noWait *bool
 }
 
-func addLeaseFlags(fs *flag.FlagSet) leaseFlags {
+func addLeaseFlags(fs *pflag.FlagSet) leaseFlags {
 	return leaseFlags{
 		wait: fs.Duration("wait", 10*time.Minute,
 			"when another collection on this database is running (a kryostate serve's schedule, or another shell), how long to wait for it"),
@@ -44,16 +45,16 @@ func takeLease(ctx context.Context, st *store.Store, command string, f leaseFlag
 	}
 	release, err := lock.Acquire(ctx, info, wait, func(l store.Lease) {
 		if wait > 0 {
-			fmt.Fprintf(leaseOut, "%s has been running since %s; waiting up to %s for it to finish (-no-wait gives up at once)\n",
+			fmt.Fprintf(leaseOut, "%s has been running since %s; waiting up to %s for it to finish (--no-wait gives up at once)\n",
 				l.Describe(), l.AcquiredAt.Local().Format(time.TimeOnly), wait)
 		}
 	})
 	var held *engine.LeaseHeldError
 	switch {
 	case errors.As(err, &held) && wait == 0:
-		return nil, fmt.Errorf("not collecting: %w (wait for it by leaving out -no-wait)", held)
+		return nil, fmt.Errorf("not collecting: %w (wait for it by leaving out --no-wait)", held)
 	case errors.As(err, &held):
-		return nil, fmt.Errorf("gave up after waiting %s: %w (try again later, or raise -wait)", wait, held)
+		return nil, fmt.Errorf("gave up after waiting %s: %w (try again later, or raise --wait)", wait, held)
 	case err != nil:
 		return nil, err
 	}

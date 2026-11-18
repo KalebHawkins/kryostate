@@ -374,7 +374,7 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no collector named "+id, http.StatusNotFound)
 		return
 	}
-	d := collectorDetail{Row: rows[i], Allowed: true, ShowCmd: "kryostate collectors -show " + id}
+	d := collectorDetail{Row: rows[i], Allowed: true, ShowCmd: "kryostate collectors show " + id}
 	stacks, members, err := s.stackNames(ctx)
 	if err != nil {
 		s.fail(w, err)
@@ -419,7 +419,7 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 			d.Choices = append(d.Choices, choiceView{C: c, Target: describeTarget(tg, c.Target, t.Systems(), members)})
 		}
 		if !t.Fixed() {
-			d.ShowCmd += " -param '" + t.ExampleParam() + "'"
+			d.ShowCmd += " --param '" + t.ExampleParam() + "'"
 			d.DefNote = "Written out for the example value " + d.ExampleParam + ". "
 		}
 		d.DefNote += "The ids are the entry's own, without the catalog. prefix, so a copy does not clash with the catalog collector if both are on."

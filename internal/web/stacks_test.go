@@ -27,7 +27,7 @@ func TestStacksListIsATableOfRows(t *testing.T) {
 		`href="/stacks/payments"`, `href="/stacks/edge"`,
 		"production · team-a", "app ×2, database ×1",
 		`href="/hosts?q=stack&#43;%3D%3D&#43;%22payments%22"`,
-		`<code class="cli__cmd">kryostate stack</code>`,
+		`<code class="cli__cmd">kryostate stack list</code>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("list lacks %q", want)
@@ -80,8 +80,8 @@ func TestStackPage(t *testing.T) {
 		`action="/stacks/members/remove"`, `name="back" value="/stacks/payments"`,
 		`hx-get="/stacks/payments/hosts"`, "Add hosts by query", `href="/guide/queries"`,
 		"Each host's page lists the collectors", `href="/hosts/`, "Edit details", "Delete payments",
-		"kryostate hosts -stack payments", "kryostate stack -name payments -add web01:app",
-		"kryostate stack -name payments -q",
+		"kryostate host list --stack payments", "kryostate stack add payments web01:app",
+		"kryostate stack add payments -q",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("stack page lacks %q", want)
@@ -105,7 +105,7 @@ func TestStackPage(t *testing.T) {
 	if !strings.Contains(get(t, h, "/stacks", nil).Body.String(), `href="/stacks/a%20b%2Fc"`) {
 		t.Error("the list does not escape the name")
 	}
-	if !strings.Contains(get(t, h, "/stacks/a%20b%2Fc", nil).Body.String(), "-name &#39;a b/c&#39;") {
+	if !strings.Contains(get(t, h, "/stacks/a%20b%2Fc", nil).Body.String(), "stack add &#39;a b/c&#39;") {
 		t.Error("the command-line hint does not quote the name")
 	}
 

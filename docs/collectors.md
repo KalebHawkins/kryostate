@@ -132,30 +132,30 @@ host's page, and you can show it as a column on the **Inventory** page with
 ### Switching one on from the command line
 
 ```sh
-kryostate collectors -catalog                                  # see the list
-kryostate collectors -try memory.total -host web01             # try it, saves nothing
-kryostate collectors -enable memory.total                      # switch it on everywhere
-kryostate collectors -enable package.version -param openssl
-kryostate collectors -enable file.exists -param /etc/resolv.conf
-kryostate collectors -enable env.var -param JAVA_HOME
-kryostate collectors -enable group.web -stacks web-prod
-kryostate collectors -enable nginx.version -where 'name in ("web01", "web02")'
-kryostate collectors -enable java.version -where 'stack == "app" && os.family == "Linux"'
-kryostate collectors -enable config.value \
-    -param /etc/app/app.conf -section database -key host
-kryostate collectors                                           # what is switched on
-kryostate collectors -disable 3                                # by its number in that list
+kryostate collectors catalog                                   # see the list
+kryostate collectors try memory.total --host web01             # try it, saves nothing
+kryostate collectors enable memory.total                       # switch it on everywhere
+kryostate collectors enable package.version --param openssl
+kryostate collectors enable file.exists --param /etc/resolv.conf
+kryostate collectors enable env.var --param JAVA_HOME
+kryostate collectors enable group.web --stacks web-prod
+kryostate collectors enable nginx.version --where 'name in ("web01", "web02")'
+kryostate collectors enable java.version --where 'stack == "app" && os.family == "Linux"'
+kryostate collectors enable config.value \
+    --param /etc/app/app.conf --section database --key host
+kryostate collectors list                                      # what is switched on
+kryostate collectors disable 3                                 # by its number in that list
 ```
 
-`-where` takes a query, as described in "Choosing where a collector runs".
+`--where` takes a query, as described in "Choosing where a collector runs".
 Put it in single quotes so the shell leaves the double quotes alone. A query
-that does not parse is refused, with a `^` under the problem. `-stacks a,b`
-is a shorter way to write `-where 'stack in ("a", "b")'`; with both, a host
-must satisfy both. `-enable` sets where a collector runs, replacing what was
+that does not parse is refused, with a `^` under the problem. `--stacks a,b`
+is a shorter way to write `--where 'stack in ("a", "b")'`; with both, a host
+must satisfy both. `collectors enable` sets where a collector runs, replacing what was
 there; for a group, it only adds hosts, as above.
 
 For a collector that takes a value, KryoState picks the name it is recorded
-under, such as `file.resolv_conf.exists`. Choose your own with `-attr`, or in
+under, such as `file.resolv_conf.exists`. Choose your own with `--attr`, or in
 the **Record as** box on the web page.
 
 ### A setting in a config file
@@ -188,7 +188,7 @@ switched on from the command line. The web page offers them only if KryoState
 was started with:
 
 ```sh
-kryostate serve -allow-content-collectors
+kryostate serve --allow-content-collectors
 ```
 
 Use that only when people must log in before they reach the page, for
@@ -232,9 +232,9 @@ name are shown with an example value, such as `/etc/resolv.conf`. The same
 is printed on the command line:
 
 ```
-kryostate collectors -show cpu.cores
-kryostate collectors -show file.exists -param /etc/hosts
-kryostate collectors -show builtin.os.version
+kryostate collectors show cpu.cores
+kryostate collectors show file.exists --param /etc/hosts
+kryostate collectors show builtin.os.version
 ```
 
 Copy the specs into your file and give each one an `id` of its own: ids must
@@ -277,7 +277,7 @@ On Windows, KryoState runs the command in PowerShell.
 Run this once:
 
 ```sh
-kryostate collectors -init
+kryostate collectors init
 ```
 
 It creates a file called `collectors.json` next to the KryoState database, and
@@ -410,7 +410,7 @@ Test your collector against one host. **Nothing is saved**, so you can try as
 many times as you like:
 
 ```sh
-kryostate collectors -try linux.nginx.version -host web01
+kryostate collectors try linux.nginx.version --host web01
 ```
 
 KryoState connects, runs the command, and shows you what happened:
@@ -434,7 +434,7 @@ You can also test the parse rule with no host at all. Save the command's
 output from step 1 in a file, then:
 
 ```sh
-kryostate collectors -try linux.nginx.version -sample nginx-output.txt
+kryostate collectors try linux.nginx.version --sample nginx-output.txt
 ```
 
 This is the quickest way to get a regex right: edit the pattern, run the
@@ -450,7 +450,7 @@ Your value now appears:
 
 - on each host's page, in the **Facts** table;
 - in the inventory, if you add it as a column (**Columns** on the Inventory
-  page, or `kryostate hosts -cols nginx.version`);
+  page, or `kryostate host list --cols nginx.version`);
 - on the **Charts** page, once some hosts have it.
 
 If `kryostate serve` was already running when you created or changed the file,
@@ -460,7 +460,7 @@ choose **your own** under the source filter to see yours. Each one's page
 shows its command, its rule, a **Test** button and its **Schedule**. Your own
 collectors run once a day by default while `kryostate serve` runs; change
 that on the collector's page, or with
-`kryostate collectors -schedule spec.linux.nginx.version -every 6h`. If the
+`kryostate collectors schedule spec.linux.nginx.version --every 6h`. If the
 file has a mistake, the page says what and where, rather than the server
 refusing to start.
 
@@ -472,10 +472,10 @@ refusing to start.
 | `unknown field "optinal"` | A word is misspelled | Correct the spelling. KryoState refuses unknown words so that a typo is never ignored |
 | `duplicate collector id` or `is already defined` | Two collectors have the same `id`, or yours repeats a built-in one | Give each one a different id |
 | `the command failed: ... exited 127` | The program is not installed, or not on the PATH | Use the full path, such as `/usr/sbin/nginx -v 2>&1`, or mark the collector optional |
-| `the parse rule (regex) found nothing` | The command worked, but the rule did not match | Compare the rule with the printed output. Test changes with `-sample` |
+| `the parse rule (regex) found nothing` | The command worked, but the rule did not match | Compare the rule with the printed output. Test changes with `--sample` |
 | The output is empty | The program printed to the error stream | Add `2>&1` to the end of the command |
 | `NOTE: the host says it is ...` | The host's system is not in `os` | Add it to the `os` list |
-| The value never appears after `refresh` | The file was not found, the host is not in `os`, or the host is outside the collector's `stacks` or `where` | Run `kryostate collectors` and check your collector is listed; its page in the web interface counts the hosts it runs on, and shows a `where` that does not parse |
+| The value never appears after `refresh` | The file was not found, the host is not in `os`, or the host is outside the collector's `stacks` or `where` | Run `kryostate collectors list` and check your collector is listed; its page in the web interface counts the hosts it runs on, and shows a `where` that does not parse |
 | `"C:/Program Files/Git/etc/..." is not allowed` | Git Bash on Windows rewrote a path that starts with `/` | Run `export MSYS_NO_PATHCONV=1` first, or use PowerShell or the web page |
 
 ## Adding more collectors to the file
@@ -590,7 +590,7 @@ KryoState keeps the last output of every command. After you correct a `parse`
 rule, apply it to what was already collected, without connecting to any host:
 
 ```sh
-kryostate reparse -spec linux.nginx.version
+kryostate reparse --spec linux.nginx.version
 ```
 
 ### External programs

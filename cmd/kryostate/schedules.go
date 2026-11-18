@@ -13,10 +13,10 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/engine"
 )
 
-// setSchedule handles "kryostate collectors -schedule <collector> ...".
+// setSchedule handles "kryostate collectors schedule <collector> ...".
 func setSchedule(ctx context.Context, eng *engine.Engine, ref, every, at string, manual, reset bool) error {
 	if ref == "" {
-		return errors.New("-every, -at, -manual and -default go with -schedule <collector>; list them with: kryostate collectors -schedules")
+		return errors.New("--every, --at, --manual and --default go with a collector, as in: kryostate collectors schedule <collector> --every 1d; list them with: kryostate collectors schedules")
 	}
 	chosen := 0
 	for _, b := range []bool{every != "", manual, reset} {
@@ -26,11 +26,11 @@ func setSchedule(ctx context.Context, eng *engine.Engine, ref, every, at string,
 	}
 	switch {
 	case chosen == 0:
-		return errors.New("say how often with -every (such as 6h or 1d), or use -manual or -default")
+		return errors.New("say how often with --every (such as 6h or 1d), or use --manual or --default")
 	case chosen > 1:
-		return errors.New("use only one of -every, -manual and -default")
+		return errors.New("use only one of --every, --manual and --default")
 	case at != "" && every == "":
-		return errors.New("-at goes with a whole-day -every, such as -every 1d -at 02:00")
+		return errors.New("--at goes with a whole-day --every, such as --every 1d --at 02:00")
 	}
 
 	s := engine.NewScheduler(eng, nil)
@@ -63,7 +63,7 @@ func setSchedule(ctx context.Context, eng *engine.Engine, ref, every, at string,
 	}
 	fmt.Printf("%s (%s) now runs %s.\n", c.Title, c.Key, say)
 	fmt.Println("a running kryostate serve picks this up at its next check, within a minute;")
-	fmt.Println("see them all with: kryostate collectors -schedules")
+	fmt.Println("see them all with: kryostate collectors schedules")
 	return nil
 }
 
@@ -79,9 +79,9 @@ func listSchedules(ctx context.Context, eng *engine.Engine) error {
 		return err
 	}
 	fmt.Println()
-	fmt.Println("change one:  kryostate collectors -schedule builtin.os -every 1d -at 02:00")
-	fmt.Println("             kryostate collectors -schedule cpu.cores -manual   (or -default)")
-	fmt.Println("schedules run while kryostate serve is running, unless it was started with -no-schedule.")
+	fmt.Println("change one:  kryostate collectors schedule builtin.os --every 1d --at 02:00")
+	fmt.Println("             kryostate collectors schedule cpu.cores --manual   (or --default)")
+	fmt.Println("schedules run while kryostate serve is running, unless it was started with --no-schedule.")
 	return nil
 }
 
@@ -152,7 +152,7 @@ func writeSchedules(out io.Writer, o engine.Outlook, loc *time.Location, maxSess
 		}
 		fmt.Fprintln(tw, head)
 		if c.Storm {
-			fmt.Fprintln(tw, "  BUSY: these queue behind the session limit; spread them out on the Schedules page, or give each its own -at.")
+			fmt.Fprintln(tw, "  BUSY: these queue behind the session limit; spread them out on the Schedules page, or give each its own --at.")
 		}
 		var also []string
 		listed := map[string]bool{}

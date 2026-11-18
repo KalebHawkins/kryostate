@@ -87,7 +87,7 @@ attribute them all to itself.
 - Command output is stored as well, which is a decision with a privacy cost.
   It is capped at 8 KB per host and collector spec, only the latest copy is
   kept, and there are commands to inspect, delete and refuse it. An estate that
-  cannot accept it runs with `-no-evidence` and accepts a second pass instead.
+  cannot accept it runs with `--no-evidence` and accepts a second pass instead.
 - Charts group on the normalised value, so a missing rule shows up as an
   unknown bucket rather than as forty bars of height one. The exception is an
   attribute where *no* value normalises: that is indistinguishable from free

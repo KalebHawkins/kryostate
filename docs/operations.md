@@ -39,7 +39,7 @@ that name are accepted:
 
 ```sh
 # /etc/kryostate/kryostate.env
-KRYOSTATE_OPTS=-trusted-origin https://cmdb.example.com
+KRYOSTATE_OPTS=--trusted-origin https://cmdb.example.com
 ```
 
 Everything in `kryostate.env` is a `KEY=value` line read by systemd;
@@ -51,12 +51,49 @@ line against the same database, run it as the service user so files it
 creates stay readable by the service:
 
 ```sh
-sudo -u kryostate kryostate hosts -db /var/lib/kryostate/kryostate.db
+sudo -u kryostate kryostate host list --db /var/lib/kryostate/kryostate.db
 sudo -u kryostate KRYOSTATE_DB=/var/lib/kryostate/kryostate.db kryostate refresh
 ```
 
 SQLite allows one writer at a time; a command run while a scheduled
 collection is writing waits for it.
+
+## Configuration
+
+Every setting can be given in three ways besides its built-in default. The
+first one found wins:
+
+1. a flag on the command line, such as `--concurrency 16`;
+2. an environment variable: `KRYOSTATE_` and the flag name in capitals, with
+   `-` as `_`, such as `KRYOSTATE_CONCURRENCY=16` or
+   `KRYOSTATE_HOST_TIMEOUT=2m`;
+3. the config file, YAML, whose keys are flag names.
+
+The settings that can come from the environment or the file are `db`,
+`addr`, `concurrency`, `host-timeout`, `rules`, `collectors`, `externals`,
+`no-evidence`, `stale-after`, `trusted-origin`, `allow-content-collectors`,
+`no-schedule`, `wait` and `no-wait`. Each applies to the commands that have
+that flag.
+
+The config file is `kryostate/config.yaml` in the user configuration
+directory (`$XDG_CONFIG_HOME/kryostate/config.yaml`, usually
+`~/.config/kryostate/config.yaml`, on Linux), or the file named by `--config`
+or `KRYOSTATE_CONFIG`. A missing default file is not an error. A key at the
+top level applies to every command; a key under a command's name applies
+only to that command:
+
+```yaml
+db: /var/lib/kryostate/kryostate.db
+concurrency: 16
+serve:
+  addr: 0.0.0.0:8099
+  trusted-origin: https://cmdb.example.com
+```
+
+`KRYOSTATE_ACTOR` (your name in the audit log) and `KRYOSTATE_AGE_IDENTITY`
+are read as before. The service takes its settings from `kryostate.env`; to
+give it a config file as well, set `KRYOSTATE_CONFIG` there, for example to
+`/etc/kryostate/config.yaml`.
 
 ## SSH access for the service user
 
@@ -105,7 +142,7 @@ anyone else's. What each target uses to log in is its credential reference
 Host keys need nothing on disk. KryoState pins each host's key in its own
 database the first time it connects and refuses a changed key after that; it
 does not read or write `known_hosts`. After a host is rebuilt, clear its pin
-with `kryostate target -host <host> -forget-host-key`.
+with `kryostate target forget-host-key <host>`.
 
 Keys and identities belong under `/etc/kryostate`, never in
 `/var/lib/kryostate`: a database backup should not carry the means to log in.
@@ -116,8 +153,8 @@ The database is one SQLite file. Two ways to back it up:
 
 ```sh
 # A JSON export of the whole store, safe while the service runs.
-sudo -u kryostate kryostate export -db /var/lib/kryostate/kryostate.db \
-  -out /var/lib/kryostate/backup-$(date +%F).kryostate.json
+sudo -u kryostate kryostate export --db /var/lib/kryostate/kryostate.db \
+  --out /var/lib/kryostate/backup-$(date +%F).kryostate.json
 
 # Or a copy of the file, with the service stopped.
 sudo systemctl stop kryostate
@@ -130,7 +167,7 @@ credentials, but treat it as sensitive all the same. To restore an export,
 load it into a new, empty database and point the service at it:
 
 ```sh
-sudo -u kryostate kryostate restore -db /var/lib/kryostate/restored.db -in backup.kryostate.json
+sudo -u kryostate kryostate restore --db /var/lib/kryostate/restored.db --in backup.kryostate.json
 # then set KRYOSTATE_DB=/var/lib/kryostate/restored.db in kryostate.env and restart
 ```
 
@@ -140,7 +177,7 @@ them; they are not in the export.
 In a container, run the export inside it and copy it out:
 
 ```sh
-podman exec kryostate kryostate export -out /data/backup.kryostate.json
+podman exec kryostate kryostate export --out /data/backup.kryostate.json
 podman cp kryostate:/data/backup.kryostate.json .
 ```
 

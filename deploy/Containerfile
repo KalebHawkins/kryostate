@@ -59,4 +59,4 @@ ENTRYPOINT ["/usr/local/bin/kryostate"]
 # Listen on every address inside the container; publish the port to choose
 # who can reach it. The page has no login, so publish it only to localhost or
 # behind a proxy that asks people to sign in.
-CMD ["serve", "-addr", "0.0.0.0:8099"]
+CMD ["serve", "--addr", "0.0.0.0:8099"]

@@ -374,7 +374,7 @@ func (s *Scheduler) Find(ctx context.Context, ref string) (Collector, error) {
 	case 1:
 		return match[0], nil
 	case 0:
-		return Collector{}, fmt.Errorf("no collector %q; list them with: kryostate collectors -schedules", ref)
+		return Collector{}, fmt.Errorf("no collector %q; list them with: kryostate collectors schedules", ref)
 	default:
 		var keys []string
 		for _, c := range match {
@@ -494,7 +494,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 // Running reports whether Run is looking for due collectors, which it is not
-// when the server was started with -no-schedule.
+// when the server was started with --no-schedule.
 func (s *Scheduler) Running() bool { return s.started.Load() }
 
 // Wait blocks until every run the scheduler started has finished.

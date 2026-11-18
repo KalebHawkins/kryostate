@@ -114,7 +114,7 @@ func TestEveryCollectorHasAPage(t *testing.T) {
 		}
 	}
 	tmpl := get(t, h, "/collectors/file.exists", nil).Body.String()
-	if !strings.Contains(tmpl, "&#39;/etc/resolv.conf&#39;") || !strings.Contains(tmpl, "-show file.exists -param") {
+	if !strings.Contains(tmpl, "&#39;/etc/resolv.conf&#39;") || !strings.Contains(tmpl, "show file.exists --param") {
 		t.Error("a template's definition is not written out for its example value")
 	}
 	if get(t, h, "/collectors/made.up", nil).Code != http.StatusNotFound {

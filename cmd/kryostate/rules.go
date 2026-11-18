@@ -4,43 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
-
-// cmdRules handles "kryostate rules": rules track a rollout, and the counts
-// come from what hosts report.
-func cmdRules(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("rules", flag.ExitOnError)
-	db := dbFlag(fs)
-	o := rulesOpts{}
-	fs.BoolVar(&o.add, "add", false, "create a rule, with -name, -expect and optionally -scope, -description and -owner")
-	fs.StringVar(&o.name, "name", "", "with -add: the rule's name")
-	fs.StringVar(&o.scope, "scope", "", "with -add: a query choosing the hosts it covers, such as 'stack == \"web\"'; blank for every host")
-	fs.StringVar(&o.expect, "expect", "", "with -add: a query each host in scope should match once done, such as 'nginx.version >= \"1.24\"'")
-	fs.StringVar(&o.description, "description", "", "with -add: why, a ticket or a deadline")
-	fs.StringVar(&o.owner, "owner", "", "with -add: who owns the rollout")
-	fs.StringVar(&o.show, "show", "", "list the hosts a rule is waiting on: not yet, and unknown with what is missing")
-	fs.StringVar(&o.del, "delete", "", "delete a rule and its history; no host is changed")
-	fs.BoolVar(&o.json, "json", false, "write JSON instead of a table")
-	fs.Parse(args)
-	if fs.NArg() > 0 {
-		return fmt.Errorf("unexpected %q: put the rule's name after -show, -delete or -name, in quotes if it has spaces", fs.Arg(0))
-	}
-	st, err := openStore(*db)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	return runRules(ctx, st, os.Stdout, o)
-}
 
 type rulesOpts struct {
 	add                                     bool
@@ -57,10 +28,10 @@ func runRules(ctx context.Context, st *store.Store, out io.Writer, o rulesOpts) 
 		}
 	}
 	if chosen > 1 {
-		return errors.New("use only one of -add, -show and -delete")
+		return errors.New("use only one of add, show and rm")
 	}
 	if !o.add && (o.name != "" || o.scope != "" || o.expect != "" || o.description != "" || o.owner != "") {
-		return errors.New("-name, -scope, -expect, -description and -owner go with -add")
+		return errors.New("a name, --scope, --expect, --description and --owner go with rules add")
 	}
 	switch {
 	case o.add:
@@ -75,7 +46,7 @@ func runRules(ctx context.Context, st *store.Store, out io.Writer, o rulesOpts) 
 				if qe.Field == "expect" {
 					src = r.Expect
 				}
-				return fmt.Errorf("-%s, column %d: %s\n  %s\n  %s", qe.Field, qe.Err.Col, qe.Err.Msg, strings.TrimSpace(src), qe.Err.Caret())
+				return fmt.Errorf("--%s, column %d: %s\n  %s\n  %s", qe.Field, qe.Err.Col, qe.Err.Msg, strings.TrimSpace(src), qe.Err.Caret())
 			}
 			return err
 		}
@@ -99,12 +70,12 @@ func runRules(ctx context.Context, st *store.Store, out io.Writer, o rulesOpts) 
 
 func ruleErr(err error, name string) error {
 	if errors.Is(err, store.ErrRuleNotFound) {
-		return fmt.Errorf("no rule named %q; list them with: kryostate rules", name)
+		return fmt.Errorf("no rule named %q; list them with: kryostate rules list", name)
 	}
 	return err
 }
 
-// RuleJSON is one rule in "kryostate rules -json".
+// RuleJSON is one rule in "kryostate rules list --json".
 type RuleJSON struct {
 	ID            int64      `json:"id"`
 	Name          string     `json:"name"`
@@ -146,7 +117,7 @@ func listRules(ctx context.Context, st *store.Store, out io.Writer, asJSON bool)
 		return encodeJSON(out, js)
 	}
 	if len(rs) == 0 {
-		fmt.Fprintln(out, `no rules; create one with: kryostate rules -add -name 'nginx 1.24' -scope 'stack == "web"' -expect 'nginx.version >= "1.24"'`)
+		fmt.Fprintln(out, `no rules; create one with: kryostate rules add 'nginx 1.24' --scope 'stack == "web"' --expect 'nginx.version >= "1.24"'`)
 		return nil
 	}
 	tw := newTable(out)
@@ -169,11 +140,11 @@ func listRules(ctx context.Context, st *store.Store, out io.Writer, asJSON bool)
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "\nsee the hosts one is waiting on with: kryostate rules -show <name>")
+	fmt.Fprintln(out, "\nsee the hosts one is waiting on with: kryostate rules show <name>")
 	return nil
 }
 
-// RuleHostJSON is one host in "kryostate rules -show <name> -json".
+// RuleHostJSON is one host in "kryostate rules show <name> --json".
 type RuleHostJSON struct {
 	ID      string            `json:"id"`
 	Name    string            `json:"name"`
@@ -181,7 +152,7 @@ type RuleHostJSON struct {
 	Values  map[string]string `json:"values,omitempty"`
 }
 
-// RuleDetailJSON is "kryostate rules -show <name> -json": the rule's counts
+// RuleDetailJSON is "kryostate rules show <name> --json": the rule's counts
 // and every host in scope, by bucket.
 type RuleDetailJSON struct {
 	RuleJSON
@@ -264,7 +235,7 @@ func showRule(ctx context.Context, st *store.Store, out io.Writer, name string, 
 		tw.Flush()
 	}
 	if len(ev.Done) > 0 {
-		fmt.Fprintf(out, "\n%d done; list them with -json.\n", len(ev.Done))
+		fmt.Fprintf(out, "\n%d done; list them with --json.\n", len(ev.Done))
 	}
 	return nil
 }

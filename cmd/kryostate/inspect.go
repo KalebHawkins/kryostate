@@ -9,10 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -25,30 +23,6 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/store"
 	"github.com/KalebHawkins/kryostate/internal/web"
 )
-
-// parseInterspersed lets flags follow positional arguments, so that
-// "kryostate show web01 -json" works as well as "kryostate show -json web01".
-// The standard flag package stops at the first non-flag argument.
-func parseInterspersed(fs *flag.FlagSet, args []string) []string {
-	var pos []string
-	for {
-		_ = fs.Parse(args) // ExitOnError: a bad flag has already exited
-		if fs.NArg() == 0 {
-			return pos
-		}
-		pos = append(pos, fs.Arg(0))
-		args = fs.Args()[1:]
-	}
-}
-
-// hostFlag registers -host with -ci kept as an alias, so scripts written
-// against the old flag keep working.
-func hostFlag(fs *flag.FlagSet, usage string) *string {
-	v := new(string)
-	fs.StringVar(v, "host", "", usage+" (name, fqdn or id)")
-	fs.StringVar(v, "ci", "", "alias of -host")
-	return v
-}
 
 // shortID is the display form of an opaque id. Any prefix of six or more
 // characters is accepted back wherever a host is named.
@@ -69,49 +43,37 @@ func writeJSON(v any) error {
 	return enc.Encode(v)
 }
 
-func cmdHosts(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("hosts", flag.ExitOnError)
-	db := dbFlag(fs)
-	q := fs.String("q", "", `a query, such as 'os.family == "Linux" && stack == "web"', or part of a name (see the user guide)`)
-	stack := fs.String("stack", "", "only members of this stack")
-	cols := fs.String("cols", "os.version,application", "comma-separated attributes to show as columns; with -json, the values to include (default all)")
-	asJSON := fs.Bool("json", false, "print JSON instead of a table, in the shape /hosts.json uses")
-	if pos := parseInterspersed(fs, args); len(pos) > 0 && *q == "" {
-		*q = strings.Join(pos, " ")
-	}
-	colsSet := false
-	fs.Visit(func(f *flag.Flag) { colsSet = colsSet || f.Name == "cols" })
-
-	st, err := openStore(*db)
+func (a *app) hostList(ctx context.Context, o hostListOpts) error {
+	st, err := openStore(a.db)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
-	rows, members, err := web.FilterHosts(ctx, st, store.HostFilter{Stack: *stack}, *q)
+	rows, members, err := web.FilterHosts(ctx, st, store.HostFilter{Stack: o.stack}, o.query)
 	var qe *query.Error
 	if errors.As(err, &qe) {
-		return fmt.Errorf("query: %s\n  %s\n  %s", qe.Msg, *q, qe.Caret())
+		return fmt.Errorf("query: %s\n  %s\n  %s", qe.Msg, o.query, qe.Caret())
 	} else if err != nil {
 		return err
 	}
 
-	if *asJSON {
+	if o.json {
 		var jc []string
-		if colsSet {
-			jc = splitIDs(*cols)
+		if o.colsSet {
+			jc = splitIDs(o.cols)
 		}
 		return writeJSON(web.HostsJSON(rows, members, jc))
 	}
 
 	if len(rows) == 0 {
-		if *q != "" || *stack != "" {
+		if o.query != "" || o.stack != "" {
 			fmt.Println("no hosts match")
 			return nil
 		}
-		fmt.Println("no hosts yet; add one with: kryostate host -name <name>")
+		fmt.Println("no hosts yet; add one with: kryostate host add <name>")
 		return nil
 	}
-	columns := splitIDs(*cols)
+	columns := splitIDs(o.cols)
 	tw := newTable(os.Stdout)
 	fmt.Fprint(tw, "NAME\tID")
 	for _, c := range columns {
@@ -143,25 +105,17 @@ func cmdHosts(ctx context.Context, args []string) error {
 	return nil
 }
 
-func cmdShow(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("show", flag.ExitOnError)
-	db := dbFlag(fs)
-	asJSON := fs.Bool("json", false, "print JSON instead of text")
-	at := fs.String("at", "", "show each attribute's value as it was at `TIME` (2026-03-01 for the end of that day, or 2026-03-01T15:04)")
-	pos := parseInterspersed(fs, args)
-	if len(pos) != 1 {
-		return errors.New("usage: kryostate show <host> [-json] [-at 2026-03-01[T15:04]]")
-	}
-	if *at != "" {
-		return showAt(ctx, *db, pos[0], *at, *asJSON)
+func (a *app) hostShow(ctx context.Context, host string, asJSON bool, at string) error {
+	if at != "" {
+		return showAt(ctx, a.db, host, at, asJSON)
 	}
 
-	st, err := openStore(*db)
+	st, err := openStore(a.db)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
-	id, err := st.LookupCI(ctx, pos[0])
+	id, err := st.LookupCI(ctx, host)
 	if err != nil {
 		return err
 	}
@@ -190,7 +144,7 @@ func cmdShow(ctx context.Context, args []string) error {
 		return err
 	}
 
-	if *asJSON {
+	if asJSON {
 		type factJSON struct {
 			Attr     string    `json:"attr"`
 			Scope    string    `json:"scope,omitempty"`
@@ -285,12 +239,12 @@ func cmdShow(ctx context.Context, args []string) error {
 			fmt.Printf("target: %s %s@%s%s %s%s\n", p.Transport, p.Username, p.Address, portSuffix(p.Port), p.CredentialRef, state)
 		}
 	} else {
-		fmt.Printf("\nno connection profile; add one with: kryostate target -host %s -address <addr> -user <user> -credential agent:\n", ci.Label)
+		fmt.Printf("\nno connection profile; add one with: kryostate target add %s --user <user> [--address <addr>]\n", ci.Label)
 	}
 	if b, ok, err := st.HostBackoffFor(ctx, id); err != nil {
 		return err
 	} else if text := engine.BackoffText(b, time.Now(), time.Local); ok && text != "" {
-		fmt.Printf("%s (kryostate refresh -only %s still tries it)\n", text, ci.Label)
+		fmt.Printf("%s (kryostate refresh --only %s still tries it)\n", text, ci.Label)
 	}
 
 	return nil
@@ -311,20 +265,11 @@ func factValue(f model.Fact) string {
 	return oneLine(f.Raw, 60)
 }
 
-// cmdSet records what a person may state about a host: the application it
+// hostUpdate records what a person may state about a host: the application it
 // runs, and the stack it belongs to with its role there. Everything else
 // about a host is what the host reports, so no other attribute is accepted.
-func cmdSet(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("set", flag.ExitOnError)
-	db := dbFlag(fs)
-	reason := fs.String("reason", "", "optional note for the audit log")
-	const usage = `usage: kryostate set <host> [application=NAME] [stack=NAME] [role=ROLE] [-reason "note"]`
-	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), usage)
-		fmt.Fprintln(fs.Output(), "Only application, stack and role can be set by hand; everything else is what the host reports.")
-		fs.PrintDefaults()
-	}
-	pos := parseInterspersed(fs, args)
+func (a *app) hostUpdate(ctx context.Context, pos []string, reason string) error {
+	const usage = `usage: kryostate host update <host> [application=NAME] [stack=NAME] [role=ROLE] [--reason "note"]`
 	if len(pos) < 2 {
 		return errors.New(usage)
 	}
@@ -348,10 +293,10 @@ func cmdSet(ctx context.Context, args []string) error {
 		}
 	}
 	if haveStack && stack == "" {
-		return errors.New("stack= needs a name; take a host out of a stack with: kryostate stack -name <stack> -remove <host>")
+		return errors.New("stack= needs a name; take a host out of a stack with: kryostate stack rm <stack> <host>")
 	}
 
-	st, err := openStore(*db)
+	st, err := openStore(a.db)
 	if err != nil {
 		return err
 	}
@@ -364,7 +309,7 @@ func cmdSet(ctx context.Context, args []string) error {
 		return err
 	}
 	who := actor()
-	note := strings.TrimSpace(*reason)
+	note := strings.TrimSpace(reason)
 	if note == "" {
 		note = "set from the command line"
 	}
@@ -416,41 +361,25 @@ func cmdSet(ctx context.Context, args []string) error {
 	return nil
 }
 
-// cmdRefresh is the whole loop in one command: optionally look names up,
+// refresh is the whole loop in one command: optionally look names up,
 // collect, then run the liveness checks. It is what the web
 // interface's collect button does, plus the checks.
-func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
-	fs := flag.NewFlagSet("refresh", flag.ExitOnError)
-	db := dbFlag(fs)
-	only := fs.String("only", "", "comma-separated hosts (names or ids)")
-	conc := fs.Int("concurrency", 8, "how many hosts at once")
-	timeout := fs.Duration("host-timeout", 2*time.Minute, "limit for everything done against one host")
-	resolve := fs.Bool("resolve", false, "look every host up in DNS first")
-	noChecks := fs.Bool("no-checks", false, "skip the liveness checks")
-	rules := fs.String("rules", "", "extra normaliser rules file")
-	collectors := fs.String("collectors", "", "collector spec file to use instead of collectors.json beside the database")
-	externals := fs.String("externals", "", "file listing external collector programs")
-	noEvidence := fs.Bool("no-evidence", false, "do not keep what each collector command printed")
-	quiet := fs.Bool("quiet", false, "print only the summary lines, not one line per host")
-	lf := addLeaseFlags(fs)
-	fs.Parse(args)
-
-	st, err := openStore(*db)
+func (a *app) refresh(ctx context.Context, c collectFlags, resolve, noChecks, quiet bool) error {
+	st, err := openStore(a.db)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
-	eng, err := buildEngine(st, engineFiles{Rules: *rules, Collectors: *collectors,
-		Externals: *externals, NoEvidence: *noEvidence}, log)
+	eng, err := buildEngine(st, c.files, a.log)
 	if err != nil {
 		return err
 	}
-	ids, err := st.LookupCIs(ctx, splitIDs(*only))
+	ids, err := st.LookupCIs(ctx, onlyIDs(c.only))
 	if err != nil {
 		return err
 	}
 
-	if *resolve {
+	if resolve {
 		sum, err := eng.Resolve(ctx, engine.ResolveOptions{})
 		if err != nil {
 			return fmt.Errorf("resolve: %w", err)
@@ -461,22 +390,22 @@ func cmdRefresh(ctx context.Context, log *slog.Logger, args []string) error {
 
 	// Only the collection itself opens sessions, so only it waits for, and
 	// holds off, collections by other processes on the same database.
-	release, err := takeLease(ctx, st, "refresh", lf)
+	release, err := takeLease(ctx, st, "refresh", c.lease)
 	if err != nil {
 		return err
 	}
-	sum, err := runCollect(ctx, eng, engine.Options{Only: ids, Concurrency: *conc,
-		HostTimeout: *timeout, Actor: actor()}, *quiet)
+	sum, err := runCollect(ctx, eng, engine.Options{Only: ids, Concurrency: c.concurrency,
+		HostTimeout: c.hostTimeout, Actor: actor()}, quiet)
 	release()
 	if err != nil {
 		return fmt.Errorf("collect: %w", err)
 	}
 	fmt.Printf("collect: %d targets, %d ok, %d failed\n", sum.Targets, sum.Succeeded, sum.Failed)
 	if sum.Targets == 0 {
-		fmt.Println("         nothing to collect from; add a connection with: kryostate target -host <name> -user <user>")
+		fmt.Println("         nothing to collect from; add a connection with: kryostate target add <host> --user <user>")
 	}
 
-	if !*noChecks {
+	if !noChecks {
 		results, err := eng.RunChecks(ctx, ids, 16)
 		if err != nil {
 			return fmt.Errorf("checks: %w", err)
@@ -548,7 +477,7 @@ func dash(s string) string {
 	return s
 }
 
-// unreadJSON lists what a host could not report, for show -json.
+// unreadJSON lists what a host could not report, for host show --json.
 func unreadJSON(fs []store.ReadFailure) []map[string]any {
 	out := []map[string]any{}
 	for _, f := range fs {

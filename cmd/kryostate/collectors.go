@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -17,7 +15,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
-// starterCollectors is what "kryostate collectors -init" writes. It holds one
+// starterCollectors is what "kryostate collectors init" writes. It holds one
 // working, read-only example, so a new user edits something that already runs
 // rather than starting from a blank file and a schema.
 const starterCollectors = `{
@@ -36,132 +34,6 @@ const starterCollectors = `{
 }
 `
 
-func cmdCollectors(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("collectors", flag.ExitOnError)
-	db := dbFlag(fs)
-	catalog := fs.Bool("catalog", false, "list the ready-made collectors that can be switched on")
-	enable := fs.String("enable", "", "switch on a catalog collector, such as cpu.cores or file.exists")
-	disable := fs.String("disable", "", "switch off a catalog collector, by its number in the list or its catalog name")
-	param := fs.String("param", "", "with -enable, -disable or -try: the path, variable or package a catalog template needs")
-	attr := fs.String("attr", "", "with -enable: the attribute to record it as, blank for a sensible default")
-	stacks := fs.String("stacks", "", "with -enable: comma-separated stacks to limit it to, the same as -where 'stack in (\"a\", \"b\")'")
-	where := fs.String("where", "", "with -enable: a query choosing the hosts it runs on, such as 'name in (\"web01\", \"web02\")' or 'stack == \"web\" && os.family == \"Linux\"'; blank for every host")
-	initFile := fs.Bool("init", false, "create a starter "+defaultCollectorsFile+" next to the database, for collectors of your own")
-	try := fs.String("try", "", "test a collector, by catalog name or id, and record nothing")
-	host := fs.String("host", "", "with -try: run the command on this host")
-	sample := fs.String("sample", "", "with -try: read command output from this file (- for standard input) instead of a host")
-	collectors := fs.String("collectors", "", "collector spec file, instead of "+defaultCollectorsFile+" next to the database")
-	key := fs.String("key", "", "with config.value: the key to read, such as max_connections")
-	section := fs.String("section", "", "with config.value: only read the key inside this [section]")
-	show := fs.String("show", "", "print a collector written out as in "+defaultCollectorsFile+": a catalog name (with -param, or its example value), builtin.<attribute>, spec.<id>, external.<name>, or any spec id")
-	schedules := fs.Bool("schedules", false, "list when each collector runs, soonest first, grouped by time, with how many hosts each reaches")
-	schedule := fs.String("schedule", "", "change when a collector runs on its own, such as builtin.os or cpu.cores; with -every, -manual or -default")
-	every := fs.String("every", "", "with -schedule: how often, such as 30m, 6h, 1d or 7d")
-	at := fs.String("at", "", "with -schedule and a whole-day -every: the local time of day, such as 02:00 (without it, a time is picked from the collector's name)")
-	manual := fs.Bool("manual", false, "with -schedule: only run it when somebody collects")
-	resetSched := fs.Bool("default", false, "with -schedule: go back to the default schedule for its kind")
-	fs.Parse(args)
-
-	// A config.value template takes its file, key and section as one value.
-	for _, ref := range []string{*enable, *disable, *try, *show} {
-		if t, ok := collect.Lookup(ref); ok && t.Param != nil && t.Param.Config() && *key != "" {
-			*param = collect.ConfigParam(*param, *section, *key)
-		}
-	}
-
-	st, err := openStore(*db)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	path := filepath.Join(dataDir, defaultCollectorsFile)
-	if *collectors != "" {
-		path = *collectors
-	}
-
-	switch {
-	case *initFile:
-		if _, err := os.Stat(path); err == nil {
-			return fmt.Errorf("%s already exists; edit it, or delete it to start again", path)
-		}
-		if err := os.WriteFile(path, []byte(starterCollectors), 0o600); err != nil {
-			return err
-		}
-		fmt.Printf("created %s with one example collector.\n\n", path)
-		fmt.Println("next:")
-		fmt.Printf("  1. edit it (the user guide explains each field: kryostate serve, then open /guide/collectors)\n")
-		fmt.Printf("  2. test it:   kryostate collectors -try example.nodename -host <name>\n")
-		fmt.Printf("  3. collect:   kryostate refresh\n")
-		return nil
-
-	case *catalog:
-		return listCatalog(ctx, st)
-
-	case *enable != "":
-		target, err := enableTarget(*stacks, *where)
-		if err != nil {
-			return err
-		}
-		if g, ok := collect.LookupGroup(*enable); ok {
-			return enableGroup(ctx, st, g, target)
-		}
-		c, err := st.PutChoice(ctx, collect.Choice{Template: *enable, Param: *param, Attr: *attr,
-			Target: target}, actor())
-		if err != nil {
-			if _, ok := collect.Lookup(*enable); !ok {
-				return fmt.Errorf("%w; list the catalog with: kryostate collectors -catalog", err)
-			}
-			return err
-		}
-		fmt.Printf("%s is on for %s, recorded as %s.\n", c.Label(), runsOn(c.Target), c.Attr)
-		if c.Target != "" {
-			fmt.Printf("see them:    kryostate hosts -q '%s'\n", c.Target)
-		}
-		fmt.Printf("try it now:  kryostate collectors -try %s%s -host <name>\n", c.Template, paramFlag(c.Param))
-		fmt.Println("collect:     kryostate refresh")
-		return nil
-
-	case *disable != "":
-		c, err := findChoice(ctx, st, *disable, *param)
-		if err != nil {
-			return err
-		}
-		if err := st.DeleteChoice(ctx, c.ID, actor()); err != nil {
-			return err
-		}
-		fmt.Printf("%s is off. Values it already collected are kept.\n", c.Label())
-		return nil
-	}
-
-	eng, err := buildEngine(st, engineFiles{Collectors: *collectors}, nil)
-	if err != nil {
-		return err
-	}
-
-	if *show != "" {
-		return showDefinition(os.Stdout, eng, *show, *param)
-	}
-	if *schedules {
-		return listSchedules(ctx, eng)
-	}
-	if *schedule != "" || *every != "" || *at != "" || *manual || *resetSched {
-		return setSchedule(ctx, eng, *schedule, *every, *at, *manual, *resetSched)
-	}
-
-	if *try != "" {
-		specs, err := specsToTry(ctx, eng, *try, *param)
-		if err != nil {
-			return err
-		}
-		hint := ""
-		if _, ok := collect.Lookup(*try); ok {
-			hint = "kryostate collectors -enable " + *try + paramFlag(*param)
-		}
-		return tryCollector(ctx, eng, st, specs, *host, *sample, hint)
-	}
-	return listCollectors(ctx, eng, st, path)
-}
-
 // showDefinition prints one collector as it would be written in a file, so a
 // catalog entry or a built-in can be copied as the start of one's own. The
 // definition goes to standard output on its own, so it can be redirected into
@@ -169,15 +41,15 @@ func cmdCollectors(ctx context.Context, args []string) error {
 func showDefinition(w io.Writer, eng *engine.Engine, ref, param string) error {
 	file, b, err := eng.Definition(ref, param)
 	if err != nil {
-		return fmt.Errorf("%w; see them with: kryostate collectors, and the catalog with: kryostate collectors -catalog", err)
+		return fmt.Errorf("%w; see them with: kryostate collectors list, and the catalog with: kryostate collectors catalog", err)
 	}
 	fmt.Fprintf(os.Stderr, "# %s as written in %s\n", ref, file)
 	_, err = w.Write(b)
 	return err
 }
 
-// enableTarget is where -enable switches a collector on: -stacks written as a
-// query, and -where, both of which a host must satisfy. A -where that does
+// enableTarget is where enable switches a collector on: --stacks written as a
+// query, and --where, both of which a host must satisfy. A --where that does
 // not parse is refused with a caret under the problem.
 func enableTarget(stacks, where string) (string, error) {
 	where = strings.TrimSpace(where)
@@ -185,9 +57,9 @@ func enableTarget(stacks, where string) (string, error) {
 		if _, err := query.Parse(where); err != nil {
 			var qe *query.Error
 			if errors.As(err, &qe) {
-				return "", fmt.Errorf("-where: %s\n  %s\n  %s", qe.Msg, where, qe.Caret())
+				return "", fmt.Errorf("--where: %s\n  %s\n  %s", qe.Msg, where, qe.Caret())
 			}
-			return "", fmt.Errorf("-where: %w", err)
+			return "", fmt.Errorf("--where: %w", err)
 		}
 	}
 	return query.And(store.StacksTarget(splitIDs(stacks)), where), nil
@@ -205,7 +77,7 @@ func paramFlag(p string) string {
 	if p == "" {
 		return ""
 	}
-	return " -param '" + p + "'"
+	return " --param '" + p + "'"
 }
 
 // enableGroup switches on every entry in a group. It only ever widens: an
@@ -252,13 +124,13 @@ func findChoice(ctx context.Context, st *store.Store, ref, param string) (collec
 	case 1:
 		return match[0], nil
 	case 0:
-		return collect.Choice{}, fmt.Errorf("%s is not switched on; see what is with: kryostate collectors", ref)
+		return collect.Choice{}, fmt.Errorf("%s is not switched on; see what is with: kryostate collectors list", ref)
 	default:
-		return collect.Choice{}, fmt.Errorf("%s is switched on for %d values; name one with -param, or use its number from: kryostate collectors", ref, len(match))
+		return collect.Choice{}, fmt.Errorf("%s is switched on for %d values; name one with --param, or use its number from: kryostate collectors list", ref, len(match))
 	}
 }
 
-// specsToTry resolves what -try names. A catalog name works whether or not it
+// specsToTry resolves what try names. A catalog name works whether or not it
 // is switched on, so an entry can be tried before anyone commits to it.
 func specsToTry(ctx context.Context, eng *engine.Engine, ref, param string) ([]collect.Spec, error) {
 	if _, ok := collect.Lookup(ref); ok {
@@ -275,7 +147,7 @@ func specsToTry(ctx context.Context, eng *engine.Engine, ref, param string) ([]c
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no collector named %q; see them with: kryostate collectors, and the catalog with: kryostate collectors -catalog", ref)
+		return nil, fmt.Errorf("no collector named %q; see them with: kryostate collectors list, and the catalog with: kryostate collectors catalog", ref)
 	}
 	return out, nil
 }
@@ -313,9 +185,9 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 		}
 		name := t.ID
 		if !t.Fixed() {
-			name += " -param <" + strings.ToLower(t.Param.Label) + ">"
+			name += " --param <" + strings.ToLower(t.Param.Label) + ">"
 			if t.Param.Config() {
-				name += " -key <key> [-section <section>]"
+				name += " --key <key> [--section <section>]"
 			}
 		}
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", name, t.Title, strings.Join(t.Systems(), ","), status)
@@ -323,14 +195,14 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Println("\nswitch one on:   kryostate collectors -enable cpu.cores")
-	fmt.Println("a whole group:   kryostate collectors -enable group.web -stacks web-prod")
-	fmt.Println("a config value:  kryostate collectors -enable config.value -param /etc/app/app.conf -section database -key host")
-	fmt.Println("with a value:    kryostate collectors -enable file.exists -param /etc/resolv.conf")
-	fmt.Println("for some stacks: kryostate collectors -enable package.version -param nginx -stacks web-prod")
-	fmt.Println(`for some hosts:  kryostate collectors -enable nginx.version -where 'name in ("web01", "web02")'`)
-	fmt.Println("try first:       kryostate collectors -try memory.total -host <name>")
-	fmt.Println("written out:     kryostate collectors -show file.exists -param /etc/hosts  (as you would write it in " + defaultCollectorsFile + ")")
+	fmt.Println("\nswitch one on:   kryostate collectors enable cpu.cores")
+	fmt.Println("a whole group:   kryostate collectors enable group.web --stacks web-prod")
+	fmt.Println("a config value:  kryostate collectors enable config.value --param /etc/app/app.conf --section database --key host")
+	fmt.Println("with a value:    kryostate collectors enable file.exists --param /etc/resolv.conf")
+	fmt.Println("for some stacks: kryostate collectors enable package.version --param nginx --stacks web-prod")
+	fmt.Println(`for some hosts:  kryostate collectors enable nginx.version --where 'name in ("web01", "web02")'`)
+	fmt.Println("try first:       kryostate collectors try memory.total --host <name>")
+	fmt.Println("written out:     kryostate collectors show file.exists --param /etc/hosts  (as you would write it in " + defaultCollectorsFile + ")")
 	return nil
 }
 
@@ -340,7 +212,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 		return err
 	}
 	if len(choices) == 0 {
-		fmt.Println("No catalog collectors are switched on. See what is available with: kryostate collectors -catalog")
+		fmt.Println("No catalog collectors are switched on. See what is available with: kryostate collectors catalog")
 	} else {
 		fmt.Println("Switched on from the catalog:")
 		tw := newTable(os.Stdout)
@@ -361,10 +233,10 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 		if err := tw.Flush(); err != nil {
 			return err
 		}
-		fmt.Println("  switch one off: kryostate collectors -disable <#>")
+		fmt.Println("  switch one off: kryostate collectors disable <#>")
 		for _, c := range gone {
 			fmt.Printf("  %s is not in this build's catalog, so it never runs. Values it recorded are kept.\n"+
-				"    remove it:    kryostate collectors -disable %d\n", c.Template, c.ID)
+				"    remove it:    kryostate collectors disable %d\n", c.Template, c.ID)
 		}
 	}
 
@@ -384,7 +256,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 	}
 	fmt.Println()
 	if _, err := os.Stat(path); err != nil {
-		fmt.Println("When nothing in the catalog fits, write your own: kryostate collectors -init")
+		fmt.Println("When nothing in the catalog fits, write your own: kryostate collectors init")
 	} else {
 		fmt.Printf("Your own, from %s:\n", path)
 		tw := newTable(os.Stdout)
@@ -426,7 +298,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	fmt.Println("\nTest any collector with: kryostate collectors -try <name> -host <host>")
+	fmt.Println("\nTest any collector with: kryostate collectors try <name> --host <host>")
 	return nil
 }
 
@@ -435,7 +307,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 // several variants, the one for the host's system is used.
 func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, specs []collect.Spec, host, sample, enableHint string) error {
 	if (host == "") == (sample == "") {
-		return errors.New("-try needs either -host <name> to run the command, or -sample <file> to test the parse rule on saved output")
+		return errors.New("try needs either --host <name> to run the command, or --sample <file> to test the parse rule on saved output")
 	}
 	spec := specs[0]
 
@@ -479,7 +351,7 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 			}
 		}
 		if prof == nil {
-			return fmt.Errorf("%s has no enabled connection; add one on its page in the web interface, or with: kryostate target -host %s -user <user>", host, host)
+			return fmt.Errorf("%s has no enabled connection; add one on its page in the web interface, or with: kryostate target add %s --user <user>", host, host)
 		}
 		res, err := eng.TrySpecs(ctx, *prof, specs)
 		if err != nil {
@@ -529,7 +401,7 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 		fmt.Println("The command ran, so the rule needs changing. Compare the rule with the output above.")
 		if sample == "" {
 			fmt.Println("Save the output to a file and test changes without a host:")
-			fmt.Printf("  kryostate collectors -try %s -sample output.txt\n", spec.ID)
+			fmt.Printf("  kryostate collectors try %s --sample output.txt\n", spec.ID)
 		} else {
 			fmt.Println("Edit the rule in your collectors file and run this command again.")
 		}
