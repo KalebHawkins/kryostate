@@ -196,14 +196,9 @@ which machine this is than a short name, which may repeat between sites.
 KryoState logs in to a host over SSH to read it. It needs an address, a user
 name, and a credential.
 
-**In the web interface:** on the host's page, find **Manage this host**, then
-**Connection**. The address is filled in from the fully qualified name. Enter
-the user and select **Add connection**.
-
-The web interface always uses your **ssh-agent** as the credential. The
-private key never leaves the agent, so it cannot be exposed through the web
-page. Make sure the agent is running and holds the key, on the machine that
-runs `kryostate serve`.
+The host's page shows its connections, read-only, in the **Connection** card
+under **Collectors on this host**. Connections are added and changed on the
+command line.
 
 **On the command line:**
 
@@ -934,11 +929,10 @@ disabled host with no value under **host disabled**.
 Its connections are left exactly as they are, each still enabled or not, so
 enabling the host brings back everything as it was.
 
-**In the web interface:** on the host's page, **Disable host** under
-**Status**, with an optional reason. The page then says **Disabled — not
-contacted** next to its name, with who disabled it, when and why, and an
-**Enable host** button. **Disabled hosts** on the Inventory page lists them
-all.
+**In the web interface:** on the host's page, **Disable** next to its name.
+The page then says **Disabled — not contacted** there, with who disabled it,
+when and why, and an **Enable** button. **Disabled hosts** on the Inventory
+page lists them all.
 
 **On the command line:**
 
@@ -954,8 +948,8 @@ disabled host. `refresh --only web01` on a disabled host says so and contacts
 nothing.
 
 A single connection can be switched off on its own, too, without disabling
-the host: untick **Connection enabled** on the host page, or
-`kryostate target update web01 --disable`.
+the host: `kryostate target update web01 --disable`. The host page's
+**Connection** card shows whether each connection is enabled.
 
 ### Deleting a host
 
@@ -965,9 +959,6 @@ or was added by mistake:
 ```sh
 kryostate host rm web01 --reason "decommissioned"   # asks first; --yes to skip the question
 ```
-
-On the host's page, **Delete host** asks for the host's name to be typed
-first.
 
 This removes every value, stored output, probe, identity, address, check,
 membership and connection of the host. It cannot be undone. The audit log is

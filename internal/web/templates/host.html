@@ -1,17 +1,19 @@
 {{define "host.html"}}
 <div class="host-head">
   <h1 class="mono">{{.CI.Label}}</h1>
-  {{if .CI.DisabledAt}}<span class="chip chip--disabled" title="Disabled {{stamp .CI.DisabledAt}}">Disabled — not contacted</span>{{else}}<span class="chip chip--enabled">Enabled</span>{{end}}
+  {{if .CI.DisabledAt}}<span class="chip chip--disabled" title="Disabled {{stamp .CI.DisabledAt}}">Disabled — not contacted</span>
+  <form class="inline" method="post" action="/hosts/{{.CI.ID}}/enable"><button class="btn btn--small" type="submit">Enable</button></form>
+  {{else}}<span class="chip chip--enabled">Enabled</span>
+  <form class="inline" method="post" action="/hosts/{{.CI.ID}}/disable" onsubmit="return confirm('Disable {{.CI.Label}}? Nothing will contact it until it is enabled again.')"><button class="btn btn--small btn--ghost" type="submit">Disable</button></form>{{end}}
 </div>
 <p class="muted">Internal id <span class="mono">{{.CI.ID}}</span> · first recorded {{stamp .CI.CreatedAt}}
-  · <a href="#manage">Manage connection, stacks, checks…</a></p>
+  {{with .Memberships}} · stacks: {{range $i, $m := .}}{{if $i}}, {{end}}<a href="{{stackURL $m.Stack}}" hx-get="{{stackURL $m.Stack}}" hx-target="#main" hx-push-url="true">{{$m.Stack}}</a>{{if $m.Role}} <span class="muted">({{$m.Role}})</span>{{end}}{{end}}{{end}}</p>
 {{if .CI.DisabledAt}}
 <div class="notice notice--disabled" role="status" id="disabled">
   <strong>This host is disabled.</strong> KryoState does not contact it: no collection, scheduled or by hand, no external collector, no health check and no DNS lookup. Its values below are the last ones recorded, and its connections are kept as they were.
   <span class="muted">Disabled {{stamp .CI.DisabledAt}}{{with .CI.DisabledBy}} by {{.}}{{end}}{{with .CI.DisabledReason}}: {{.}}{{end}}.</span>
-  <form method="post" action="/hosts/{{.CI.ID}}/enable"><button class="btn btn--small btn--primary" type="submit">Enable host</button></form>
 </div>
-{{else if not .Profiles}}<div class="notice">Nothing has been collected from this host because KryoState does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}
+{{else if not .Profiles}}<div class="notice">Nothing has been collected from this host because KryoState does not know how to reach it. Add a connection with <span class="mono">kryostate target add {{shq .CI.Label}} -u &lt;user&gt;</span>.</div>{{end}}
 
 <h2 id="facts">Facts</h2>
 {{with .AsOf}}<div class="notice" role="status">Showing values as they were on {{.Label}} · <a href="/hosts/{{$.CI.ID}}#facts">Back to now</a></div>{{end}}
@@ -43,200 +45,7 @@
 
 {{template "host-collectors" .}}
 
-<div class="cards" style="margin-top:1.5rem">
-  <div class="card">
-    <h2>Reachability</h2>
-    <p class="muted">Separate questions, separately answered. A host that pings but refuses a login is not "up".</p>
-    {{if not .Reach}}<p class="muted">No probe has run against this host.</p>{{end}}
-    <ul>
-    {{range $kind, $p := .Reach}}
-      <li><span class="mono">{{$kind}}</span>:
-        {{if eq $p.Outcome "ok"}}<span class="chip chip--collector">{{$p.Outcome}}</span>
-        {{else}}<span class="chip chip--bad">{{$p.Outcome}}</span>{{end}}
-        <span class="muted">{{ago $p.At}}{{if $p.Detail}} · {{short $p.Detail 60}}{{end}}</span></li>
-    {{end}}
-    </ul>
-  </div>
-
-  <div class="card">
-    <h2>Identities</h2>
-    <p class="muted">Evidence that this record is the same machine as last time. The display name is not one.</p>
-    <ul>
-    {{range .Identities}}<li><span class="mono">{{.Scheme}}</span> <span class="mono">{{.Value}}</span> <span class="muted">seen {{ago .LastSeen}}</span></li>{{else}}<li class="muted">None recorded.</li>{{end}}
-    </ul>
-  </div>
-
-  <div class="card">
-    <h2>Addresses</h2>
-    <p class="muted">Observations from a resolver, not instructions. Where a name answers with several, a person chooses.</p>
-    {{if gt (len .Addresses) 1}}
-    <form method="post" action="/hosts/{{.CI.ID}}/address">
-      {{range .Addresses}}
-      <div><label><input type="radio" name="address" value="{{.Addr}}" {{if .Selected}}checked{{end}}>
-        <span class="mono">{{.Addr}}</span> <span class="muted">{{.Resolver}} · {{ago .ObservedAt}}{{if .SelectedBy}} · chosen by {{.SelectedBy}}{{end}}</span></label></div>
-      {{end}}
-      <button class="btn" type="submit">Use this address</button>
-    </form>
-    {{else}}
-    <ul>{{range .Addresses}}<li><span class="mono">{{.Addr}}</span> <span class="muted">{{.Resolver}} · {{ago .ObservedAt}}</span></li>{{else}}<li class="muted">Nothing resolved.</li>{{end}}</ul>
-    {{end}}
-  </div>
-
-</div>
-
-<h2 id="manage" style="margin-top:2rem">Manage this host</h2>
-<p class="muted">Every change is written to the audit log under your name.</p>
-<div class="cards">
-
-  <div class="card" id="connection">
-    <h2>Connection</h2>
-    <p class="muted">How KryoState logs in to read this host. Without one, nothing is ever collected from it.</p>
-    {{if .CI.DisabledAt}}<p class="notice notice--disabled small">The host is disabled, so no connection is used, enabled or not. Each keeps its own setting for when the host is enabled again.</p>{{end}}
-    {{if .Profiles}}
-    <ul class="list">
-    {{range .Profiles}}
-      <li><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}{{if .Port}}:{{.Port}}{{end}}
-        {{if .Enabled}}<span class="chip chip--enabled">connection enabled</span>{{else}}<span class="chip chip--disabled">connection disabled</span>{{end}}</li>
-    {{end}}
-    </ul>
-    {{end}}
-    {{range .Profiles}}{{if or (ne .Transport "ssh") $.SSHLocked}}
-      <p><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}{{if .Port}}:{{.Port}}{{end}}
-        <span class="chip chip--human">{{.CredentialRef}}</span>
-        {{if .BastionRef}}<span class="muted">via bastion</span>{{end}}</p>
-      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it, or switch it on or off, with <span class="mono">kryostate target update {{$.CI.Label}} …</span> (<span class="mono">--disable</span> or <span class="mono">--disable=false</span>)</p>
-    {{end}}{{end}}
-    {{if not .SSHLocked}}
-    {{$p := .SSH}}
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/connection">
-      <label>Address <span class="hint">name or IP to connect to</span>
-        <input type="text" name="address" required class="mono" value="{{if $p}}{{$p.Address}}{{else}}{{range .Identities}}{{if eq .Scheme "fqdn"}}{{.Value}}{{end}}{{end}}{{end}}" placeholder="{{.CI.Label}}"></label>
-      <div class="form__row">
-        <label>User <input type="text" name="user" required class="mono" value="{{if $p}}{{$p.Username}}{{end}}" placeholder="svc-readonly"></label>
-        <label>Port <input type="number" name="port" min="1" max="65535" class="mono" value="{{if $p}}{{if $p.Port}}{{$p.Port}}{{end}}{{end}}" placeholder="22"></label>
-      </div>
-      <label class="check"><input type="checkbox" name="enabled" value="1" {{if or (not $p) $p.Enabled}}checked{{end}}> Connection enabled <span class="muted">(untick to keep it but not use it)</span></label>
-      <p class="muted">Logs in over SSH using your ssh-agent (<span class="mono">agent:</span>). The key never leaves the agent. {{if $p}}{{if $p.HostKey}}The host key is pinned.{{else}}The host key is pinned on the first successful collection.{{end}}{{end}}</p>
-      <div class="form__actions">
-        <button class="btn btn--primary" type="submit">{{if $p}}Save connection{{else}}Add connection{{end}}</button>
-      </div>
-    </form>
-    {{if $p}}
-    <form method="post" action="/hosts/{{.CI.ID}}/connection/delete" onsubmit="return confirm('Remove this connection? Nothing will be collected from the host until one is added again.')">
-      <input type="hidden" name="transport" value="ssh">
-      <button class="btn btn--ghost btn--danger" type="submit">Remove connection</button>
-    </form>
-    {{end}}
-    {{end}}
-  </div>
-
-  {{if and .Profiles .Testable (not .CI.DisabledAt)}}
-  <div class="card" id="test">
-    <h2>Test a collector</h2>
-    <p class="muted">Run one collector on this host now and see what it would record. Nothing is saved.</p>
-    <form class="form" method="post" action="/collectors/try">
-      <input type="hidden" name="host" value="{{.CI.ID}}">
-      <label>Collector
-        <select name="collector">
-          {{$group := ""}}
-          {{range .Testable}}{{if ne .Group $group}}{{if $group}}</optgroup>{{end}}<optgroup label="{{.Group}}">{{$group = .Group}}{{end}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
-          {{if $group}}</optgroup>{{end}}
-        </select></label>
-      <div class="form__actions"><button class="btn" type="submit">Test</button>
-        <a class="small" href="/collectors" hx-get="/collectors" hx-target="#main" hx-push-url="true">Choose more collectors…</a></div>
-    </form>
-  </div>
-  {{end}}
-
-  <div class="card" id="stacks">
-    <h2>Stacks</h2>
-    <p class="muted">The deployed systems this host is part of.</p>
-    <ul class="list">
-    {{range .Memberships}}
-      <li><a href="{{stackURL .Stack}}" hx-get="{{stackURL .Stack}}" hx-target="#main" hx-push-url="true">{{.Stack}}</a>{{if .Role}} <span class="muted">as {{.Role}}</span>{{end}}
-        <form class="inline" method="post" action="/stacks/members/remove">
-          <input type="hidden" name="stack" value="{{.Stack}}"><input type="hidden" name="ci" value="{{$.CI.ID}}">
-          <input type="hidden" name="back" value="/hosts/{{$.CI.ID}}">
-          <button class="btn btn--ghost btn--small" type="submit" aria-label="Remove from {{.Stack}}">Remove</button>
-        </form></li>
-    {{else}}<li class="muted">Not in any stack.</li>{{end}}
-    </ul>
-    <form class="form" method="post" action="/stacks/members">
-      <input type="hidden" name="host" value="{{.CI.ID}}"><input type="hidden" name="back" value="/hosts/{{.CI.ID}}">
-      <div class="form__row">
-        <label>Stack <input type="text" name="stack" list="all-stacks" required placeholder="payments-prod"></label>
-        <label>Role <input type="text" name="role" placeholder="app, database…"></label>
-      </div>
-      <datalist id="all-stacks">{{range .AllStacks}}<option value="{{.}}">{{end}}</datalist>
-      <div class="form__actions"><button class="btn" type="submit">Add to stack</button>
-        <span class="muted">A new name creates the stack.</span></div>
-    </form>
-  </div>
-
-  <div class="card" id="checks">
-    <h2>Health checks</h2>
-    <p class="muted">Is the service answering? Checked on every collection, separately from logging in.</p>
-    <ul class="list">
-    {{range .Checks}}
-      <li><span class="mono">{{.Name}}</span> <span class="muted">{{.Kind}} {{short .Target 40}}{{if .Expect}} expects {{.Expect}}{{end}}{{if not .Enabled}} · disabled{{end}}</span>
-        <form class="inline" method="post" action="/hosts/{{$.CI.ID}}/checks/delete">
-          <input type="hidden" name="name" value="{{.Name}}">
-          <button class="btn btn--ghost btn--small" type="submit" aria-label="Remove check {{.Name}}">Remove</button>
-        </form></li>
-    {{else}}<li class="muted">No checks.</li>{{end}}
-    </ul>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/checks">
-      <div class="form__row">
-        <label>Name <input type="text" name="name" required placeholder="https"></label>
-        <label>Kind <select name="kind"><option value="http">HTTP request</option><option value="tcp">TCP port</option></select></label>
-      </div>
-      <label>Target <span class="hint">a URL for HTTP, host:port for TCP</span>
-        <input type="text" name="target" required class="mono" placeholder="https://{{.CI.Label}}/health"></label>
-      <label>Expected status <span class="hint">HTTP only, such as 200 or 2xx; blank accepts any</span>
-        <input type="text" name="expect" class="mono" placeholder="2xx"></label>
-      <div class="form__actions"><button class="btn" type="submit">Add check</button></div>
-    </form>
-  </div>
-
-  <div class="card" id="application">
-    <h2>Application</h2>
-    <p class="muted">What this host runs, recorded under your name. Its stack and role are set under Stacks; everything else is what the host reports.</p>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/application">
-      <label>Application <input type="text" name="application" required class="mono" placeholder="ledger"
-        value="{{range (or .CurrentFacts .Facts)}}{{if and (eq .Attr "application") (not .Scope)}}{{.Raw}}{{end}}{{end}}"></label>
-      <div class="form__actions"><button class="btn" type="submit">Record</button></div>
-    </form>
-  </div>
-
-  <div class="card" id="status">
-    {{if .CI.DisabledAt}}
-    <h2>Status: <span class="chip chip--disabled">Disabled</span></h2>
-    <p class="muted">Disabled {{stamp .CI.DisabledAt}}{{with .CI.DisabledBy}} by {{.}}{{end}}{{with .CI.DisabledReason}}: {{.}}{{end}}. It is listed and charted as before, and nothing contacts it. Enabling it uses its connections as they are set above.</p>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/enable">
-      <label>Reason <input type="text" name="reason" placeholder="optional, for the audit log"></label>
-      <div class="form__actions"><button class="btn btn--primary" type="submit">Enable host</button></div>
-    </form>
-    {{else}}
-    <h2>Status: <span class="chip chip--enabled">Enabled</span></h2>
-    <p class="muted">Disabling stops every contact with this host: collection, external collectors, health checks and DNS lookups. It stays in the inventory with its history, and its connections are kept for when it is enabled again.</p>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/disable">
-      <label>Reason <input type="text" name="reason" placeholder="powered off for CHG-2210"></label>
-      <div class="form__actions"><button class="btn" type="submit">Disable host</button></div>
-    </form>
-    {{end}}
-  </div>
-
-  <div class="card danger-zone" id="delete">
-    <h2>Delete host</h2>
-    <p class="muted">Deletes this host and everything recorded about it: values, command output, probes, identities, addresses, checks, stack memberships and connections. The audit log keeps a record of the deletion. This cannot be undone; to stop contacting a host but keep it, disable it instead.</p>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/delete">
-      <label>Type <span class="mono">{{.CI.Label}}</span> to confirm <input type="text" name="confirm" required autocomplete="off" spellcheck="false" class="mono" pattern="{{regexQuote .CI.Label}}" title="the host's name, exactly"></label>
-      <label>Reason <input type="text" name="reason" placeholder="optional, for the audit log"></label>
-      <div class="form__actions"><button class="btn btn--danger" type="submit">Delete host permanently</button></div>
-    </form>
-  </div>
-</div>
-{{template "cli" (list (printf "kryostate host show %s" (shq .CI.Label)) (printf "kryostate refresh --only %s" (shq .CI.Label)) (printf "kryostate host update %s application=<name>" (shq .CI.Label)) (printf "kryostate host %s %s" (or (and .CI.DisabledAt "enable") "disable") (shq .CI.Label)))}}
+{{template "cli" (list (printf "kryostate host show %s" (shq .CI.Label)) (printf "kryostate refresh --only %s" (shq .CI.Label)) (printf "kryostate target add %s -u <user> [--password]" (shq .CI.Label)) (printf "kryostate stack add <stack> %s" (shq .CI.Label)) (printf "kryostate check add %s <name> …" (shq .CI.Label)) (printf "kryostate host update %s application=<name>" (shq .CI.Label)) (printf "kryostate host %s %s" (or (and .CI.DisabledAt "enable") "disable") (shq .CI.Label)) (printf "kryostate host rm %s" (shq .CI.Label)))}}
 {{end}}
 
 {{define "long-value"}}{{if multiline .}}<details class="fact-full"><summary>{{short . 40}}</summary><pre>{{.}}</pre></details>{{else}}{{.}}{{end}}{{end}}
@@ -280,5 +89,59 @@
   </details>
   {{end}}
   {{end}}
+
+  <div class="cards" style="margin-top:1.5rem">
+    <div class="card" id="connection">
+      <h3>Connection</h3>
+      <p class="muted">How KryoState logs in to read this host.</p>
+      {{if .CI.DisabledAt}}<p class="notice notice--disabled small">The host is disabled, so no connection is used. Each keeps its own setting for when it is enabled again.</p>{{end}}
+      <ul class="list">
+      {{range .Profiles}}
+        <li><span class="mono">{{.Transport}}</span> <span class="mono">{{.Username}}@{{.Address}}{{if .Port}}:{{.Port}}{{end}}</span>
+          {{if .Enabled}}<span class="chip chip--enabled">enabled</span>{{else}}<span class="chip chip--disabled">disabled</span>{{end}}
+          <div class="muted small">credential <span class="mono">{{.CredentialRef}}</span>{{if .BastionRef}} · via bastion <span class="mono">{{.BastionRef}}</span>{{end}}
+            · {{if .HostKey}}host key pinned{{else if eq .Transport "ssh"}}host key pinned on first connection{{else}}certificate checked by TLS{{end}}</div></li>
+      {{else}}<li class="muted">None. Add one with <span class="mono">kryostate target add {{shq $.CI.Label}} -u &lt;user&gt;</span>.</li>{{end}}
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>Reachability</h3>
+      <p class="muted">Separate questions, separately answered. A host that pings but refuses a login is not "up".</p>
+      {{if not .Reach}}<p class="muted">No probe has run against this host.</p>{{end}}
+      <ul>
+      {{range $kind, $p := .Reach}}
+        <li><span class="mono">{{$kind}}</span>:
+          {{if eq $p.Outcome "ok"}}<span class="chip chip--collector">{{$p.Outcome}}</span>
+          {{else}}<span class="chip chip--bad">{{$p.Outcome}}</span>{{end}}
+          <span class="muted">{{ago $p.At}}{{if $p.Detail}} · {{short $p.Detail 60}}{{end}}</span></li>
+      {{end}}
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>Identities</h3>
+      <p class="muted">Evidence that this record is the same machine as last time. The display name is not one.</p>
+      <ul>
+      {{range .Identities}}<li><span class="mono">{{.Scheme}}</span> <span class="mono">{{.Value}}</span> <span class="muted">seen {{ago .LastSeen}}</span></li>{{else}}<li class="muted">None recorded.</li>{{end}}
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>Addresses</h3>
+      <p class="muted">Observations from a resolver, not instructions. Where a name answers with several, a person chooses.</p>
+      {{if gt (len .Addresses) 1}}
+      <form method="post" action="/hosts/{{.CI.ID}}/address">
+        {{range .Addresses}}
+        <div><label><input type="radio" name="address" value="{{.Addr}}" {{if .Selected}}checked{{end}}>
+          <span class="mono">{{.Addr}}</span> <span class="muted">{{.Resolver}} · {{ago .ObservedAt}}{{if .SelectedBy}} · chosen by {{.SelectedBy}}{{end}}</span></label></div>
+        {{end}}
+        <button class="btn" type="submit">Use this address</button>
+      </form>
+      {{else}}
+      <ul>{{range .Addresses}}<li><span class="mono">{{.Addr}}</span> <span class="muted">{{.Resolver}} · {{ago .ObservedAt}}</span></li>{{else}}<li class="muted">Nothing resolved.</li>{{end}}</ul>
+      {{end}}
+    </div>
+  </div>
 </section>
 {{end}}

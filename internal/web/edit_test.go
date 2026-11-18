@@ -224,7 +224,7 @@ func TestDisableEnableAndDeleteFromTheBrowser(t *testing.T) {
 		t.Errorf("disabling the host changed its connection: %+v", ps)
 	}
 	page = get(t, h, "/hosts/"+id, nil).Body.String()
-	for _, want := range []string{"Disabled — not contacted", `action="/hosts/` + id + `/enable"`, "powered off", "connection enabled"} {
+	for _, want := range []string{"Disabled — not contacted", `action="/hosts/` + id + `/enable"`, "powered off", `chip--enabled">enabled`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("a disabled host's page is missing %q", want)
 		}

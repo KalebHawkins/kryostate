@@ -66,19 +66,11 @@ func TestColumnsAreChosenInTheURL(t *testing.T) {
 	}
 }
 
-// TestApplicationFromTheHostPage: the application is the one attribute the
-// host page lets a person state. It carries their name and needs no reason;
-// the audit log notes where it was set.
+// TestApplicationFromTheHostPage: stating a host's application carries the
+// person's name and needs no reason; the audit log notes where it was set.
 func TestApplicationFromTheHostPage(t *testing.T) {
 	_, h, st := testServer(t)
 	id := seed(t, st)
-
-	page := get(t, h, "/hosts/"+id, nil).Body.String()
-	if i := strings.Index(page, `id="application"`); i < 0 {
-		t.Fatal("no application form on the host page")
-	} else if form := page[i:]; strings.Contains(form[:strings.Index(form, "</form>")], `name="reason"`) {
-		t.Error("the application form still asks for a reason")
-	}
 
 	set := func(form url.Values) *httptest.ResponseRecorder {
 		return post(t, h, "/hosts/"+id+"/application", form)

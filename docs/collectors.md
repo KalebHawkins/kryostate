@@ -120,7 +120,8 @@ says why.
 
 On a host's page, **Collectors on this host** lists what runs there, why,
 and on what schedule, with the switched-on collectors that skip it and the
-reason. **Test a collector** runs any switched-on collector on that host.
+reason. To try a collector against one host, type the host's name beside
+**Test** on the Collectors page.
 
 It is read the next time it is due: once a day for most collectors, every 6
 hours for file and config checks, while `kryostate serve` runs. To read it

@@ -79,7 +79,7 @@ that credential is kept.
 
 Every change a person makes to a host is audited too, with who made it:
 disabling and enabling it, and deleting it. Deleting a host
-(`kryostate host rm`, or **Delete host** on its page) removes everything
+(`kryostate host rm`) removes everything
 recorded about it except its audit rows. Those stay, and one more records the
 deletion with the host's name and the reason given, so the trail still says
 what was deleted, by whom and why after the host itself is gone. Nothing in
