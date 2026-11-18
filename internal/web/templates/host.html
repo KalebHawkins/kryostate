@@ -17,7 +17,7 @@
 {{with .AsOf}}<div class="notice" role="status">Showing values as they were on {{.Label}} · <a href="/hosts/{{$.CI.ID}}#facts">Back to now</a></div>{{end}}
 <form method="get" action="/hosts/{{.CI.ID}}#facts" class="muted small" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.25rem 0 .5rem">
   <label>As of <input type="date" name="at" value="{{with .AsOf}}{{.Input}}{{end}}"></label>
-  <button type="submit">Show</button>
+  <button class="btn" type="submit">Show</button>
 </form>
 <p class="muted">{{if .AsOf}}Each value is the one that held for that attribute then, among what had been reported by that time; a date means the end of that day.{{else}}Each value is the one that currently holds for that attribute.{{end}} What the host reports always wins over what a person or a document says.</p>
 <div class="table-wrap">

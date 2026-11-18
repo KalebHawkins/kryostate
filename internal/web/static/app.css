@@ -991,6 +991,9 @@ td.host a { text-decoration: none; }
 input[type="text"],
 input[type="search"],
 input[type="number"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
 textarea,
 select {
   font: inherit;
@@ -1001,6 +1004,14 @@ select {
   border-radius: var(--r-sm);
   padding: 0.35rem 0.6rem;
 }
+
+/* The native calendar icon is drawn in the page's color-scheme; dim it to
+   sit with the other field chrome and show it is clickable. */
+input::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+input::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
 input::placeholder, textarea::placeholder { color: var(--text-faint); }
 textarea { resize: vertical; line-height: 1.5; }
