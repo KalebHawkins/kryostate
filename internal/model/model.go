@@ -65,7 +65,12 @@ type CI struct {
 	Kind      CIKind
 	Label     string // display name only, never an identity
 	CreatedAt time.Time
-	RetiredAt *time.Time
+	// DisabledAt is set while the host is disabled: listed as usual, but
+	// never contacted. DisabledBy and DisabledReason come from the audit
+	// entry that disabled it.
+	DisabledAt     *time.Time
+	DisabledBy     string
+	DisabledReason string
 }
 
 // IdentityScheme names a way of recognising a machine across renames.
@@ -192,7 +197,7 @@ type Probe struct {
 	At      time.Time
 }
 
-// Unknown distinguishes the three reasons an attribute has no usable value.
+// Unknown distinguishes the reasons an attribute has no usable value.
 // They need different remediation, so the UI must not merge them.
 type Unknown string
 
@@ -203,6 +208,8 @@ const (
 	UnknownCollectionFailed Unknown = "collection_failed"
 	// UnknownUnparsed means the machine answered and no rule understood it.
 	UnknownUnparsed Unknown = "unparsed"
+	// UnknownHostDisabled means the host is disabled, so nobody asks it.
+	UnknownHostDisabled Unknown = "host_disabled"
 )
 
 // Stack is a deployed system. It is a first-class entity rather than a string
@@ -218,9 +225,12 @@ type Stack struct {
 
 // StackHealth is a count breakdown, never a single colour. A stack with two
 // unreachable members is not red and not green; it is 11 of 14 collected.
+// Disabled members are counted on their own and in none of Collected, Failed
+// or NeverSeen.
 type StackHealth struct {
 	Members   int
 	Collected int
 	Failed    int
 	NeverSeen int
+	Disabled  int
 }

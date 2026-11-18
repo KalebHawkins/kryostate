@@ -135,7 +135,7 @@ func (s *Store) AllChecks(ctx context.Context) ([]Check, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT k.id, k.ci_id, k.name, k.kind, k.target, k.expect, k.timeout_ms, k.enabled, c.label
 		 FROM check_def k JOIN ci c ON c.id=k.ci_id
-		 WHERE k.enabled=1 AND c.retired_at IS NULL
+		 WHERE k.enabled=1 AND c.disabled_at IS NULL
 		 ORDER BY c.label, k.name`)
 	if err != nil {
 		return nil, err

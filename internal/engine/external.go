@@ -170,6 +170,9 @@ func (e *Engine) externalTargets(ctx context.Context, opt Options) ([]externalTa
 	}
 	var out []externalTarget
 	for _, r := range rows {
+		if r.CI.DisabledAt != nil {
+			continue
+		}
 		if len(keep) > 0 && !keep[r.CI.ID] {
 			continue
 		}

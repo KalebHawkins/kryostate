@@ -79,7 +79,8 @@ func (a *app) hostList(ctx context.Context, o hostListOpts) error {
 	for _, c := range columns {
 		fmt.Fprintf(tw, "\t%s", strings.ToUpper(c))
 	}
-	fmt.Fprintln(tw, "\tCOLLECTED\tSTACKS")
+	fmt.Fprintln(tw, "\tSTATUS\tCOLLECTED\tSTACKS")
+	disabled := 0
 	for _, r := range rows {
 		fmt.Fprintf(tw, "%s\t%s", r.CI.Label, shortID(r.CI.ID))
 		for _, c := range columns {
@@ -96,10 +97,19 @@ func (a *app) hostList(ctx context.Context, o hostListOpts) error {
 				collected += " FAILED"
 			}
 		}
-		fmt.Fprintf(tw, "\t%s\t%s\n", collected, strings.Join(r.Stacks, ","))
+		status := "enabled"
+		if r.CI.DisabledAt != nil {
+			status = "disabled"
+			disabled++
+		}
+		fmt.Fprintf(tw, "\t%s\t%s\t%s\n", status, collected, strings.Join(r.Stacks, ","))
 	}
 	if err := tw.Flush(); err != nil {
 		return err
+	}
+	if disabled > 0 {
+		fmt.Printf("%d hosts, %d of them disabled (not contacted).\n", len(rows), disabled)
+		return nil
 	}
 	fmt.Printf("%d hosts.\n", len(rows))
 	return nil
@@ -160,14 +170,23 @@ func (a *app) hostShow(ctx context.Context, host string, asJSON bool, at string)
 				Source: f.SourceName, Kind: string(f.SourceKind), Observed: f.ObservedAt})
 		}
 		return writeJSON(map[string]any{
-			"id": ci.ID, "name": ci.Label, "created_at": ci.CreatedAt, "retired_at": ci.RetiredAt,
+			"id": ci.ID, "name": ci.Label, "created_at": ci.CreatedAt, "disabled": ci.DisabledAt != nil, "disabled_at": ci.DisabledAt,
 			"identities": idents, "facts": fj, "reachability": reach, "unknown": unreadJSON(unread),
 		})
 	}
 
 	fmt.Printf("%s  (id %s)\n", ci.Label, ci.ID)
-	if ci.RetiredAt != nil {
-		fmt.Printf("RETIRED %s\n", ci.RetiredAt.Format(time.DateOnly))
+	if ci.DisabledAt != nil {
+		fmt.Printf("status: DISABLED since %s", ci.DisabledAt.Local().Format("2006-01-02 15:04"))
+		if ci.DisabledBy != "" {
+			fmt.Printf(" by %s", ci.DisabledBy)
+		}
+		if ci.DisabledReason != "" {
+			fmt.Printf(": %s", ci.DisabledReason)
+		}
+		fmt.Printf("\n        not contacted; enable with: kryostate host enable %s\n", ci.Label)
+	} else {
+		fmt.Println("status: enabled")
 	}
 	if len(idents) > 0 {
 		var parts []string
@@ -374,8 +393,13 @@ func (a *app) refresh(ctx context.Context, c collectFlags, resolve, noChecks, qu
 	if err != nil {
 		return err
 	}
-	ids, err := st.LookupCIs(ctx, onlyIDs(c.only))
+	refs := onlyIDs(c.only)
+	ids, err := st.LookupCIs(ctx, refs)
 	if err != nil {
+		return err
+	}
+	ids, anyLeft, err := enabledOnly(ctx, st, refs, ids)
+	if err != nil || !anyLeft {
 		return err
 	}
 

@@ -200,22 +200,68 @@ func TestStacksFromTheBrowser(t *testing.T) {
 	}
 }
 
-func TestRetireAndRestoreFromTheBrowser(t *testing.T) {
+func TestDisableEnableAndDeleteFromTheBrowser(t *testing.T) {
 	_, h, st := testServer(t)
+	ctx := context.Background()
 	id := seed(t, st)
-	if _, msg := followFlash(t, h, post(t, h, "/hosts/"+id+"/retire", url.Values{})); !strings.Contains(msg, "why") {
-		t.Errorf("retire without a reason gave %q", msg)
+	if err := st.PutConnProfile(ctx, store.ConnProfile{CIID: id, Transport: "ssh", Address: "appnode1",
+		Username: "svc", CredentialRef: "agent:", Enabled: true}); err != nil {
+		t.Fatal(err)
 	}
-	post(t, h, "/hosts/"+id+"/retire", url.Values{"reason": {"gone"}})
-	if c, _ := st.CI(context.Background(), id); c.RetiredAt == nil {
-		t.Fatal("not retired")
+
+	page := get(t, h, "/hosts/"+id, nil).Body.String()
+	if !strings.Contains(page, `action="/hosts/`+id+`/disable"`) || !strings.Contains(page, `chip--enabled">Enabled`) {
+		t.Error("an enabled host's page has no Disable control or status")
 	}
-	if body := get(t, h, "/hosts?retired=1", nil).Body.String(); !strings.Contains(tableBody(body), "appnode1") {
-		t.Error("the retired list does not show it")
+	if _, msg := followFlash(t, h, post(t, h, "/hosts/"+id+"/disable", url.Values{"reason": {"powered off"}})); !strings.Contains(msg, "disabled") {
+		t.Errorf("disable gave %q", msg)
 	}
-	post(t, h, "/hosts/"+id+"/unretire", url.Values{})
-	if c, _ := st.CI(context.Background(), id); c.RetiredAt != nil {
-		t.Error("not restored")
+	c, _ := st.CI(ctx, id)
+	if c.DisabledAt == nil || c.DisabledBy != "operator@example.invalid" || c.DisabledReason != "powered off" {
+		t.Fatalf("not disabled: %+v", c)
+	}
+	if ps, _ := st.ConnProfiles(ctx, id); len(ps) != 1 || !ps[0].Enabled {
+		t.Errorf("disabling the host changed its connection: %+v", ps)
+	}
+	page = get(t, h, "/hosts/"+id, nil).Body.String()
+	for _, want := range []string{"Disabled — not contacted", `action="/hosts/` + id + `/enable"`, "powered off", "connection enabled"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("a disabled host's page is missing %q", want)
+		}
+	}
+	// Still listed, marked, and findable on its own.
+	for _, u := range []string{"/hosts", "/hosts?disabled=1", "/hosts?q=" + url.QueryEscape("disabled == true")} {
+		if body := tableBody(get(t, h, u, nil).Body.String()); !strings.Contains(body, "appnode1") || !strings.Contains(body, "chip--disabled") {
+			t.Errorf("%s does not list it as disabled", u)
+		}
+	}
+	if body := tableBody(get(t, h, "/hosts?q="+url.QueryEscape("!disabled"), nil).Body.String()); strings.Contains(body, "appnode1") {
+		t.Error("!disabled lists a disabled host")
+	}
+
+	post(t, h, "/hosts/"+id+"/enable", url.Values{})
+	if c, _ := st.CI(ctx, id); c.DisabledAt != nil {
+		t.Error("not enabled")
+	}
+
+	// Deleting needs the name typed, exactly.
+	if _, msg := followFlash(t, h, post(t, h, "/hosts/"+id+"/delete", url.Values{"confirm": {"appnode"}})); !strings.Contains(msg, "type the host") {
+		t.Errorf("delete without the name gave %q", msg)
+	}
+	if _, err := st.CI(ctx, id); err != nil {
+		t.Fatal("deleted without confirmation")
+	}
+	rec := post(t, h, "/hosts/"+id+"/delete", url.Values{"confirm": {"appnode1"}, "reason": {"test"}})
+	if loc := rec.Header().Get("Location"); loc != "/hosts" {
+		t.Errorf("after delete, redirected to %q", loc)
+	}
+	if _, err := st.CI(ctx, id); err == nil {
+		t.Error("not deleted")
+	}
+	var n int
+	st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM audit WHERE subject=?`, id).Scan(&n)
+	if n < 3 {
+		t.Errorf("the host's audit trail was not kept: %d rows", n)
 	}
 }
 

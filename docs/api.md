@@ -65,9 +65,9 @@ the web interface, so a tool can link back.
 
 | Endpoint | What it returns |
 |---|---|
-| `/api/v1/status` | How many hosts are collected, failing, stale, never collected or have no connection, and `healthy` |
-| `/api/v1/hosts` | Hosts and their values. Takes `q`, `fields`, `stack`, `health`, `unknown`, `retired` |
-| `/api/v1/hosts/{host}` | One host: every value with its source and when it was seen, what is unknown and why, stacks, identities, reachability, connections. `?at=2026-03-01` gives the values as they were that day |
+| `/api/v1/status` | How many enabled hosts are collected, failing, stale, never collected or have no connection, how many are `disabled`, and `healthy` |
+| `/api/v1/hosts` | Hosts and their values. Takes `q`, `fields`, `stack`, `health`, `unknown`, `disabled` (`true` for only disabled hosts). Each host carries `disabled` |
+| `/api/v1/hosts/{host}` | One host: every value with its source and when it was seen, what is unknown and why, stacks, identities, reachability, connections (each with `enabled`), and `disabled` with `disabled_at`, `disabled_by` and `disabled_reason` when the host is disabled. `?at=2026-03-01` gives the values as they were that day |
 | `/api/v1/hosts/{host}/changes` | What changed on one host. Takes `since` and `attr` |
 | `/api/v1/stacks` | Stacks with member counts and health |
 | `/api/v1/stacks/{stack}` | One stack and its members, each with their role and values |

@@ -68,13 +68,14 @@ two hosts, KryoState stops and lists both.
 
 ### 2.5 Unknown is not blank
 
-A host with no value for an attribute is put in one of three groups:
+A host with no value for an attribute is put in one of four groups:
 
 | Group | Meaning | What to do |
 |---|---|---|
 | never collected | Nothing has asked this host | Add a connection profile |
 | collection failed | The last attempt failed | Repair the access |
 | not understood | The host answered and no rule read it | Fix or add a rule |
+| host disabled | The host is disabled, so nobody asks it | Nothing, or enable it |
 
 A value the host reported before and **could not read on the last try** is
 unknown too, not the old value. If the command ran and failed (for
@@ -919,38 +920,59 @@ chooses every attribute, and the command line includes every value unless
 `--cols` is given. `application` and `last_collected` are left out when there
 is none.
 
-### Retiring a host
+### Disabling and enabling a host
 
-When a machine is gone, retire it. Its history is kept and collection stops.
+Disable a host that should not be contacted for now: powered off, in
+maintenance, or on its way out. A disabled host is never contacted. No
+collection runs on it, scheduled or by hand, and no external collector,
+health check or DNS lookup does either. It stays in the inventory, its stacks,
+the charts and queries, with everything recorded about it, and is marked
+**Disabled** wherever it is listed. It is not counted as failing, out of date
+or never collected: the overview counts it on its own, and a chart puts a
+disabled host with no value under **host disabled**.
 
-**In the web interface:** on the host's page, **Retire**, with a reason. To
-find it again, use **Retired hosts** on the Inventory page; its page has
-**Restore host**.
+Its connections are left exactly as they are, each still enabled or not, so
+enabling the host brings back everything as it was.
+
+**In the web interface:** on the host's page, **Disable host** under
+**Status**, with an optional reason. The page then says **Disabled — not
+contacted** next to its name, with who disabled it, when and why, and an
+**Enable host** button. **Disabled hosts** on the Inventory page lists them
+all.
 
 **On the command line:**
 
 ```sh
-kryostate host rm web01 --reason "decommissioned, CHG-2210"
-kryostate host restore web01
+kryostate host disable web01 web02 --reason "powered off, CHG-2210"
+kryostate host enable web01
+kryostate host list -q 'disabled == true'    # just the disabled ones
 ```
 
-`host rm` keeps the host's history: its values, probes, stored output and
-audit entries. It takes the host out of everything that still acts on it:
-its connections (and with them its pinned host keys), its stack
-memberships, its health checks and any schedule back-off. `host restore`
-brings the host back, but not those: add its connections and stacks again.
+`host list` has a STATUS column, `host show` says whether the host is enabled,
+and `target list` shows **HOST DISABLED** against the connections of a
+disabled host. `refresh --only web01` on a disabled host says so and contacts
+nothing.
 
-To delete a host and its whole history for good, such as a host added by
-mistake, purge it:
+A single connection can be switched off on its own, too, without disabling
+the host: untick **Connection enabled** on the host page, or
+`kryostate target update web01 --disable`.
+
+### Deleting a host
+
+To delete a host and its whole history for good, such as a host that is gone
+or was added by mistake:
 
 ```sh
-kryostate host rm --purge web01        # asks first; --yes to skip the question
+kryostate host rm web01 --reason "decommissioned"   # asks first; --yes to skip the question
 ```
 
+On the host's page, **Delete host** asks for the host's name to be typed
+first.
+
 This removes every value, stored output, probe, identity, address, check,
-membership, connection and audit entry of the host, and writes one "purge"
-entry to the audit log in their place. It cannot be undone, and a purged
-host cannot be restored.
+membership and connection of the host. It cannot be undone. The audit log is
+kept: the entries about the host stay, and one more records the deletion with
+the host's name, who deleted it and the reason given.
 
 ### Backing up
 
@@ -966,8 +988,8 @@ kryostate restore --db new.db --in backup.json
 | Page | What it shows | What you can change |
 |---|---|---|
 | Overview | One line saying whether every host collected; the hosts that need attention (failing, no connection, out of date, never collected), each linking to the inventory filtered to them; the last day's changes; the next runs by clock time; hosts by operating system, stack and application | |
-| Inventory | One row for each host, filtered by a query | Add a host; choose columns; download CSV or JSON |
-| Host page | Values, sources, reachability, identity, addresses | Connection, stacks, health checks, application, retire and restore, chosen address; test any collector on it |
+| Inventory | One row for each host, filtered by a query, with its status (enabled or disabled) | Add a host; choose columns; list only disabled hosts; download CSV or JSON |
+| Host page | Values, sources, reachability, identity, addresses; whether the host is enabled or disabled, and each connection's state | Connection (and whether it is enabled), stacks, health checks, application, chosen address; disable, enable or delete the host; test any collector on it |
 | Stacks | One card for each stack, with roles and what is collected there | Create, edit and delete stacks; add and remove members; switch collectors on for one stack |
 | Charts | One chart for each attribute: a donut for a few values, ranked bars for more, a histogram for numbers. Attributes that identify a host are listed, not charted. Open a chart for a larger view and a table; each value links to its hosts | |
 | Changes | Collected values that changed, by time window | |

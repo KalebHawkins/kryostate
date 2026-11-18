@@ -288,8 +288,13 @@ func (a *app) collect(ctx context.Context, c collectFlags, transport string) err
 	if err != nil {
 		return err
 	}
-	ids, err := st.LookupCIs(ctx, onlyIDs(c.only))
+	refs := onlyIDs(c.only)
+	ids, err := st.LookupCIs(ctx, refs)
 	if err != nil {
+		return err
+	}
+	ids, anyLeft, err := enabledOnly(ctx, st, refs, ids)
+	if err != nil || !anyLeft {
 		return err
 	}
 	release, err := takeLease(ctx, st, "collect", c.lease)

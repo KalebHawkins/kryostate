@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"html/template"
+	"regexp"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ func funcs() template.FuncMap {
 		"defaultAttr": collect.DefaultAttr,
 		"multiline":   func(s string) bool { return len(s) > 48 || strings.Contains(s, "\n") },
 		"lower":       strings.ToLower,
+		"regexQuote":  regexp.QuoteMeta,
 		"shq":         shellQuote,
 		"list":        func(v ...any) []any { return v },
 		// insertStack and insertSystem are the query a target editor's chip

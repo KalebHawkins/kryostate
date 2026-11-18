@@ -13,7 +13,7 @@
 
 <div class="shealth">
   {{if $h.Members}}{{template "stack-health" $h}}{{end}}
-  <p class="small">{{$h.Members}} member{{if ne $h.Members 1}}s{{end}}{{if $h.Members}}: {{$h.Collected}} collected · {{$h.Failed}} failed · {{$h.NeverSeen}} never collected{{end}}
+  <p class="small">{{$h.Members}} member{{if ne $h.Members 1}}s{{end}}{{if $h.Members}}: {{$h.Collected}} collected · {{$h.Failed}} failed · {{$h.NeverSeen}} never collected{{if $h.Disabled}} · {{$h.Disabled}} disabled{{end}}{{end}}
     · <a href="{{.Inventory}}" hx-get="{{.Inventory}}" hx-target="#main" hx-push-url="true">Open in inventory</a></p>
 </div>
 
@@ -23,11 +23,12 @@
   <div class="table-wrap table-wrap--full">
   <table class="smembers">
     <caption class="visually-hidden">Members of {{$name}}</caption>
-    <thead><tr><th scope="col">Host</th><th scope="col">Role</th><th scope="col">Last collected</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+    <thead><tr><th scope="col">Host</th><th scope="col">Status</th><th scope="col">Role</th><th scope="col">Last collected</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
     <tbody>
     {{range .Members}}
-      <tr>
+      <tr{{if .Host.CI.DisabledAt}} class="row--disabled"{{end}}>
         <td class="host"><a href="/hosts/{{.Host.CI.ID}}" hx-get="/hosts/{{.Host.CI.ID}}" hx-target="#main" hx-push-url="true">{{.Host.CI.Label}}</a></td>
+        <td>{{if .Host.CI.DisabledAt}}<span class="chip chip--disabled">disabled</span>{{else}}<span class="chip chip--enabled">enabled</span>{{end}}</td>
         <td>{{if .Role}}<span class="chip chip--role">{{.Role}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="mono">{{if .Host.HasCollected}}{{ago .Host.LastCollect}}{{if not .Host.CollectOK}} <span class="chip chip--stale">failed</span>{{end}}{{else}}<span class="chip chip--unknown">never</span>{{end}}</td>
         <td class="num">

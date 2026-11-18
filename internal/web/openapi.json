@@ -42,7 +42,7 @@
           {"name": "unknown", "in": "query", "description": "Only hosts with no value for this attribute", "schema": {"type": "string"}},
           {"name": "attr", "in": "query", "description": "With value: only hosts whose attr has this value", "schema": {"type": "string"}},
           {"name": "value", "in": "query", "schema": {"type": "string"}},
-          {"name": "retired", "in": "query", "description": "List retired hosts instead of live ones", "schema": {"type": "boolean"}},
+          {"name": "disabled", "in": "query", "description": "List only disabled hosts (listed, but never contacted)", "schema": {"type": "boolean"}},
           {"$ref": "#/components/parameters/limit"},
           {"$ref": "#/components/parameters/offset"}
         ],
@@ -201,20 +201,22 @@
         "properties": {
           "hosts": {"type": "integer"}, "ok": {"type": "integer"}, "failing": {"type": "integer"},
           "stale": {"type": "integer"}, "never_collected": {"type": "integer"}, "no_connection": {"type": "integer"},
+          "disabled": {"type": "integer", "description": "Disabled hosts, which are in none of the other counts"},
           "stale_after_hours": {"type": "integer"}, "healthy": {"type": "boolean"},
           "last_run": {"$ref": "#/components/schemas/Run"}
         }
       },
       "StackRole": {"type": "object", "properties": {"stack": {"type": "string"}, "role": {"type": "string"}}},
       "Host": {
-        "type": "object", "required": ["id", "name", "stacks", "values", "collect_ok"],
+        "type": "object", "required": ["id", "name", "stacks", "values", "collect_ok", "disabled"],
         "properties": {
           "id": {"type": "string"}, "name": {"type": "string"},
           "stacks": {"type": "array", "items": {"$ref": "#/components/schemas/StackRole"}},
           "application": {"type": "string"},
           "values": {"type": "object", "additionalProperties": {"type": ["string", "null"]}, "description": "Attribute to current value"},
           "last_collected": {"type": "string", "format": "date-time"},
-          "collect_ok": {"type": "boolean"}
+          "collect_ok": {"type": "boolean"},
+          "disabled": {"type": "boolean", "description": "The host is disabled: listed, but never contacted"}
         }
       },
       "HostList": {"allOf": [{"$ref": "#/components/schemas/Page"}, {"type": "object", "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/Host"}}}}]},
@@ -242,7 +244,10 @@
         "properties": {
           "id": {"type": "string"}, "name": {"type": "string"}, "url": {"type": "string"},
           "created_at": {"type": "string", "format": "date-time"},
-          "retired_at": {"type": ["string", "null"], "format": "date-time"},
+          "disabled": {"type": "boolean", "description": "The host is disabled: listed, but never contacted"},
+          "disabled_at": {"type": ["string", "null"], "format": "date-time"},
+          "disabled_by": {"type": "string", "description": "Who disabled it; only when disabled"},
+          "disabled_reason": {"type": "string", "description": "Why, as given; only when disabled"},
           "as_of": {"type": "string", "format": "date-time"},
           "facts": {"type": "array", "items": {"$ref": "#/components/schemas/Fact"}},
           "unknown": {"type": "array", "items": {"$ref": "#/components/schemas/Unknown"}},
@@ -267,6 +272,7 @@
         "properties": {
           "name": {"type": "string"}, "description": {"type": "string"}, "owner": {"type": "string"}, "environment": {"type": "string"},
           "members": {"type": "integer"}, "collected": {"type": "integer"}, "failed": {"type": "integer"}, "never_collected": {"type": "integer"},
+          "disabled": {"type": "integer"},
           "url": {"type": "string"}
         }
       },

@@ -215,7 +215,9 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 	}
 	ci, _ := s.Store.CI(ctx, ciID)
 	d := tryData{Host: ci.Label, HostID: ciID, Title: title, Back: back}
-	if prof == nil {
+	if prof == nil && ci.DisabledAt != nil {
+		d.Err = ci.Label + " is disabled, so nothing is run on it. Enable it on its page first."
+	} else if prof == nil {
 		d.Err = ci.Label + " has no enabled connection, so nothing can be run on it."
 	} else if res, err := s.Engine.TrySpecs(ctx, *prof, specs); err != nil {
 		d.Err = err.Error()

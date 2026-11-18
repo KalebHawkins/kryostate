@@ -351,6 +351,9 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 			}
 		}
 		if prof == nil {
+			if c, err := st.CI(ctx, ciID); err == nil && c.DisabledAt != nil {
+				return fmt.Errorf("%s is disabled, so nothing is run on it; enable it with: kryostate host enable %s", host, host)
+			}
 			return fmt.Errorf("%s has no enabled connection; add one on its page in the web interface, or with: kryostate target add %s --user <user>", host, host)
 		}
 		res, err := eng.TrySpecs(ctx, *prof, specs)

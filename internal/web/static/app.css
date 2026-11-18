@@ -946,6 +946,7 @@ td.host a { text-decoration: none; }
   );
 }
 .segbar__seg--never { background: var(--text-faint); }
+.segbar__seg--disabled { background: repeating-linear-gradient(135deg, var(--warn) 0 2px, transparent 2px 5px); }
 
 /* ---------- buttons and forms ---------- */
 
@@ -1765,3 +1766,27 @@ td .hostpick__input { width: 11rem; min-width: 0; }
 
 /* Code reads exactly as typed: no ligature turns >= into one glyph. */
 code, pre, kbd, samp, .mono, input.mono, textarea.mono { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+
+/* ---------- host enabled / disabled ---------- */
+/* A host switched off on purpose. It is not a fault, so it is not red, but it
+   must not be missed: a host that is never contacted looks quiet otherwise. */
+.chip--disabled {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--warn);
+}
+.chip--disabled::before { content: "\2298"; color: var(--warn); }
+.chip--enabled {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--hairline);
+  font-weight: 500;
+}
+.chip--enabled::before { content: "\25cf"; color: var(--ok); }
+.host-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
+.host-head h1 { margin: 0; }
+.host-head .chip { font-size: 0.8125rem; }
+.notice--disabled { border-left: 4px solid var(--warn); }
+.notice--disabled form { display: inline; }
+tr.row--disabled td.host a { color: var(--text-dim); }
+.danger-zone { border-color: var(--bad); }

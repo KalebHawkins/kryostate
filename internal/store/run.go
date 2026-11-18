@@ -89,6 +89,8 @@ func (s *Store) Runs(ctx context.Context, limit int) ([]RunSummary, error) {
 // Coverage reports how much of the estate has been collected and how fresh it
 // is. This is the number a configuration database can honestly own: not
 // whether hosts are up, but whether what it says about them is current.
+// Disabled hosts are left out of every count: they are not meant to be
+// collected, so they are neither fresh nor missing.
 type Coverage struct {
 	Hosts        int
 	WithProfile  int
@@ -106,11 +108,14 @@ func (s *Store) Coverage(ctx context.Context, staleAfter time.Duration) (Coverag
 	day := ts(time.Now().Add(-24 * time.Hour))
 	q := `
 	SELECT
-	  (SELECT COUNT(*) FROM ci WHERE retired_at IS NULL AND kind='host'),
-	  (SELECT COUNT(DISTINCT ci_id) FROM conn_profile WHERE enabled=1),
-	  (SELECT COUNT(DISTINCT ci_id) FROM probe WHERE kind='collector_run' AND outcome='ok'),
-	  (SELECT COUNT(DISTINCT ci_id) FROM probe WHERE kind='collector_run' AND outcome='ok' AND at > ?),
-	  (SELECT COUNT(*) FROM ci c WHERE c.retired_at IS NULL AND c.kind='host'
+	  (SELECT COUNT(*) FROM ci WHERE disabled_at IS NULL AND kind='host'),
+	  (SELECT COUNT(DISTINCT p.ci_id) FROM conn_profile p JOIN ci c ON c.id=p.ci_id
+	     WHERE p.enabled=1 AND c.disabled_at IS NULL),
+	  (SELECT COUNT(DISTINCT p.ci_id) FROM probe p JOIN ci c ON c.id=p.ci_id
+	     WHERE p.kind='collector_run' AND p.outcome='ok' AND c.disabled_at IS NULL),
+	  (SELECT COUNT(DISTINCT p.ci_id) FROM probe p JOIN ci c ON c.id=p.ci_id
+	     WHERE p.kind='collector_run' AND p.outcome='ok' AND p.at > ? AND c.disabled_at IS NULL),
+	  (SELECT COUNT(*) FROM ci c WHERE c.disabled_at IS NULL AND c.kind='host'
 	     AND EXISTS (SELECT 1 FROM probe p WHERE p.ci_id=c.id AND p.kind='collector_run' AND p.outcome='ok')
 	     AND NOT EXISTS (SELECT 1 FROM probe p WHERE p.ci_id=c.id AND p.kind='collector_run' AND p.outcome='ok' AND p.at > ?))`
 	if err := s.db.QueryRowContext(ctx, q, day, cutoff).
@@ -119,7 +124,7 @@ func (s *Store) Coverage(ctx context.Context, staleAfter time.Duration) (Coverag
 	}
 	c.NeverSeen = c.Hosts - c.EverSeen
 	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM ci c WHERE c.retired_at IS NULL AND c.kind='host'
+		SELECT COUNT(*) FROM ci c WHERE c.disabled_at IS NULL AND c.kind='host'
 		AND EXISTS (
 		  SELECT 1 FROM probe p WHERE p.ci_id=c.id AND p.kind='collector_run' AND p.outcome<>'ok'
 		  AND p.at=(SELECT MAX(q.at) FROM probe q WHERE q.ci_id=c.id AND q.kind='collector_run'))`).

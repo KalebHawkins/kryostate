@@ -171,7 +171,7 @@ func (s *Store) CollectTargets(ctx context.Context, transport string) ([]ConnPro
 	             p.port, p.username, p.credential_ref,
 	             p.bastion_ref, p.host_key, p.bastion_host_key, p.host_key_policy, p.enabled
 	      FROM conn_profile p JOIN ci c ON c.id=p.ci_id
-	      WHERE p.enabled=1 AND c.retired_at IS NULL`
+	      WHERE p.enabled=1 AND c.disabled_at IS NULL`
 	args := []any{}
 	if transport != "" {
 		q += ` AND p.transport=?`
@@ -382,11 +382,12 @@ func (s *Store) stackHealth(ctx context.Context, stackID int64) (model.StackHeal
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 		  COUNT(*),
-		  COALESCE(SUM(CASE WHEN last.outcome='ok' THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN last.outcome IS NOT NULL AND last.outcome<>'ok' THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN last.outcome IS NULL THEN 1 ELSE 0 END), 0)
+		  COALESCE(SUM(CASE WHEN c.disabled_at IS NULL AND last.outcome='ok' THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN c.disabled_at IS NULL AND last.outcome IS NOT NULL AND last.outcome<>'ok' THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN c.disabled_at IS NULL AND last.outcome IS NULL THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN c.disabled_at IS NOT NULL THEN 1 ELSE 0 END), 0)
 		FROM stack_member m
-		JOIN ci c ON c.id=m.ci_id AND c.retired_at IS NULL
+		JOIN ci c ON c.id=m.ci_id
 		LEFT JOIN (
 		  SELECT p.ci_id, p.outcome FROM probe p
 		  WHERE p.kind='collector_run'
@@ -394,7 +395,7 @@ func (s *Store) stackHealth(ctx context.Context, stackID int64) (model.StackHeal
 		              ORDER BY q.at DESC, q.id DESC LIMIT 1)
 		) last ON last.ci_id=m.ci_id
 		WHERE m.stack_id=?`, stackID).
-		Scan(&h.Members, &h.Collected, &h.Failed, &h.NeverSeen)
+		Scan(&h.Members, &h.Collected, &h.Failed, &h.NeverSeen, &h.Disabled)
 	return h, err
 }
 

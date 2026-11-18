@@ -7,7 +7,8 @@
     <p class="ov-banner__headline">{{.Banner.Headline}}</p>
     <p class="ov-banner__detail">{{.Banner.Detail}}
       · <a href="/runs" hx-get="/runs" hx-target="#main" hx-push-url="true">Runs</a>
-      · <a href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Inventory</a></p>
+      · <a href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Inventory</a>{{if .Health.Disabled}}
+      · <a href="/hosts?disabled=1" hx-get="/hosts?disabled=1" hx-target="#main" hx-push-url="true">{{.Health.Disabled}} disabled, not counted</a>{{end}}</p>
   </div>
 </section>
 
@@ -84,7 +85,7 @@
 </div>
 
 <section class="ov-glance" aria-labelledby="ov-glance">
-  <h2 id="ov-glance">Estate at a glance <span class="ov-sub">{{.Health.Hosts}} {{if eq .Health.Hosts 1}}host{{else}}hosts{{end}}</span></h2>
+  <h2 id="ov-glance">Estate at a glance <span class="ov-sub">{{.Health.Hosts}} {{if eq .Health.Hosts 1}}host{{else}}hosts{{end}}{{if .Health.Disabled}} · <a href="/hosts?disabled=1" hx-get="/hosts?disabled=1" hx-target="#main" hx-push-url="true">{{.Health.Disabled}} disabled</a>, shown with their last values{{end}}</span></h2>
   <div class="ov-glance__grid">
     {{range .Glance}}
     <section class="card ov-card">

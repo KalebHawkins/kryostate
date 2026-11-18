@@ -25,8 +25,8 @@ const minIDPrefix = 6
 // name is used to find the item, but a name that matches two items is an
 // error that lists both, never a guess. The reference may be the full id, an
 // unambiguous id prefix of at least six characters, any current identity
-// value (fqdn, hostname, serial, machine id), or the display label. Retired
-// items are included so that unretiring one can be done by name.
+// value (fqdn, hostname, serial, machine id), or the display label. Disabled
+// hosts are included, so that enabling one can be done by name.
 func (s *Store) LookupCI(ctx context.Context, ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -81,8 +81,8 @@ func (s *Store) LookupCI(ctx context.Context, ref string) (string, error) {
 				return "", err
 			}
 			fmt.Fprintf(&b, "\n  %s  %s", c.ID, c.Label)
-			if c.RetiredAt != nil {
-				b.WriteString(" (retired)")
+			if c.DisabledAt != nil {
+				b.WriteString(" (disabled)")
 			}
 		}
 		return "", fmt.Errorf("%w: %q matches %d items; use the id instead:%s",
@@ -107,7 +107,7 @@ func (s *Store) LookupCIs(ctx context.Context, refs []string) ([]string, error) 
 // for the error message when nothing matched exactly.
 func (s *Store) suggest(ctx context.Context, ref string) string {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT label FROM ci WHERE retired_at IS NULL AND label LIKE ? ORDER BY label LIMIT 3`,
+		`SELECT label FROM ci WHERE label LIKE ? ORDER BY label LIMIT 3`,
 		"%"+ref+"%")
 	if err != nil {
 		return ""

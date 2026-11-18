@@ -39,7 +39,7 @@ hosts=(
 )
 # Hosts an earlier version of the lab ran; their containers and volumes are
 # cleared too, so an old lab does not linger beside the new one.
-retired=(uf01 uf02 idx01)
+former=(uf01 uf02 idx01)
 
 up() {
 	podman build -q -t kryostate:latest -f "$root/deploy/Containerfile" "$root"
@@ -47,7 +47,7 @@ up() {
 	podman build -q -t kryostate-lab-debian -f "$here/target-debian.Containerfile" "$here"
 	podman build -q -t kryostate-lab-alma -f "$here/target-alma.Containerfile" "$here"
 
-	for name in "${retired[@]}"; do
+	for name in "${former[@]}"; do
 		podman rm -f "kryostate-lab-$name" >/dev/null 2>&1 || true
 	done
 
@@ -124,7 +124,7 @@ reset() {
 	for h in "${hosts[@]}"; do
 		podman volume rm -f "kryostate-lab-${h%% *}-ssh" >/dev/null 2>&1 || true
 	done
-	for name in "${retired[@]}"; do
+	for name in "${former[@]}"; do
 		podman volume rm -f "kryostate-lab-$name-ssh" >/dev/null 2>&1 || true
 	done
 	podman network rm -f "$net" >/dev/null 2>&1 || true

@@ -77,6 +77,19 @@ value truncated, the action, and whether it succeeded. The material is never
 written. The row records which credential was used. It does not record where
 that credential is kept.
 
+Every change a person makes to a host is audited too, with who made it:
+disabling and enabling it, and deleting it. Deleting a host
+(`kryostate host rm`, or **Delete host** on its page) removes everything
+recorded about it except its audit rows. Those stay, and one more records the
+deletion with the host's name and the reason given, so the trail still says
+what was deleted, by whom and why after the host itself is gone. Nothing in
+the tool deletes audit rows.
+
+A disabled host is not contacted at all: no collection, external collector,
+health check, DNS lookup or collector test reaches it, whatever its
+connections say. Disabling is therefore also the way to stop credentials being
+offered to a machine that may no longer be the one they were meant for.
+
 ### Account lockout
 
 A password credential is usually a directory account, and a directory locks an
@@ -263,9 +276,6 @@ These are the weaknesses known at the time of writing.
   `target forget-host-key`; nothing checks that they compared it first.
 - Audit rows live in the same database as the data they describe, so an
   attacker who can write to it can edit them.
-- `kryostate host rm --purge` deletes a host's audit rows along with the rest
-  of its history, leaving a single "purge" record. Whoever can run the
-  command line against the database can do it.
 - `env:` credential references sit in process memory for the process lifetime.
 - No rate limiting of web requests. Scheduled collection is throttled, but
   anyone who reaches the page can start a full collection run, one at a time,

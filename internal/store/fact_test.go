@@ -122,19 +122,23 @@ func TestChartCountsEachHostOnce(t *testing.T) {
 	}
 }
 
-// TestRetiredHostsAreNotCharted keeps the bars and the denominator counting
-// the same population.
-func TestRetiredHostsAreNotCharted(t *testing.T) {
+// TestDisabledHostsAreChartedNotMissing: a disabled host is charted with what
+// it last reported, and one with no value is counted as disabled rather than
+// never collected, so the bars still add up to every host.
+func TestDisabledHostsAreChartedNotMissing(t *testing.T) {
 	ctx := context.Background()
 	s := testStore(t)
 	col := mustSource(t, s, model.SourceCollector, "ssh")
 
 	live := mustHost(t, s, "node-live")
-	gone := mustHost(t, s, "node-gone")
+	off := mustHost(t, s, "node-off")
+	blank := mustHost(t, s, "node-off-blank")
 	assertValue(t, s, live, "os.version", "RHEL 8.6", col, time.Now())
-	assertValue(t, s, gone, "os.version", "RHEL 7.9", col, time.Now())
-	if err := s.Retire(ctx, gone, "kh", "decommissioned"); err != nil {
-		t.Fatal(err)
+	assertValue(t, s, off, "os.version", "RHEL 7.9", col, time.Now())
+	for _, id := range []string{off, blank} {
+		if _, err := s.DisableHost(ctx, id, "kh", "powered off"); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	buckets, err := s.Distribution(ctx, "os.version")
@@ -142,13 +146,16 @@ func TestRetiredHostsAreNotCharted(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := 0
+	byKey := map[string]int{}
 	for _, b := range buckets {
 		sum += b.Count
-		if b.Key == "RHEL 7.9" {
-			t.Error("a retired host is still on the chart")
-		}
+		byKey[b.Key] = b.Count
 	}
-	if sum != 1 {
-		t.Errorf("one live host charted as %d: %v", sum, buckets)
+	if sum != 3 || byKey["RHEL 7.9"] != 1 || byKey[string(model.UnknownHostDisabled)] != 1 || byKey[string(model.UnknownNeverCollected)] != 0 {
+		t.Errorf("buckets %+v", buckets)
+	}
+	rows, err := s.Hosts(ctx, HostFilter{Unknown: "os.version", Because: string(model.UnknownHostDisabled)})
+	if err != nil || len(rows) != 1 || rows[0].CI.ID != blank {
+		t.Errorf("the disabled bucket links to %+v %v", rows, err)
 	}
 }

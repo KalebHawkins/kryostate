@@ -100,6 +100,9 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := s.migrateDisabled(ctx); err != nil {
+		return err
+	}
 	if err := s.migrateChoiceStacks(ctx); err != nil {
 		return err
 	}
@@ -113,26 +116,31 @@ func (s *Store) migrate(ctx context.Context) error {
 }
 
 func (s *Store) ensureColumn(ctx context.Context, table, col, decl string) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return err
-		}
-		if name == col {
-			return nil
-		}
-	}
-	if err := rows.Err(); err != nil {
+	has, err := s.hasColumn(ctx, table, col)
+	if err != nil || has {
 		return err
 	}
 	// table, col and decl are package constants, never caller input.
 	_, err = s.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, col, decl))
 	return err
+}
+
+func (s *Store) hasColumn(ctx context.Context, table, col string) (bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+		if name == col {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // seedPolicy writes the default resolution rules. They are data rather than
@@ -528,13 +536,14 @@ type Bucket struct {
 // attribute, including a bucket for every item that has no answer. Items with
 // nothing to say are the ones worth chasing, so they are never dropped.
 func (s *Store) Distribution(ctx context.Context, attr string) ([]Bucket, error) {
-	// Restricted to the same population the total is counted from: a retired
-	// host or a CI that is not a host must not appear in a bar and then be
-	// missing from the denominator.
+	// Restricted to the same population the total is counted from: a CI that
+	// is not a host must not appear in a bar and then be missing from the
+	// denominator. Disabled hosts are in both: what they last reported is
+	// still what is known about them.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT f.ci_id, f.scope, f.norm_value, f.raw_value
 		 FROM current_fact f JOIN ci c ON c.id=f.ci_id
-		 WHERE f.attr=? AND c.kind='host' AND c.retired_at IS NULL`, attr)
+		 WHERE f.attr=? AND c.kind='host'`, attr)
 	if err != nil {
 		return nil, err
 	}
@@ -643,7 +652,7 @@ func (s *Store) Distribution(ctx context.Context, attr string) ([]Bucket, error)
 
 	var total int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM ci WHERE retired_at IS NULL AND kind='host'`).Scan(&total); err != nil {
+		`SELECT COUNT(*) FROM ci WHERE kind='host'`).Scan(&total); err != nil {
 		return nil, err
 	}
 	for _, u := range s.unknownBreakdown(ctx, attr, total-answered, unparsed) {
@@ -655,12 +664,13 @@ func (s *Store) Distribution(ctx context.Context, attr string) ([]Bucket, error)
 }
 
 // unknownBreakdown splits the items with no usable value into the reasons they
-// might have none, because each one needs a different response. The three are
+// might have none, because each one needs a different response. The four are
 // disjoint by construction: a host is counted once.
 //
 //   - unparsed: the machine answered and no rule understood it. Write a rule.
 //   - collection failed: we tried and could not get an answer. Fix access.
 //   - never collected: nobody has ever tried. Add a connection profile.
+//   - host disabled: somebody switched the host off. Nothing to fix.
 //
 // freshness is when a source last stood behind its value: the later of first
 // sighting and most recent confirmation. A repeat of an unchanged value
@@ -689,21 +699,22 @@ const lastCollectorRunFailed = `EXISTS (
                   ORDER BY q.at DESC, q.id DESC LIMIT 1))`
 
 func (s *Store) unknownBreakdown(ctx context.Context, attr string, missing, unparsed int) []Bucket {
-	failed, never := 0, 0
+	failed, never, disabled := 0, 0, 0
 	if missing > 0 {
 		// Only the collector run counts here. A name that fails to resolve is
 		// a different finding with its own probe; folding it in
 		// would make "collection failed" mean two things.
 		err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM ci c
-			 WHERE c.retired_at IS NULL AND c.kind='host'
-			   AND NOT EXISTS (SELECT 1 FROM current_fact f WHERE f.ci_id=c.id AND f.attr=?)
-			   AND `+lastCollectorRunFailed,
-			attr).Scan(&failed)
+			`SELECT COALESCE(SUM(CASE WHEN c.disabled_at IS NULL AND `+lastCollectorRunFailed+` THEN 1 ELSE 0 END), 0),
+			        COALESCE(SUM(CASE WHEN c.disabled_at IS NOT NULL THEN 1 ELSE 0 END), 0)
+			 FROM ci c
+			 WHERE c.kind='host'
+			   AND NOT EXISTS (SELECT 1 FROM current_fact f WHERE f.ci_id=c.id AND f.attr=?)`,
+			attr).Scan(&failed, &disabled)
 		if err != nil {
-			failed = 0
+			failed, disabled = 0, 0
 		}
-		never = missing - failed
+		never = missing - failed - disabled
 		if never < 0 {
 			never = 0
 		}
@@ -712,6 +723,7 @@ func (s *Store) unknownBreakdown(ctx context.Context, attr string, missing, unpa
 		{Key: string(model.UnknownCollectionFailed), Label: "collection failed", Count: failed, Unknown: true},
 		{Key: string(model.UnknownUnparsed), Label: "not understood", Count: unparsed, Unknown: true},
 		{Key: string(model.UnknownNeverCollected), Label: "never collected", Count: never, Unknown: true},
+		{Key: string(model.UnknownHostDisabled), Label: "host disabled", Count: disabled, Unknown: true},
 	}
 }
 
@@ -786,20 +798,18 @@ type HostFilter struct {
 	// fourteen days.
 	Health      string
 	StaleBefore time.Time
-	// Retired lists retired hosts instead of live ones, so one retired by
-	// mistake can be found again and restored.
-	Retired bool
+	// Disabled lists only the hosts that are disabled, so they can be found
+	// together and switched back on.
+	Disabled bool
 }
 
 // Hosts returns the inventory rows matching a filter, with the listed
 // attributes resolved for each.
 func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
-	var where []string
+	where := []string{"c.kind='host'"}
 	var args []any
-	if f.Retired {
-		where = append(where, "c.retired_at IS NOT NULL", "c.kind='host'")
-	} else {
-		where = append(where, "c.retired_at IS NULL", "c.kind='host'")
+	if f.Disabled {
+		where = append(where, "c.disabled_at IS NOT NULL")
 	}
 
 	if f.Search != "" {
@@ -830,14 +840,18 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 			// a host collected successfully but never asked for this
 			// attribute belongs in this bucket too, and the chart counts it
 			// there.
-			where = append(where, `NOT `+lastCollectorRunFailed)
+			where = append(where, `c.disabled_at IS NULL`, `NOT `+lastCollectorRunFailed)
 		case model.UnknownCollectionFailed:
-			where = append(where, lastCollectorRunFailed)
+			where = append(where, `c.disabled_at IS NULL`, lastCollectorRunFailed)
+		case model.UnknownHostDisabled:
+			where = append(where, `c.disabled_at IS NOT NULL`)
 		}
 	}
 	if f.Health != "" {
+		// The overview's problem buckets count enabled hosts only: a host
+		// nobody is meant to contact is not failing or out of date.
 		w, a := healthWhere(f.Health, f.StaleBefore)
-		where = append(where, w)
+		where = append(where, `c.disabled_at IS NULL`, w)
 		args = append(args, a...)
 	}
 	if f.Stack != "" {
@@ -846,7 +860,7 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 		args = append(args, f.Stack)
 	}
 
-	q := `SELECT c.id, c.kind, c.label, c.created_at FROM ci c WHERE ` +
+	q := `SELECT c.id, c.kind, c.label, c.created_at, c.disabled_at FROM ci c WHERE ` +
 		strings.Join(where, " AND ") + ` ORDER BY c.label`
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -858,11 +872,16 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 	for rows.Next() {
 		var r HostRow
 		var kind, created string
-		if err := rows.Scan(&r.CI.ID, &kind, &r.CI.Label, &created); err != nil {
+		var disabled sql.NullString
+		if err := rows.Scan(&r.CI.ID, &kind, &r.CI.Label, &created, &disabled); err != nil {
 			return nil, err
 		}
 		r.CI.Kind = model.CIKind(kind)
 		r.CI.CreatedAt = parseTS(created)
+		if disabled.Valid {
+			t := parseTS(disabled.String)
+			r.CI.DisabledAt = &t
+		}
 		r.Values = map[string]string{}
 		out = append(out, r)
 	}
@@ -921,56 +940,26 @@ func (s *Store) fillCollection(ctx context.Context, r *HostRow) error {
 	return rows.Err()
 }
 
-// Retire marks a CI as gone without deleting it. The history stays: a machine
-// that was decommissioned last March still explains why a document from
-// February said what it said. Retired hosts are excluded from charts, lists,
-// collection and coverage counts.
-func (s *Store) Retire(ctx context.Context, id, actor, reason string) error {
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE ci SET retired_at=? WHERE id=? AND retired_at IS NULL`, ts(time.Now()), id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("retire %s: no such live configuration item", id)
-	}
-	if _, err := s.db.ExecContext(ctx,
-		`UPDATE conn_profile SET enabled=0 WHERE ci_id=?`, id); err != nil {
-		return err
-	}
-	return s.Audit(ctx, actor, "retire", id, reason)
-}
-
-// Unretire reverses Retire for the case where a machine was marked gone and
-// was not.
-func (s *Store) Unretire(ctx context.Context, id, actor, reason string) error {
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE ci SET retired_at=NULL WHERE id=? AND retired_at IS NOT NULL`, id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("unretire %s: no such retired configuration item", id)
-	}
-	return s.Audit(ctx, actor, "unretire", id, reason)
-}
-
-// CI returns one configuration item.
+// CI returns one configuration item. For a disabled host it also says who
+// disabled it and why, from the audit entry that recorded it.
 func (s *Store) CI(ctx context.Context, id string) (model.CI, error) {
 	var c model.CI
 	var kind, created string
-	var retired sql.NullString
+	var disabled sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, kind, label, created_at, retired_at FROM ci WHERE id=?`, id).
-		Scan(&c.ID, &kind, &c.Label, &created, &retired)
+		`SELECT id, kind, label, created_at, disabled_at FROM ci WHERE id=?`, id).
+		Scan(&c.ID, &kind, &c.Label, &created, &disabled)
 	if err != nil {
 		return c, err
 	}
 	c.Kind = model.CIKind(kind)
 	c.CreatedAt = parseTS(created)
-	if retired.Valid {
-		t := parseTS(retired.String)
-		c.RetiredAt = &t
+	if disabled.Valid {
+		t := parseTS(disabled.String)
+		c.DisabledAt = &t
+		_ = s.db.QueryRowContext(ctx,
+			`SELECT actor, detail FROM audit WHERE subject=? AND action='disable host' ORDER BY at DESC, id DESC LIMIT 1`,
+			id).Scan(&c.DisabledBy, &c.DisabledReason)
 	}
 	return c, nil
 }
@@ -1010,7 +999,7 @@ func (s *Store) Identities(ctx context.Context, ciID string) ([]model.Identity, 
 func (s *Store) FreeTextAttrs(ctx context.Context) (map[string]bool, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT f.attr FROM current_fact f JOIN ci c ON c.id=f.ci_id
-		 WHERE c.retired_at IS NULL AND c.kind='host'
+		 WHERE c.kind='host'
 		 GROUP BY f.attr
 		 HAVING SUM(CASE WHEN f.norm_value<>'' THEN 1 ELSE 0 END)=0`)
 	if err != nil {
@@ -1038,7 +1027,7 @@ func (s *Store) freeTextAttr(ctx context.Context, attr string) (bool, error) {
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(CASE WHEN f.norm_value<>'' THEN 1 ELSE 0 END),0)
 		 FROM current_fact f JOIN ci c ON c.id=f.ci_id
-		 WHERE f.attr=? AND c.retired_at IS NULL AND c.kind='host'`, attr).Scan(&normalised)
+		 WHERE f.attr=? AND c.kind='host'`, attr).Scan(&normalised)
 	if err != nil {
 		return false, err
 	}
@@ -1062,7 +1051,7 @@ type AttrInfo struct {
 func (s *Store) Attrs(ctx context.Context) ([]AttrInfo, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM ci WHERE retired_at IS NULL AND kind='host'`).Scan(&total); err != nil {
+		`SELECT COUNT(*) FROM ci WHERE kind='host'`).Scan(&total); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx,
@@ -1070,7 +1059,7 @@ func (s *Store) Attrs(ctx context.Context) ([]AttrInfo, error) {
 		        COUNT(DISTINCT CASE WHEN f.norm_value<>'' THEN f.norm_value ELSE f.raw_value END),
 		        COUNT(DISTINCT f.ci_id)
 		 FROM current_fact f JOIN ci c ON c.id=f.ci_id
-		 WHERE c.retired_at IS NULL AND c.kind='host'
+		 WHERE c.kind='host'
 		 GROUP BY f.attr ORDER BY f.attr`)
 	if err != nil {
 		return nil, err

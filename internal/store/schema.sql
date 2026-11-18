@@ -12,13 +12,15 @@ CREATE TABLE IF NOT EXISTS source (
 );
 
 -- ci holds identity only. It deliberately carries no os_version, no site and
--- no last_seen: those are claims, and claims live in assertion.
+-- no last_seen: those are claims, and claims live in assertion. disabled_at is
+-- the one exception, because it is an instruction rather than a claim: while
+-- it is set, nothing contacts the host.
 CREATE TABLE IF NOT EXISTS ci (
     id          TEXT PRIMARY KEY,
     kind        TEXT NOT NULL,
     label       TEXT NOT NULL,
     created_at  TEXT NOT NULL,
-    retired_at  TEXT
+    disabled_at TEXT
 );
 CREATE INDEX IF NOT EXISTS ci_label_idx ON ci(label);
 

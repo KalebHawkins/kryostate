@@ -1,8 +1,17 @@
 {{define "host.html"}}
-<h1 class="mono">{{.CI.Label}}</h1>
-<p class="muted">Internal id <span class="mono">{{.CI.ID}}</span> · first recorded {{stamp .CI.CreatedAt}}{{if .CI.RetiredAt}} · <span class="chip chip--unknown">retired {{stamp .CI.RetiredAt}}</span>{{end}}
+<div class="host-head">
+  <h1 class="mono">{{.CI.Label}}</h1>
+  {{if .CI.DisabledAt}}<span class="chip chip--disabled" title="Disabled {{stamp .CI.DisabledAt}}">Disabled — not contacted</span>{{else}}<span class="chip chip--enabled">Enabled</span>{{end}}
+</div>
+<p class="muted">Internal id <span class="mono">{{.CI.ID}}</span> · first recorded {{stamp .CI.CreatedAt}}
   · <a href="#manage">Manage connection, stacks, checks…</a></p>
-{{if not .Profiles}}{{if not .CI.RetiredAt}}<div class="notice">Nothing has been collected from this host because KryoState does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}{{end}}
+{{if .CI.DisabledAt}}
+<div class="notice notice--disabled" role="status" id="disabled">
+  <strong>This host is disabled.</strong> KryoState does not contact it: no collection, scheduled or by hand, no external collector, no health check and no DNS lookup. Its values below are the last ones recorded, and its connections are kept as they were.
+  <span class="muted">Disabled {{stamp .CI.DisabledAt}}{{with .CI.DisabledBy}} by {{.}}{{end}}{{with .CI.DisabledReason}}: {{.}}{{end}}.</span>
+  <form method="post" action="/hosts/{{.CI.ID}}/enable"><button class="btn btn--small btn--primary" type="submit">Enable host</button></form>
+</div>
+{{else if not .Profiles}}<div class="notice">Nothing has been collected from this host because KryoState does not know how to reach it. <a href="#connection">Add a connection</a>.</div>{{end}}
 
 <h2 id="facts">Facts</h2>
 {{with .AsOf}}<div class="notice" role="status">Showing values as they were on {{.Label}} · <a href="/hosts/{{$.CI.ID}}#facts">Back to now</a></div>{{end}}
@@ -82,12 +91,20 @@
   <div class="card" id="connection">
     <h2>Connection</h2>
     <p class="muted">How KryoState logs in to read this host. Without one, nothing is ever collected from it.</p>
+    {{if .CI.DisabledAt}}<p class="notice notice--disabled small">The host is disabled, so no connection is used, enabled or not. Each keeps its own setting for when the host is enabled again.</p>{{end}}
+    {{if .Profiles}}
+    <ul class="list">
+    {{range .Profiles}}
+      <li><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}{{if .Port}}:{{.Port}}{{end}}
+        {{if .Enabled}}<span class="chip chip--enabled">connection enabled</span>{{else}}<span class="chip chip--disabled">connection disabled</span>{{end}}</li>
+    {{end}}
+    </ul>
+    {{end}}
     {{range .Profiles}}{{if or (ne .Transport "ssh") $.SSHLocked}}
       <p><span class="mono">{{.Transport}}</span> {{.Username}}@{{.Address}}{{if .Port}}:{{.Port}}{{end}}
         <span class="chip chip--human">{{.CredentialRef}}</span>
-        {{if .BastionRef}}<span class="muted">via bastion</span>{{end}}
-        {{if not .Enabled}}<span class="chip chip--unknown">disabled</span>{{end}}</p>
-      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it with <span class="mono">kryostate target update {{$.CI.Label}} …</span></p>
+        {{if .BastionRef}}<span class="muted">via bastion</span>{{end}}</p>
+      <p class="muted">This connection uses a credential the web page cannot change, so a password cannot be redirected to another machine from here. Change it, or switch it on or off, with <span class="mono">kryostate target update {{$.CI.Label}} …</span> (<span class="mono">--disable</span> or <span class="mono">--disable=false</span>)</p>
     {{end}}{{end}}
     {{if not .SSHLocked}}
     {{$p := .SSH}}
@@ -98,7 +115,7 @@
         <label>User <input type="text" name="user" required class="mono" value="{{if $p}}{{$p.Username}}{{end}}" placeholder="svc-readonly"></label>
         <label>Port <input type="number" name="port" min="1" max="65535" class="mono" value="{{if $p}}{{if $p.Port}}{{$p.Port}}{{end}}{{end}}" placeholder="22"></label>
       </div>
-      <label class="check"><input type="checkbox" name="enabled" value="1" {{if or (not $p) $p.Enabled}}checked{{end}}> Collect from this host</label>
+      <label class="check"><input type="checkbox" name="enabled" value="1" {{if or (not $p) $p.Enabled}}checked{{end}}> Connection enabled <span class="muted">(untick to keep it but not use it)</span></label>
       <p class="muted">Logs in over SSH using your ssh-agent (<span class="mono">agent:</span>). The key never leaves the agent. {{if $p}}{{if $p.HostKey}}The host key is pinned.{{else}}The host key is pinned on the first successful collection.{{end}}{{end}}</p>
       <div class="form__actions">
         <button class="btn btn--primary" type="submit">{{if $p}}Save connection{{else}}Add connection{{end}}</button>
@@ -113,7 +130,7 @@
     {{end}}
   </div>
 
-  {{if and .Profiles .Testable}}
+  {{if and .Profiles .Testable (not .CI.DisabledAt)}}
   <div class="card" id="test">
     <h2>Test a collector</h2>
     <p class="muted">Run one collector on this host now and see what it would record. Nothing is saved.</p>
@@ -191,25 +208,35 @@
     </form>
   </div>
 
-  <div class="card" id="retire">
-    {{if .CI.RetiredAt}}
-    <h2>Retired</h2>
-    <p class="muted">Retired {{stamp .CI.RetiredAt}}. Its history is kept and it is left out of collection, charts and counts.</p>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/unretire">
-      <label>Reason <input type="text" name="reason" placeholder="why it is back"></label>
-      <div class="form__actions"><button class="btn" type="submit">Restore host</button></div>
+  <div class="card" id="status">
+    {{if .CI.DisabledAt}}
+    <h2>Status: <span class="chip chip--disabled">Disabled</span></h2>
+    <p class="muted">Disabled {{stamp .CI.DisabledAt}}{{with .CI.DisabledBy}} by {{.}}{{end}}{{with .CI.DisabledReason}}: {{.}}{{end}}. It is listed and charted as before, and nothing contacts it. Enabling it uses its connections as they are set above.</p>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/enable">
+      <label>Reason <input type="text" name="reason" placeholder="optional, for the audit log"></label>
+      <div class="form__actions"><button class="btn btn--primary" type="submit">Enable host</button></div>
     </form>
     {{else}}
-    <h2>Retire</h2>
-    <p class="muted">For a machine that is gone. Nothing is deleted: its history stays, and collection stops.</p>
-    <form class="form" method="post" action="/hosts/{{.CI.ID}}/retire" onsubmit="return confirm('Retire {{.CI.Label}}?')">
-      <label>Reason <input type="text" name="reason" required placeholder="decommissioned, CHG-2210"></label>
-      <div class="form__actions"><button class="btn btn--danger" type="submit">Retire host</button></div>
+    <h2>Status: <span class="chip chip--enabled">Enabled</span></h2>
+    <p class="muted">Disabling stops every contact with this host: collection, external collectors, health checks and DNS lookups. It stays in the inventory with its history, and its connections are kept for when it is enabled again.</p>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/disable">
+      <label>Reason <input type="text" name="reason" placeholder="powered off for CHG-2210"></label>
+      <div class="form__actions"><button class="btn" type="submit">Disable host</button></div>
     </form>
     {{end}}
   </div>
+
+  <div class="card danger-zone" id="delete">
+    <h2>Delete host</h2>
+    <p class="muted">Deletes this host and everything recorded about it: values, command output, probes, identities, addresses, checks, stack memberships and connections. The audit log keeps a record of the deletion. This cannot be undone; to stop contacting a host but keep it, disable it instead.</p>
+    <form class="form" method="post" action="/hosts/{{.CI.ID}}/delete">
+      <label>Type <span class="mono">{{.CI.Label}}</span> to confirm <input type="text" name="confirm" required autocomplete="off" spellcheck="false" class="mono" pattern="{{regexQuote .CI.Label}}" title="the host's name, exactly"></label>
+      <label>Reason <input type="text" name="reason" placeholder="optional, for the audit log"></label>
+      <div class="form__actions"><button class="btn btn--danger" type="submit">Delete host permanently</button></div>
+    </form>
+  </div>
 </div>
-{{template "cli" (list (printf "kryostate host show %s" (shq .CI.Label)) (printf "kryostate refresh --only %s" (shq .CI.Label)) (printf "kryostate host update %s application=<name>" (shq .CI.Label)))}}
+{{template "cli" (list (printf "kryostate host show %s" (shq .CI.Label)) (printf "kryostate refresh --only %s" (shq .CI.Label)) (printf "kryostate host update %s application=<name>" (shq .CI.Label)) (printf "kryostate host %s %s" (or (and .CI.DisabledAt "enable") "disable") (shq .CI.Label)))}}
 {{end}}
 
 {{define "long-value"}}{{if multiline .}}<details class="fact-full"><summary>{{short . 40}}</summary><pre>{{.}}</pre></details>{{else}}{{.}}{{end}}{{end}}
@@ -224,6 +251,7 @@
   {{if $c.Err}}<p class="notice notice--bad" role="alert">Could not work out which collectors run here: {{$c.Err}}</p>
   {{else}}
   <p class="muted small">What runs here, why, and when{{if not .Profiles}}, once the host has a connection{{end}}.{{if not $c.Family}} This host has not reported its system yet, so commands for every system are listed; the one for its system is picked when it connects.{{end}}</p>
+  {{if .CI.DisabledAt}}<p class="notice notice--disabled small" role="status">The host is disabled, so none of these run on it until it is enabled.</p>{{end}}
   {{with $c.Backoff}}<p class="notice small" role="status">Could not be reached: {{.}}. Collect now and <span class="mono">kryostate refresh</span> still try it.</p>{{end}}
   <div class="table-wrap">
   <table class="hcoll__table">

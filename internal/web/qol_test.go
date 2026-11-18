@@ -32,7 +32,7 @@ func TestCSVExportMatchesTheView(t *testing.T) {
 	if len(recs) != 2 {
 		t.Fatalf("got %d records, want a header and appnode1", len(recs))
 	}
-	if recs[0][2] != "os.version" || len(recs[0]) != 6 {
+	if recs[0][2] != "os.version" || len(recs[0]) != 7 {
 		t.Errorf("header %v does not carry exactly the chosen column", recs[0])
 	}
 	if recs[1][0] != "appnode1" || recs[1][2] != "RHEL 8.6" {

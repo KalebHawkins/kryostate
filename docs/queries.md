@@ -78,6 +78,7 @@ A name is either one of the host's own fields or an attribute.
 | `stack` | every stack it is a member of |
 | `role` | its role in each of those stacks |
 | `application` (or `app`) | the application recorded for it |
+| `disabled` | true for a disabled host, which is listed but never contacted: `disabled == true` lists them, `!disabled` leaves them out |
 | anything else | an attribute, such as `os.version`, `hw.cpu.cores` or `nginx.version` |
 
 To find an attribute's name:

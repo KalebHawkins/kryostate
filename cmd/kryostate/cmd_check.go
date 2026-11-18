@@ -55,8 +55,13 @@ func (a *app) runChecks(ctx context.Context, only []string) error {
 	if err != nil {
 		return err
 	}
-	ids, err := st.LookupCIs(ctx, onlyIDs(only))
+	refs := onlyIDs(only)
+	ids, err := st.LookupCIs(ctx, refs)
 	if err != nil {
+		return err
+	}
+	ids, anyLeft, err := enabledOnly(ctx, st, refs, ids)
+	if err != nil || !anyLeft {
 		return err
 	}
 	results, err := eng.RunChecks(ctx, ids, 16)

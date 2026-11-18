@@ -29,7 +29,9 @@
 //
 // Names. name, id, stack, role and application (or app) are the host's name,
 // its id, the stacks it is a member of, its roles in them (and its role
-// attribute, if one was recorded), and its application attribute. Any other name
+// attribute, if one was recorded), and its application attribute. disabled is
+// true for a host that is disabled, so disabled picks those hosts and
+// !disabled the rest. Any other name
 // is an attribute, such as os.version. A parameterised collector, such as
 // file.exists, is named with its parameter in brackets:
 // file.exists["/opt/x/bin/x"] is whatever attribute that collector records
@@ -71,6 +73,9 @@ type Host struct {
 	Name   string
 	Stacks []string
 	Roles  []string
+	// Disabled is set for a host that is not contacted; the query name
+	// disabled reads it.
+	Disabled bool
 	// Values are the current host-wide values, attribute to value.
 	Values map[string]string
 }
@@ -288,6 +293,8 @@ func (p *parser) field() (field, *bareTemplate, error) {
 		return field{kind: fStack}, nil, nil
 	case "role":
 		return field{kind: fRole}, nil, nil
+	case "disabled":
+		return field{kind: fDisabled}, nil, nil
 	case "application", "app":
 		return field{kind: fAttr, attr: model.AttrApplication}, nil, nil
 	}
@@ -508,6 +515,7 @@ const (
 	fID
 	fStack
 	fRole
+	fDisabled
 )
 
 type field struct {
@@ -523,6 +531,11 @@ func (f field) values(h *Host) []string {
 		return []string{h.ID}
 	case fStack:
 		return h.Stacks
+	case fDisabled:
+		if h.Disabled {
+			return []string{"yes"}
+		}
+		return []string{"no"}
 	case fRole:
 		out := h.Roles
 		if v := h.Values["role"]; v != "" {

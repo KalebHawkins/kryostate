@@ -257,7 +257,7 @@ func (s *Store) FailingHosts(ctx context.Context, limit int) ([]FailingHost, err
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT c.id, c.label, p.outcome, p.detail, p.at
 		 FROM ci c JOIN probe p ON p.ci_id=c.id
-		 WHERE c.retired_at IS NULL AND c.kind='host' AND p.kind='collector_run'
+		 WHERE c.disabled_at IS NULL AND c.kind='host' AND p.kind='collector_run'
 		   AND p.id = (SELECT q.id FROM probe q WHERE q.ci_id=c.id AND q.kind='collector_run'
 		               ORDER BY q.at DESC, q.id DESC LIMIT 1)
 		   AND p.outcome NOT IN ('ok','partial')
@@ -279,7 +279,8 @@ func (s *Store) FailingHosts(ctx context.Context, limit int) ([]FailingHost, err
 	return out, rows.Err()
 }
 
-// Health is the estate in a handful of numbers, each a count of live hosts.
+// Health is the estate in a handful of numbers, each a count of enabled
+// hosts except Disabled.
 type Health struct {
 	Hosts int
 	// OK hosts' latest collection succeeded, wholly or in part.
@@ -292,6 +293,9 @@ type Health struct {
 	NoConnection int
 	// Stale last collected successfully longer ago than the window given.
 	Stale int
+	// Disabled hosts are not contacted, so they are in none of the counts
+	// above, Hosts included.
+	Disabled int
 }
 
 // EstateHealth counts hosts by the outcome of their latest collection.
@@ -299,7 +303,7 @@ func (s *Store) EstateHealth(ctx context.Context, staleAfter time.Duration) (Hea
 	var h Health
 	cutoff := ts(time.Now().Add(-staleAfter))
 	err := s.db.QueryRowContext(ctx, `
-	WITH live AS (SELECT id FROM ci WHERE retired_at IS NULL AND kind='host'),
+	WITH live AS (SELECT id FROM ci WHERE disabled_at IS NULL AND kind='host'),
 	latest AS (
 	  SELECT p.ci_id, p.outcome FROM probe p JOIN live l ON l.id=p.ci_id
 	  WHERE p.kind='collector_run'
@@ -316,8 +320,9 @@ func (s *Store) EstateHealth(ctx context.Context, staleAfter time.Duration) (Hea
 	  (SELECT COUNT(*) FROM latest WHERE outcome NOT IN ('ok','partial')),
 	  (SELECT COUNT(*) FROM live WHERE id NOT IN (SELECT ci_id FROM latest)),
 	  (SELECT COUNT(*) FROM live WHERE id NOT IN (SELECT ci_id FROM conn_profile WHERE enabled=1)),
-	  (SELECT COUNT(*) FROM lastok WHERE at < ?)`, cutoff).
-		Scan(&h.Hosts, &h.OK, &h.Failing, &h.Never, &h.NoConnection, &h.Stale)
+	  (SELECT COUNT(*) FROM lastok WHERE at < ?),
+	  (SELECT COUNT(*) FROM ci WHERE disabled_at IS NOT NULL AND kind='host')`, cutoff).
+		Scan(&h.Hosts, &h.OK, &h.Failing, &h.Never, &h.NoConnection, &h.Stale, &h.Disabled)
 	if err != nil {
 		return h, fmt.Errorf("estate health: %w", err)
 	}

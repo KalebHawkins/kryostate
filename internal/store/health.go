@@ -59,7 +59,7 @@ func healthWhere(health string, staleBefore time.Time) (string, []any) {
 func (s *Store) NeedingAttention(ctx context.Context, staleAfter time.Duration) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM ci c WHERE c.retired_at IS NULL AND c.kind='host' AND (`+
+		`SELECT COUNT(*) FROM ci c WHERE c.disabled_at IS NULL AND c.kind='host' AND (`+
 			hostFailingSQL+` OR `+hostNeverSQL+` OR `+hostNoConnSQL+` OR `+hostStaleSQL+`)`,
 		ts(time.Now().Add(-staleAfter))).Scan(&n)
 	if err != nil {
@@ -74,7 +74,7 @@ func (s *Store) StackSizes(ctx context.Context) ([]Bucket, error) {
 		`SELECT s.name, COUNT(c.id) AS n
 		 FROM stack s
 		 JOIN stack_member m ON m.stack_id = s.id
-		 JOIN ci c ON c.id = m.ci_id AND c.retired_at IS NULL AND c.kind = 'host'
+		 JOIN ci c ON c.id = m.ci_id AND c.kind = 'host'
 		 GROUP BY s.id, s.name
 		 ORDER BY n DESC, s.name`)
 	if err != nil {

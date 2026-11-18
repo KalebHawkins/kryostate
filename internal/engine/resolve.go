@@ -35,7 +35,8 @@ type ResolveSummary struct {
 	Multi  int
 }
 
-// Resolve looks up every host and records what the name service said.
+// Resolve looks up every enabled host and records what the name service said.
+// A disabled host is not looked up.
 //
 // The answers are stored as observations, not as instructions. When a name
 // returns more than one address the tool records all of them and counts the
@@ -81,6 +82,9 @@ func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummar
 	pass := time.Now()
 
 	for _, h := range hosts {
+		if h.CI.DisabledAt != nil {
+			continue
+		}
 		wg.Add(1)
 		go func(h store.HostRow) {
 			defer wg.Done()

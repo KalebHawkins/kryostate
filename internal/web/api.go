@@ -253,7 +253,7 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{
 		"hosts": h.Hosts, "ok": h.OK, "failing": h.Failing, "stale": h.Stale,
-		"never_collected": h.Never, "no_connection": h.NoConnection,
+		"never_collected": h.Never, "no_connection": h.NoConnection, "disabled": h.Disabled,
 		"stale_after_hours": int(stale.Hours()),
 		"healthy":           h.Failing == 0 && h.Stale == 0 && h.Never == 0 && h.NoConnection == 0,
 	}
@@ -268,8 +268,8 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiHosts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
-	if v := q.Get("retired"); v == "true" {
-		q.Set("retired", "1")
+	if v := q.Get("disabled"); v == "true" {
+		q.Set("disabled", "1")
 	}
 	rows, members, err := FilterHosts(ctx, s.Store, s.hostFilter(ctx, q), q.Get("q"))
 	if err != nil {
@@ -356,10 +356,12 @@ func (s *Server) apiHost(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{
 		"id": ci.ID, "name": ci.Label, "created_at": utc(ci.CreatedAt),
-		"retired_at": nil, "facts": apiFacts(facts), "url": "/hosts/" + ci.ID,
+		"disabled": ci.DisabledAt != nil, "disabled_at": nil, "facts": apiFacts(facts), "url": "/hosts/" + ci.ID,
 	}
-	if ci.RetiredAt != nil {
-		out["retired_at"] = utc(*ci.RetiredAt)
+	if ci.DisabledAt != nil {
+		out["disabled_at"] = utc(*ci.DisabledAt)
+		out["disabled_by"] = ci.DisabledBy
+		out["disabled_reason"] = ci.DisabledReason
 	}
 	if at != nil {
 		out["as_of"] = at
@@ -498,13 +500,14 @@ type apiStackSummary struct {
 	Collected   int    `json:"collected"`
 	Failed      int    `json:"failed"`
 	NeverSeen   int    `json:"never_collected"`
+	Disabled    int    `json:"disabled"`
 	URL         string `json:"url"`
 }
 
 func apiStackOf(v store.StackView) apiStackSummary {
 	return apiStackSummary{Name: v.Stack.Name, Description: v.Stack.Description, Owner: v.Stack.Owner,
 		Environment: v.Stack.Environment, Members: v.Health.Members, Collected: v.Health.Collected,
-		Failed: v.Health.Failed, NeverSeen: v.Health.NeverSeen, URL: "/stacks/" + url.PathEscape(v.Stack.Name)}
+		Failed: v.Health.Failed, NeverSeen: v.Health.NeverSeen, Disabled: v.Health.Disabled, URL: "/stacks/" + url.PathEscape(v.Stack.Name)}
 }
 
 func (s *Server) apiStacks(w http.ResponseWriter, r *http.Request) {

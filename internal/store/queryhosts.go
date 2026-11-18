@@ -8,13 +8,14 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/query"
 )
 
-// QueryHosts loads every live host as a query sees it: its name, id, stacks,
-// roles and current host-wide values. It takes three statements however many
-// hosts there are, so it is what deciding where collectors run, and counting
-// the hosts a target matches, are built on.
+// QueryHosts loads every host as a query sees it: its name, id, stacks,
+// roles, whether it is disabled and its current host-wide values. It takes
+// three statements however many hosts there are, so it is what deciding where
+// collectors run, and counting the hosts a target matches, are built on.
+// Disabled hosts are included; what contacts hosts leaves them out itself.
 func (s *Store) QueryHosts(ctx context.Context) ([]query.Host, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, label FROM ci WHERE kind='host' AND retired_at IS NULL ORDER BY label`)
+		`SELECT id, label, disabled_at IS NOT NULL FROM ci WHERE kind='host' ORDER BY label`)
 	if err != nil {
 		return nil, err
 	}
@@ -22,7 +23,7 @@ func (s *Store) QueryHosts(ctx context.Context) ([]query.Host, error) {
 	at := map[string]int{}
 	for rows.Next() {
 		var h query.Host
-		if err := rows.Scan(&h.ID, &h.Name); err != nil {
+		if err := rows.Scan(&h.ID, &h.Name, &h.Disabled); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -75,15 +76,15 @@ func (s *Store) QueryHosts(ctx context.Context) ([]query.Host, error) {
 	return out, nil
 }
 
-// HostName is a live host's id and name, for pickers.
+// HostName is a host's id and name, for pickers.
 type HostName struct{ ID, Name string }
 
-// FindHosts lists live hosts whose name contains text, ignoring case, in name
+// FindHosts lists hosts whose name contains text, ignoring case, in name
 // order, at most limit of them, with how many match in all. It is what a
 // type-ahead asks, so it never loads more than it shows.
 func (s *Store) FindHosts(ctx context.Context, text string, limit int) ([]HostName, int, error) {
 	like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.TrimSpace(text)) + "%"
-	const where = `FROM ci WHERE kind='host' AND retired_at IS NULL AND label LIKE ? ESCAPE '\'`
+	const where = `FROM ci WHERE kind='host' AND label LIKE ? ESCAPE '\'`
 	var total int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) `+where, like).Scan(&total); err != nil {
 		return nil, 0, err

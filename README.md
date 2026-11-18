@@ -105,15 +105,16 @@ from another system, but no command accepts one at present.
 
 ### 2.6 Unknown values
 
-A host with no value for an attribute falls into one of three buckets:
+A host with no value for an attribute falls into one of four buckets:
 
 | Bucket | Cause | Action |
 |---|---|---|
 | never collected | No collection has asked this host for this attribute | Add a connection profile |
 | collection failed | The last collector run on this host failed | Repair the access |
 | not understood | The host answered and no rule read the answer | Report a bug against this tool |
+| host disabled | The host is disabled, so nothing asks it | None, or enable the host |
 
-Charts show these buckets, so each chart accounts for every active host.
+Charts show these buckets, so each chart accounts for every host.
 
 Refer to [docs/adr/](docs/adr/) for the reasoning behind each decision above.
 
@@ -304,15 +305,16 @@ completion script.
 
 | Command | Function |
 |---|---|
-| `host list` | Lists hosts (alias `host ls`), with chosen attributes as columns (`--cols`). `-q` filters with a query, `--stack` by stack; `--json` prints the shape `/hosts.json` uses |
+| `host list` | Lists hosts (alias `host ls`), with chosen attributes as columns (`--cols`) and a STATUS column (enabled or disabled). `-q` filters with a query (`-q 'disabled == true'` for the disabled ones), `--stack` by stack; `--json` prints the shape `/hosts.json` uses |
 | `host show` | Shows the facts, probes and connections for one host (also `kryostate show`). `--at 2026-03-01` (or `2026-03-01T15:04`) shows each value as it was then |
 | `host add` | Adds a host, with `--fqdn` if known |
 | `host update` | Records a host's application, or its stack and role, with an optional `--reason` note for the audit log (also `kryostate set`). Nothing else can be set by hand |
-| `host rm`, `host restore` | `host rm` retires a host: its history is kept, and its connections, pinned host keys, stack memberships, checks and schedule back-off are removed. `host restore` brings it back. `host rm --purge` deletes a host and all its history for good |
+| `host disable`, `host enable` | `host disable` stops all contact with hosts (collection, external collectors, checks, DNS) while keeping them listed, charted and queryable with their history and connections; `--reason` is recorded. `host enable` brings them back as they were |
+| `host rm` | Deletes hosts and everything recorded about them, after asking (`--yes` skips the question). The audit log is kept, with one more entry naming each deleted host |
 | `refresh` | Runs `collect`, then the checks |
 | `collectors` | `list` lists collectors, `catalog` the catalog; `enable` and `disable` switch catalog collectors on and off; `init` creates a file for your own; `show` prints any collector as it would be written in that file; `try` tests any collector without saving; `schedules` and `schedule` list and change schedules |
 | `import` | Reads hosts, addresses, stacks, roles and applications from a Markdown or CSV document. Common column names are recognised; `--map` names them otherwise. Other columns are reported as not imported |
-| `target` | `list`, `add`, `update` and `rm` connection profiles. `forget-host-key` clears a pinned key after a host is rebuilt |
+| `target` | `list`, `add`, `update` and `rm` connection profiles; `list` shows whether each is used, switched off, or belongs to a disabled host. `forget-host-key` clears a pinned key after a host is rebuilt |
 | `stack` | `list` stacks; `add` creates a stack and adds members, singly or from a list with roles (`--file`, `--create`, `--user`); `update` changes its details; `rm` takes members out; `delete` deletes the stack |
 | `secret` | Manages credential references (`list`, `set`, `delete`, `test`) |
 | `rules` | Lists, adds, shows and removes rollout rules |

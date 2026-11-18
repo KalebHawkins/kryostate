@@ -1,5 +1,5 @@
 {{define "hosts.html"}}
-<h1>Inventory <span class="muted">({{len .Rows}} {{if .Filter.Retired}}retired {{end}}hosts)</span></h1>
+<h1>Inventory <span class="muted">({{len .Rows}} {{if .Filter.Disabled}}disabled {{end}}hosts)</span></h1>
 <details class="card disclosure" {{if not .Rows}}{{if not .Query}}open{{end}}{{end}}>
   <summary><strong>Add a host</strong></summary>
   <form class="form" method="post" action="/hosts">
@@ -19,7 +19,7 @@
            placeholder='os.family == "Linux" &amp;&amp; stack == "web"  — or part of a name'
            {{if .QErr}}aria-invalid="true" aria-describedby="q-err"{{end}}>
     {{if .Filter.Stack}}<input type="hidden" name="stack" value="{{.Filter.Stack}}">{{end}}
-    {{if .Filter.Retired}}<input type="hidden" name="retired" value="1">{{end}}
+    {{if .Filter.Disabled}}<input type="hidden" name="disabled" value="1">{{end}}
     {{if .Filter.Attr}}<input type="hidden" name="attr" value="{{.Filter.Attr}}">{{end}}
     {{if .Filter.Value}}<input type="hidden" name="value" value="{{.Filter.Value}}">{{end}}
     {{if .Filter.Unknown}}<input type="hidden" name="unknown" value="{{.Filter.Unknown}}">{{end}}
@@ -38,12 +38,13 @@
     <a class="btn btn--ghost" href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">Clear</a>
     <a class="btn btn--ghost" href="/hosts.csv?{{.Query}}" download>CSV</a>
     <a class="btn btn--ghost" href="/hosts.json?{{.Query}}" target="_blank" rel="noopener">JSON</a>
-    {{if .Filter.Retired}}<a class="btn btn--ghost" href="/hosts">Live hosts</a>{{else}}<a class="btn btn--ghost" href="/hosts?retired=1">Retired hosts</a>{{end}}
+    {{if .Filter.Disabled}}<a class="btn btn--ghost" href="/hosts" hx-get="/hosts" hx-target="#main" hx-push-url="true">All hosts</a>{{else}}<a class="btn btn--ghost" href="/hosts?disabled=1" hx-get="/hosts?disabled=1" hx-target="#main" hx-push-url="true">Disabled hosts</a>{{end}}
   </form>
   {{if .Filter.Stack}}<span class="chip chip--role">stack {{.Filter.Stack}}</span>{{end}}
   {{if .Filter.Attr}}<span class="chip chip--document">{{label .Filter.Attr}} = {{.Filter.Value}}</span>{{end}}
   {{if .Filter.Unknown}}<span class="chip chip--unknown">no {{label .Filter.Unknown}}{{if .Filter.Because}} · {{label .Filter.Because}}{{end}}</span>{{end}}
   {{if .Filter.Unparsed}}<span class="chip chip--unknown">{{label .Filter.Unparsed}} not understood</span>{{end}}
+  {{if .Filter.Disabled}}<span class="chip chip--disabled">disabled only</span>{{end}}
   {{if .Filter.Health}}<span class="chip {{if eq .Filter.Health "failing"}}chip--bad{{else}}chip--stale{{end}}">{{with .HealthLabel}}{{.}}{{else}}unrecognised health filter{{end}}</span>{{end}}
 </div>
 {{with .QErr}}
@@ -64,7 +65,7 @@
       {{range .Operators}}<tr><td class="qhelp__op">{{range .Ops}}<code>{{.}}</code> {{end}}</td><td>{{.Meaning}}</td><td><code>{{.Example}}</code></td></tr>
       {{end}}</tbody>
     </table>
-    <p class="qhelp__names"><span class="qhelp__label">Names</span> <span>any attribute, such as <code>os.version</code> or <code>hw.cpu.cores</code>, and four special names:</span> <code>name</code> <code>stack</code> <code>role</code> <code>application</code></p>
+    <p class="qhelp__names"><span class="qhelp__label">Names</span> <span>any attribute, such as <code>os.version</code> or <code>hw.cpu.cores</code>, and five special names:</span> <code>name</code> <code>stack</code> <code>role</code> <code>application</code> <code>disabled</code></p>
     <table class="qhelp__table qhelp__ex">
       <caption>Examples <span class="muted">click one to run it</span></caption>
       <thead><tr><th scope="col">Query</th><th scope="col">What it finds</th></tr></thead>
@@ -82,6 +83,7 @@
   <thead>
     <tr>
       <th scope="col">Host</th>
+      <th scope="col">Status</th>
       {{range .Columns}}<th scope="col">{{label .}}</th>{{end}}
       <th scope="col">Stacks</th>
       <th scope="col">Last collected</th>
@@ -89,8 +91,9 @@
   </thead>
   <tbody>
   {{range .Rows}}
-    <tr>
+    <tr{{if .CI.DisabledAt}} class="row--disabled"{{end}}>
       <td class="host"><a href="/hosts/{{.CI.ID}}" hx-get="/hosts/{{.CI.ID}}" hx-target="#main" hx-push-url="true">{{.CI.Label}}</a></td>
+      <td>{{if .CI.DisabledAt}}<span class="chip chip--disabled" title="Not contacted since {{stamp .CI.DisabledAt}}">disabled</span>{{else}}<span class="chip chip--enabled">enabled</span>{{end}}</td>
       {{$row := .}}
       {{range $.Columns}}
         <td class="mono">
@@ -106,7 +109,7 @@
       </td>
     </tr>
   {{else}}
-    <tr><td colspan="{{add (len .Columns) 3}}" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">kryostate import</span>, or add one with <span class="mono">kryostate host add &lt;name&gt;</span>.</td></tr>
+    <tr><td colspan="{{add (len .Columns) 4}}" class="muted">No hosts match. Clear the filters, import a document with <span class="mono">kryostate import</span>, or add one with <span class="mono">kryostate host add &lt;name&gt;</span>.</td></tr>
   {{end}}
   </tbody>
 </table>

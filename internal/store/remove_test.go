@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,57 +82,77 @@ func rowsFor(t *testing.T, s *Store, id string) map[string]int {
 	return out
 }
 
-func TestRemoveHostKeepsHistory(t *testing.T) {
+func TestDisableHostKeepsEverything(t *testing.T) {
 	ctx := context.Background()
 	s := testStore(t)
 	id := seedHost(t, s, "web01")
 	other := seedHost(t, s, "web02")
+	before := rowsFor(t, s, id)
 
-	r, err := s.RemoveHost(ctx, id, "kim", "decommissioned")
-	if err != nil {
-		t.Fatal(err)
+	if changed, err := s.DisableHost(ctx, id, "kim", "powered off"); err != nil || !changed {
+		t.Fatalf("disable: %v %v", changed, err)
 	}
-	if r.AlreadyRetired || r.Profiles != 1 || r.Memberships != 1 || r.Checks != 1 || r.Backoff != 1 {
-		t.Errorf("removal %+v", r)
+	if changed, err := s.DisableHost(ctx, id, "kim", ""); err != nil || changed {
+		t.Errorf("disabling again: %v %v", changed, err)
 	}
-	got := rowsFor(t, s, id)
-	for tb, want := range map[string]int{"conn_profile": 0, "stack_member": 0, "check_def": 0, "host_backoff": 0,
-		"ci": 1, "assertion": 1, "probe": 1, "evidence": 1, "read_failure": 1, "identity": 1, "address": 1} {
-		if got[tb] != want {
-			t.Errorf("%s: %d rows, want %d", tb, got[tb], want)
+	after := rowsFor(t, s, id)
+	for tb, n := range before {
+		if after[tb] != n {
+			t.Errorf("%s: %d rows after disabling, %d before", tb, after[tb], n)
 		}
 	}
 	c, err := s.CI(ctx, id)
-	if err != nil || c.RetiredAt == nil {
-		t.Errorf("not retired: %+v %v", c, err)
+	if err != nil || c.DisabledAt == nil || c.DisabledBy != "kim" || c.DisabledReason != "powered off" {
+		t.Errorf("not disabled: %+v %v", c, err)
 	}
-	if rowsFor(t, s, other)["conn_profile"] != 1 {
-		t.Error("another host's connection went too")
+
+	// Listed and queryable, but not contacted and not counted as a problem.
+	rows, _ := s.Hosts(ctx, HostFilter{})
+	if len(rows) != 2 {
+		t.Errorf("%d hosts listed, want both", len(rows))
 	}
-	// Removing again is harmless, and it can be brought back.
-	if r, err := s.RemoveHost(ctx, id, "kim", ""); err != nil || !r.AlreadyRetired {
-		t.Errorf("second removal: %+v %v", r, err)
+	if rows, _ := s.Hosts(ctx, HostFilter{Disabled: true}); len(rows) != 1 || rows[0].CI.ID != id || rows[0].CI.DisabledAt == nil {
+		t.Errorf("disabled filter: %+v", rows)
 	}
-	if err := s.Unretire(ctx, id, "kim", "mistake"); err != nil {
-		t.Fatal(err)
+	if hs, _ := s.QueryHosts(ctx); len(hs) != 2 || !hs[0].Disabled || hs[1].Disabled {
+		t.Errorf("query hosts: %+v", hs)
+	}
+	if ts, _ := s.CollectTargets(ctx, ""); len(ts) != 1 || ts[0].CIID != other {
+		t.Errorf("collection targets: %+v", ts)
+	}
+	if cs, _ := s.AllChecks(ctx); len(cs) != 1 || cs[0].CIID != other {
+		t.Errorf("checks: %+v", cs)
+	}
+	if h, _ := s.EstateHealth(ctx, time.Hour); h.Hosts != 1 || h.Disabled != 1 {
+		t.Errorf("health: %+v", h)
+	}
+	if rows, _ := s.Hosts(ctx, HostFilter{Health: HealthNoConn}); len(rows) != 0 {
+		t.Errorf("a disabled host is listed as a problem: %+v", rows)
+	}
+
+	if changed, err := s.EnableHost(ctx, id, "kim", ""); err != nil || !changed {
+		t.Fatalf("enable: %v %v", changed, err)
+	}
+	if ts, _ := s.CollectTargets(ctx, ""); len(ts) != 2 {
+		t.Errorf("after enable, %d targets, want 2", len(ts))
 	}
 	var n int
-	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit WHERE subject=? AND action='remove host'`, id).Scan(&n)
+	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit WHERE subject=? AND action IN ('disable host','enable host')`, id).Scan(&n)
 	if n != 2 {
-		t.Errorf("%d removal audit rows", n)
+		t.Errorf("%d audit rows, want one for each change", n)
 	}
-	if _, err := s.RemoveHost(ctx, "nope", "kim", ""); !errors.Is(err, ErrNoSuchHost) {
+	if _, err := s.DisableHost(ctx, "nope", "kim", ""); !errors.Is(err, ErrNoSuchHost) {
 		t.Errorf("unknown host: %v", err)
 	}
 }
 
-func TestPurgeCILeavesNothing(t *testing.T) {
+func TestDeleteHostLeavesOnlyTheAuditTrail(t *testing.T) {
 	ctx := context.Background()
 	s := testStore(t)
 	id := seedHost(t, s, "web01")
 	other := seedHost(t, s, "web02")
 
-	if err := s.PurgeCI(ctx, id, "kim", "test host"); err != nil {
+	if _, err := s.DeleteHost(ctx, id, "kim", "test host"); err != nil {
 		t.Fatal(err)
 	}
 	for tb, n := range rowsFor(t, s, id) {
@@ -144,13 +165,19 @@ func TestPurgeCILeavesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rows.Next() {
-		t.Error("foreign key violations after purge")
+		t.Error("foreign key violations after delete")
 	}
 	rows.Close()
-	var action, detail string
-	if err := s.db.QueryRowContext(ctx, `SELECT action, detail FROM audit WHERE subject=?`, id).Scan(&action, &detail); err != nil ||
-		action != "purge host" || detail != "web01: test host" {
-		t.Errorf("audit: %q %q %v", action, detail, err)
+	// What was recorded before stays, and the deletion names the host.
+	var kept int
+	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit WHERE subject=? AND action='set application'`, id).Scan(&kept)
+	if kept != 1 {
+		t.Errorf("the host's earlier audit rows were deleted: %d left", kept)
+	}
+	var actor, detail string
+	if err := s.db.QueryRowContext(ctx, `SELECT actor, detail FROM audit WHERE subject=? AND action='delete host'`, id).Scan(&actor, &detail); err != nil ||
+		actor != "kim" || detail != "web01: test host" {
+		t.Errorf("audit: %q %q %v", actor, detail, err)
 	}
 	for tb, n := range rowsFor(t, s, other) {
 		if n == 0 && tb != "assertion_norm orphans" {
@@ -158,9 +185,44 @@ func TestPurgeCILeavesNothing(t *testing.T) {
 		}
 	}
 	if _, err := s.LookupCI(ctx, "web01"); !errors.Is(err, ErrNoSuchHost) {
-		t.Errorf("purged host still found: %v", err)
+		t.Errorf("deleted host still found: %v", err)
 	}
-	if err := s.PurgeCI(ctx, id, "kim", ""); !errors.Is(err, ErrNoSuchHost) {
-		t.Errorf("second purge: %v", err)
+	if _, err := s.DeleteHost(ctx, id, "kim", ""); !errors.Is(err, ErrNoSuchHost) {
+		t.Errorf("second delete: %v", err)
+	}
+}
+
+// TestRetiredHostsBecomeDisabled opens a database written before hosts could
+// be disabled, when they were retired instead.
+func TestRetiredHostsBecomeDisabled(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	gone := mustHost(t, s, "old01")
+	live := mustHost(t, s, "web01")
+	for _, q := range []string{
+		`ALTER TABLE ci DROP COLUMN disabled_at`,
+		`ALTER TABLE ci ADD COLUMN retired_at TEXT`,
+		`UPDATE ci SET retired_at='2026-03-01T10:00:00.000000000Z' WHERE label='old01'`,
+	} {
+		if _, err := s.db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.CI(ctx, gone)
+	if err != nil || c.DisabledAt == nil || c.DisabledAt.Format("2006-01-02") != "2026-03-01" || !strings.Contains(c.DisabledReason, "retired") {
+		t.Errorf("a retired host was not disabled: %+v %v", c, err)
+	}
+	if c, _ := s.CI(ctx, live); c.DisabledAt != nil {
+		t.Error("a live host was disabled")
+	}
+	if has, _ := s.hasColumn(ctx, "ci", "retired_at"); has {
+		t.Error("retired_at was not dropped")
+	}
+	// Running it again on the migrated database changes nothing.
+	if err := s.migrate(ctx); err != nil {
+		t.Fatal(err)
 	}
 }

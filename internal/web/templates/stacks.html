@@ -9,10 +9,11 @@
 
 {{/* stack-health is the small bar and its counts, given a model.StackHealth. */}}
 {{define "stack-health"}}
-<div class="segbar" role="img" aria-label="{{.Collected}} collected, {{.Failed}} failed, {{.NeverSeen}} never collected of {{.Members}} members">
+<div class="segbar" role="img" aria-label="{{.Collected}} collected, {{.Failed}} failed, {{.NeverSeen}} never collected{{if .Disabled}}, {{.Disabled}} disabled{{end}} of {{.Members}} members">
   <span class="segbar__seg segbar__seg--ok" style="{{seg .Collected .Members}}"></span>
   <span class="segbar__seg segbar__seg--failed" style="{{seg .Failed .Members}}"></span>
   <span class="segbar__seg segbar__seg--never" style="{{seg .NeverSeen .Members}}"></span>
+  <span class="segbar__seg segbar__seg--disabled" style="{{seg .Disabled .Members}}"></span>
 </div>
 {{end}}
 
@@ -70,7 +71,7 @@
       <td class="num">{{$h.Members}}</td>
       <td class="slist__health">
         {{if $h.Members}}{{template "stack-health" $h}}
-        <span class="small">{{if $h.Collected}}{{$h.Collected}} ok{{end}}{{if and $h.Collected (or $h.Failed $h.NeverSeen)}} · {{end}}{{if $h.Failed}}<span class="slist__bad">{{$h.Failed}} failed</span>{{end}}{{if and $h.Failed $h.NeverSeen}} · {{end}}{{if $h.NeverSeen}}<span class="muted">{{$h.NeverSeen}} never</span>{{end}}</span>
+        <span class="small">{{if $h.Collected}}{{$h.Collected}} ok{{end}}{{if and $h.Collected (or $h.Failed $h.NeverSeen)}} · {{end}}{{if $h.Failed}}<span class="slist__bad">{{$h.Failed}} failed</span>{{end}}{{if and $h.Failed $h.NeverSeen}} · {{end}}{{if $h.NeverSeen}}<span class="muted">{{$h.NeverSeen}} never</span>{{end}}{{if $h.Disabled}}{{if or $h.Collected $h.Failed $h.NeverSeen}} · {{end}}<span class="muted">{{$h.Disabled}} disabled</span>{{end}}</span>
         {{else}}<span class="muted small">no members</span>{{end}}</td>
       <td class="small">{{range $i, $r := .Roles}}{{if $i}}, {{end}}{{$r.Role}} ×{{$r.Count}}{{else}}<span class="muted">—</span>{{end}}{{if .MoreRoles}} <span class="muted">and {{.MoreRoles}} more</span>{{end}}</td>
       <td class="num" title="{{.Here}} limited to some hosts, {{sub .Collectors .Here}} on every host">{{.Collectors}}</td>

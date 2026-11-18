@@ -165,7 +165,9 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		d.ManualOnly = len(up) == 0
 	}
 
-	d.Glance = s.glance(ctx, d.Health.Hosts)
+	// The charts list disabled hosts with what they last reported, so they
+	// count in the denominator too.
+	d.Glance = s.glance(ctx, d.Health.Hosts+d.Health.Disabled)
 	d.Rollouts = s.rollouts(ctx)
 	s.render(w, r, "home.html", "Overview", "home", d)
 }

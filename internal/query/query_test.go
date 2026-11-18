@@ -20,7 +20,7 @@ var hosts = map[string]Host{
 	"win": {ID: "c3", Name: "db01", Values: map[string]string{
 		"os.family": "Windows", "hw.cpu.cores": "4", "role": "database", "file.nginx.exists": "yes",
 	}},
-	"bare": {ID: "c4", Name: "new-host"},
+	"bare": {ID: "c4", Name: "new-host", Disabled: true},
 }
 
 func TestMatch(t *testing.T) {
@@ -51,6 +51,10 @@ func TestMatch(t *testing.T) {
 		{`name =~ "^web"`, "rhel7 alma9"},
 		{`name == "db01"`, "win"},
 		{`id == "c4"`, "bare"},
+		{`disabled`, "bare"},
+		{`disabled == true`, "bare"},
+		{`!disabled`, "rhel7 alma9 win"},
+		{`disabled == false && stack == "web"`, "alma9"},
 		{`stack == "orders-prod"`, "rhel7 alma9"},
 		{`stack == "web"`, "alma9"},
 		{`stack != "orders-prod"`, "win bare"},

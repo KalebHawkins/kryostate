@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // TestLookupFailureIsNotAMissingRecord covers the distinction the tool exists
@@ -96,5 +97,54 @@ func TestAResolverOutageIsNotAnAnswer(t *testing.T) {
 	}
 	if sum.Failed != 1 || sum.Unresolved != 0 {
 		t.Fatalf("a dead resolver was not counted as a failed lookup: %+v", sum)
+	}
+}
+
+// TestDisabledHostIsNotContacted: a disabled host is left out of everything
+// that reaches a host, and enabling it puts it back.
+func TestDisabledHostIsNotContacted(t *testing.T) {
+	ctx := context.Background()
+	e, st := testEngine(t)
+	off := host(t, st, "node-off")
+	on := host(t, st, "node-on")
+	for _, id := range []string{off, on} {
+		if err := st.PutConnProfile(ctx, store.ConnProfile{CIID: id, Transport: "ssh", Address: "127.0.0.1", Port: 1,
+			Username: "ops", CredentialRef: "agent:", Enabled: true}); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.PutCheck(ctx, store.Check{CIID: id, Name: "port", Kind: "tcp", Target: "127.0.0.1:1",
+			Timeout: time.Second, Enabled: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.DisableHost(ctx, off, "kim", "powered off"); err != nil {
+		t.Fatal(err)
+	}
+
+	sum, err := e.Resolve(ctx, ResolveOptions{Resolver: "127.0.0.1:1", Timeout: time.Second})
+	if err != nil || sum.Checked != 1 {
+		t.Errorf("resolve looked up %d hosts, want 1: %v", sum.Checked, err)
+	}
+	ext, err := e.externalTargets(ctx, Options{Only: []string{off}})
+	if err != nil || len(ext) != 0 {
+		t.Errorf("external collectors would run on a disabled host: %v %v", ext, err)
+	}
+	results, err := e.RunChecks(ctx, nil, 2)
+	if err != nil || len(results) != 1 || results[0].Check.CIID != on {
+		t.Errorf("checks ran %+v, want only node-on's: %v", results, err)
+	}
+	targets, err := st.CollectTargets(ctx, "")
+	if err != nil || len(targets) != 1 || targets[0].CIID != on {
+		t.Errorf("collection targets %+v, want only node-on: %v", targets, err)
+	}
+	if r, _ := st.Reachability(ctx, off); len(r) != 0 {
+		t.Errorf("the disabled host was probed: %v", r)
+	}
+
+	if _, err := st.EnableHost(ctx, off, "kim", ""); err != nil {
+		t.Fatal(err)
+	}
+	if targets, _ := st.CollectTargets(ctx, ""); len(targets) != 2 {
+		t.Errorf("after enable, %d collection targets, want 2", len(targets))
 	}
 }

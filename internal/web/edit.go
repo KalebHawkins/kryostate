@@ -141,33 +141,57 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 	done(w, r, hostURL(id), name+" added. Next, tell kryostate how to reach it under Connection.")
 }
 
-func (s *Server) handleRetire(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDisableHost(w http.ResponseWriter, r *http.Request) {
 	ci, ok := s.liveCI(w, r)
 	if !ok {
 		return
 	}
-	reason := field(r, "reason")
-	if reason == "" {
-		refuse(w, r, hostURL(ci.ID), errors.New("say why the host is being retired"))
-		return
-	}
-	if err := s.Store.Retire(r.Context(), ci.ID, actorOf(r), reason); err != nil {
+	changed, err := s.Store.DisableHost(r.Context(), ci.ID, actorOf(r), field(r, "reason"))
+	if err != nil {
 		refuse(w, r, hostURL(ci.ID), err)
 		return
 	}
-	done(w, r, hostURL(ci.ID), ci.Label+" retired. Its history is kept and it will not be collected.")
+	if !changed {
+		done(w, r, hostURL(ci.ID), ci.Label+" was already disabled.")
+		return
+	}
+	done(w, r, hostURL(ci.ID), ci.Label+" disabled. It will not be contacted until it is enabled; its connections are kept as they are.")
 }
 
-func (s *Server) handleUnretire(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleEnableHost(w http.ResponseWriter, r *http.Request) {
 	ci, ok := s.liveCI(w, r)
 	if !ok {
 		return
 	}
-	if err := s.Store.Unretire(r.Context(), ci.ID, actorOf(r), field(r, "reason")); err != nil {
+	changed, err := s.Store.EnableHost(r.Context(), ci.ID, actorOf(r), field(r, "reason"))
+	if err != nil {
 		refuse(w, r, hostURL(ci.ID), err)
 		return
 	}
-	done(w, r, hostURL(ci.ID), ci.Label+" restored. Re-enable its connection to collect from it again.")
+	if !changed {
+		done(w, r, hostURL(ci.ID), ci.Label+" was not disabled.")
+		return
+	}
+	done(w, r, hostURL(ci.ID), ci.Label+" enabled. It is collected through its connections again.")
+}
+
+// handleDeleteHost deletes a host and its history. The form asks for the
+// host's name to be typed, and the name is checked here too, so a stray
+// click or a replayed request cannot delete a host.
+func (s *Server) handleDeleteHost(w http.ResponseWriter, r *http.Request) {
+	ci, ok := s.liveCI(w, r)
+	if !ok {
+		return
+	}
+	if field(r, "confirm") != ci.Label {
+		refuse(w, r, hostURL(ci.ID)+"#delete", errors.New("type the host's name, "+ci.Label+", to delete it"))
+		return
+	}
+	if _, err := s.Store.DeleteHost(r.Context(), ci.ID, actorOf(r), field(r, "reason")); err != nil {
+		refuse(w, r, hostURL(ci.ID), err)
+		return
+	}
+	done(w, r, "/hosts", ci.Label+" deleted, with everything recorded about it. The audit log keeps a record of the deletion.")
 }
 
 // ---------- connection ----------

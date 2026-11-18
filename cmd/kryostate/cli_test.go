@@ -46,7 +46,7 @@ func executeIn(in io.Reader, args ...string) error {
 	return root.ExecuteContext(context.Background())
 }
 
-func TestHostRmAndPurge(t *testing.T) {
+func TestHostDisableEnableAndRm(t *testing.T) {
 	ctx := context.Background()
 	db := filepath.Join(t.TempDir(), "k.db")
 	for _, args := range [][]string{
@@ -55,13 +55,19 @@ func TestHostRmAndPurge(t *testing.T) {
 		{"target", "add", "web01", "web02", "--user", "ops"},
 		{"stack", "add", "pay", "web01:app", "web02:app"},
 		{"check", "add", "web01", "ssh", "--tcp", "web01:22"},
+		{"host", "disable", "web01.example.com", "--reason", "powered off"},
 	} {
 		if err := execute(t, append(args, "--db", db)...); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
 	}
 
-	if err := execute(t, "host", "rm", "web01.example.com", "--db", db, "--reason", "gone"); err != nil {
+	// Disabling keeps everything, and a refresh limited to the host
+	// contacts nothing: no run is started at all.
+	if err := execute(t, "refresh", "--only", "web01", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if err := execute(t, "check", "run", "--only", "web01", "--db", db); err != nil {
 		t.Fatal(err)
 	}
 	st, err := openStore(db)
@@ -76,23 +82,37 @@ func TestHostRmAndPurge(t *testing.T) {
 	ms, _ := st.MembershipsOf(ctx, id)
 	cs, _ := st.Checks(ctx, id)
 	c, _ := st.CI(ctx, id)
-	if len(ps) != 0 || len(ms) != 0 || len(cs) != 0 || c.RetiredAt == nil {
-		t.Errorf("after rm: profiles %v, memberships %v, checks %v, retired %v", ps, ms, cs, c.RetiredAt)
+	if len(ps) != 1 || !ps[0].Enabled || len(ms) != 1 || len(cs) != 1 || c.DisabledAt == nil || c.DisabledReason != "powered off" {
+		t.Errorf("after disable: profiles %v, memberships %v, checks %v, ci %+v", ps, ms, cs, c)
+	}
+	if runs, _ := st.Runs(ctx, 10); len(runs) != 0 {
+		t.Errorf("a refresh of a disabled host started %d runs", len(runs))
+	}
+	if r, _ := st.Reachability(ctx, id); len(r) != 0 {
+		t.Errorf("a disabled host was probed: %v", r)
 	}
 	st.Close()
-	if err := execute(t, "host", "restore", "web01", "--db", db); err != nil {
+	if err := execute(t, "host", "enable", "web01", "--db", db); err != nil {
 		t.Fatal(err)
 	}
+	st, err = openStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := st.CI(ctx, id); c.DisabledAt != nil {
+		t.Error("still disabled after enable")
+	}
+	st.Close()
 
-	// Purging asks first, and anything but yes leaves the host alone.
-	err = executeIn(strings.NewReader("no\n"), "host", "rm", "--purge", "web01", "--db", db)
+	// Deleting asks first, and anything but yes leaves the host alone.
+	err = executeIn(strings.NewReader("no\n"), "host", "rm", "web01", "--db", db)
 	if err == nil || !strings.Contains(err.Error(), "not confirmed") {
-		t.Errorf("unconfirmed purge: %v", err)
+		t.Errorf("unconfirmed rm: %v", err)
 	}
-	if err := executeIn(strings.NewReader("yes\n"), "host", "rm", "--purge", "web01", "--db", db); err != nil {
+	if err := executeIn(strings.NewReader("yes\n"), "host", "rm", "web01", "--db", db, "--reason", "gone"); err != nil {
 		t.Fatal(err)
 	}
-	if err := execute(t, "host", "rm", "--purge", "-y", "web02", "--db", db); err != nil {
+	if err := execute(t, "host", "rm", "-y", "web02", "--db", db); err != nil {
 		t.Fatal(err)
 	}
 	st, err = openStore(db)
@@ -102,10 +122,15 @@ func TestHostRmAndPurge(t *testing.T) {
 	defer st.Close()
 	for _, h := range []string{"web01", "web02"} {
 		if _, err := st.LookupCI(ctx, h); err == nil {
-			t.Errorf("%s still there after purge", h)
+			t.Errorf("%s still there after rm", h)
 		}
 	}
-	if err := execute(t, "host", "rm", "nope", "--db", db); err == nil {
+	var n int
+	st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM audit WHERE subject=? AND action IN ('disable host','enable host','delete host')`, id).Scan(&n)
+	if n != 3 {
+		t.Errorf("%d audit rows for web01's disable, enable and delete, want 3", n)
+	}
+	if err := execute(t, "host", "rm", "-y", "nope", "--db", db); err == nil {
 		t.Error("removing an unknown host succeeded")
 	}
 }

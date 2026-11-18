@@ -295,3 +295,37 @@ func itoa(n int) string {
 	}
 	return string(b)
 }
+
+// TestRetiredHostsRestoreAsDisabled: a dump taken when hosts were retired
+// rather than disabled brings its retired hosts back disabled.
+func TestRetiredHostsRestoreAsDisabled(t *testing.T) {
+	ctx := context.Background()
+	src := open(t, "source.db")
+	populate(t, src)
+	d, err := Read(bytes.NewReader(export(t, src)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var retired string
+	for _, r := range d.Tables["ci"] {
+		delete(r, "disabled_at")
+		r["retired_at"] = nil
+		if r["label"] == "dbnode1" {
+			r["retired_at"] = "2024-03-02T09:00:00.000000000Z"
+			retired = r["id"].(string)
+		}
+	}
+	dst := open(t, "restored.db")
+	if err := Restore(ctx, dst, d); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := dst.Hosts(ctx, store.HostFilter{})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("restored %d hosts: %v", len(rows), err)
+	}
+	for _, r := range rows {
+		if got := r.CI.DisabledAt != nil; got != (r.CI.ID == retired) {
+			t.Errorf("%s disabled = %v", r.CI.Label, got)
+		}
+	}
+}

@@ -408,7 +408,7 @@ func (s *Store) HealthTransitions(ctx context.Context, since, until time.Time) (
 		`SELECT c.id, c.label, `+fmt.Sprintf(now, "outcome")+`, `+fmt.Sprintf(now, "detail")+`, `+
 			fmt.Sprintf(now, "at")+`, COALESCE(`+fmt.Sprintf(before, "outcome")+`, '')
 		 FROM ci c
-		 WHERE c.retired_at IS NULL AND c.kind='host'
+		 WHERE c.disabled_at IS NULL AND c.kind='host'
 		   AND EXISTS (SELECT 1 FROM probe p WHERE p.ci_id=c.id AND p.kind='collector_run' AND p.at >= ? AND p.at <= ?)
 		 ORDER BY c.label`,
 		ts(until), ts(until), ts(until), ts(since), ts(since), ts(until))
@@ -439,14 +439,14 @@ func (s *Store) HealthTransitions(ctx context.Context, since, until time.Time) (
 func (s *Store) NeverCollected(ctx context.Context, limit int) ([]HostRef, int, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM ci c WHERE c.retired_at IS NULL AND c.kind='host' AND `+hostNeverSQL).Scan(&total); err != nil {
+		`SELECT COUNT(*) FROM ci c WHERE c.disabled_at IS NULL AND c.kind='host' AND `+hostNeverSQL).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	if limit <= 0 {
 		limit = 10
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT c.id, c.label FROM ci c WHERE c.retired_at IS NULL AND c.kind='host' AND `+hostNeverSQL+
+		`SELECT c.id, c.label FROM ci c WHERE c.disabled_at IS NULL AND c.kind='host' AND `+hostNeverSQL+
 			` ORDER BY c.label LIMIT ?`, limit)
 	if err != nil {
 		return nil, 0, err

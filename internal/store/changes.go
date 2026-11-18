@@ -90,7 +90,6 @@ func (s *Store) Changes(ctx context.Context, f ChangeFilter) ([]Change, error) {
 	JOIN source s ON s.id=q.source_id
 	LEFT JOIN run r ON r.id=q.run_id
 	WHERE q.prev_raw IS NOT NULL AND q.prev_raw <> q.raw_value AND q.observed_at >= ?
-	  AND c.retired_at IS NULL
 	ORDER BY q.observed_at DESC, q.id DESC
 	LIMIT ?`
 	args = append(args, since, f.Limit)

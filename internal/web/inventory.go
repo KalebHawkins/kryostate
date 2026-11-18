@@ -18,7 +18,7 @@ import (
 )
 
 // The inventory is filtered in two steps. The structured parameters that
-// links have always used (attr and value, unknown, stack, retired) narrow the
+// links have always used (attr and value, unknown, stack, disabled) narrow the
 // rows in SQL, with fixed statements. The q parameter is a query in the
 // language of package query, and is evaluated in Go over the loaded values:
 // nothing a person types is ever turned into SQL.
@@ -57,6 +57,7 @@ var examples = []queryExample{
 	{Q: `os.version =~ "^Red Hat 7" || os.version == "CentOS 7"`, Note: "Either of two operating systems"},
 	{Q: `hw.cpu.cores >= 8 && hw.memory.total_mb < 16000`, Note: "Eight cores or more, under 16 GB of memory"},
 	{Q: `!has(os.version)`, Note: "Hosts with no OS version recorded yet"},
+	{Q: `disabled == true`, Note: "Disabled hosts, which are listed but never contacted"},
 }
 
 // queryOperator is one row of the operator table in the inventory's query
@@ -95,7 +96,7 @@ func hostFilterFrom(q url.Values) store.HostFilter {
 		Because:  q.Get("because"),
 		Unparsed: q.Get("unparsed"),
 		Health:   q.Get("health"),
-		Retired:  q.Get("retired") == "1",
+		Disabled: q.Get("disabled") == "1",
 	}
 	if s := strings.TrimSpace(q.Get("q")); s != "" && !query.LooksLikeQuery(s) {
 		f.Search = s
@@ -162,7 +163,7 @@ func FilterHosts(ctx context.Context, st *store.Store, f store.HostFilter, expr 
 }
 
 func queryHost(r store.HostRow, ms []store.Membership) query.Host {
-	h := query.Host{ID: r.CI.ID, Name: r.CI.Label, Values: r.Values}
+	h := query.Host{ID: r.CI.ID, Name: r.CI.Label, Values: r.Values, Disabled: r.CI.DisabledAt != nil}
 	for _, m := range ms {
 		h.Stacks = append(h.Stacks, m.Stack)
 		if m.Role != "" {
@@ -243,7 +244,7 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="kryostate-inventory.csv"`)
 	cw := csv.NewWriter(w)
 	header := append([]string{"host", "id"}, cols...)
-	header = append(header, "stacks", "last_collected", "collect_ok")
+	header = append(header, "stacks", "last_collected", "collect_ok", "disabled")
 	_ = cw.Write(header)
 	for _, h := range rows {
 		rec := []string{csvSafe(h.CI.Label), h.CI.ID}
@@ -255,7 +256,7 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 			last = h.LastCollect.UTC().Format(time.RFC3339)
 		}
 		rec = append(rec, csvSafe(strings.Join(h.Stacks, ";")), last,
-			strconv.FormatBool(h.CollectOK))
+			strconv.FormatBool(h.CollectOK), strconv.FormatBool(h.CI.DisabledAt != nil))
 		_ = cw.Write(rec)
 	}
 	cw.Flush()
@@ -271,14 +272,16 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 //	  "application": "nginx",
 //	  "values": {"os.version": "RHEL 8.6", "env": null},
 //	  "last_collected": "2026-11-12T08:00:00Z",
-//	  "collect_ok": true
+//	  "collect_ok": true,
+//	  "disabled": false
 //	}
 //
 // values holds the chosen columns, with null for a column the host has no
 // value for; col=* chooses every attribute. stacks is always an array, empty
 // when the host is in none, and role is "" when none was given. application
 // is the application attribute, omitted when there is none; last_collected is
-// omitted for a host never collected.
+// omitted for a host never collected. disabled is true for a host that is
+// disabled: listed, but never contacted.
 type HostJSON struct {
 	ID            string          `json:"id"`
 	Name          string          `json:"name"`
@@ -287,6 +290,7 @@ type HostJSON struct {
 	Values        map[string]any  `json:"values"`
 	LastCollected *time.Time      `json:"last_collected,omitempty"`
 	CollectOK     bool            `json:"collect_ok"`
+	Disabled      bool            `json:"disabled"`
 }
 
 // StackRoleJSON is a host's membership of one stack.
@@ -301,7 +305,8 @@ func HostsJSON(rows []store.HostRow, members map[string][]store.Membership, cols
 	out := make([]HostJSON, 0, len(rows))
 	for _, r := range rows {
 		h := HostJSON{ID: r.CI.ID, Name: r.CI.Label, Stacks: []StackRoleJSON{},
-			Application: r.Values[model.AttrApplication], Values: map[string]any{}, CollectOK: r.CollectOK}
+			Application: r.Values[model.AttrApplication], Values: map[string]any{}, CollectOK: r.CollectOK,
+			Disabled: r.CI.DisabledAt != nil}
 		for _, m := range members[r.CI.ID] {
 			h.Stacks = append(h.Stacks, StackRoleJSON{Stack: m.Stack, Role: m.Role})
 		}

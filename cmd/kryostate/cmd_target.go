@@ -31,7 +31,7 @@ func (a *app) targetListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "list the enabled connections",
+		Short:   "list connections, and whether each is used or its host is disabled",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			st, err := openStore(a.db)
@@ -319,13 +319,32 @@ func (a *app) targetSetCredentialCmd() *cobra.Command {
 	return cmd
 }
 
+// listTargets lists every connection, with a status saying whether a
+// collection uses it: a connection switched off, or one whose host is
+// disabled, is listed but not used.
 func listTargets(ctx context.Context, st *store.Store) error {
-	profiles, err := st.CollectTargets(ctx, "")
+	hosts, err := st.Hosts(ctx, store.HostFilter{})
 	if err != nil {
 		return err
 	}
-	if len(profiles) == 0 {
-		fmt.Println("no enabled targets; add one with: kryostate target add <host> --user <user>")
+	type target struct {
+		host     store.HostRow
+		profiles []store.ConnProfile
+	}
+	var all []target
+	n := 0
+	for _, h := range hosts {
+		ps, err := st.ConnProfiles(ctx, h.CI.ID)
+		if err != nil {
+			return err
+		}
+		if len(ps) > 0 {
+			all = append(all, target{h, ps})
+			n += len(ps)
+		}
+	}
+	if n == 0 {
+		fmt.Println("no targets; add one with: kryostate target add <host> --user <user>")
 		return nil
 	}
 	holds, err := st.CredentialHolds(ctx)
@@ -339,18 +358,23 @@ func listTargets(ctx context.Context, st *store.Store) error {
 		}
 	}
 	tw := newTable(os.Stdout)
-	fmt.Fprintln(tw, "HOST\tID\tTRANSPORT\tCONNECT AS\tCREDENTIAL")
-	for _, p := range profiles {
-		name := p.CIID
-		if c, err := st.CI(ctx, p.CIID); err == nil {
-			name = c.Label
+	fmt.Fprintln(tw, "HOST\tID\tTRANSPORT\tCONNECT AS\tCREDENTIAL\tSTATUS")
+	for _, t := range all {
+		for _, p := range t.profiles {
+			credential := p.CredentialRef
+			if held[p.CredentialRef+"\x00"+p.Username] {
+				credential += " (on hold)"
+			}
+			status := "enabled"
+			switch {
+			case t.host.CI.DisabledAt != nil:
+				status = "HOST DISABLED"
+			case !p.Enabled:
+				status = "connection disabled"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s@%s%s\t%s\t%s\n", t.host.CI.Label, shortID(p.CIID), p.Transport,
+				p.Username, p.Address, portSuffix(p.Port), credential, status)
 		}
-		credential := p.CredentialRef
-		if held[p.CredentialRef+"\x00"+p.Username] {
-			credential += " (on hold)"
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s@%s%s\t%s\n", name, shortID(p.CIID), p.Transport,
-			p.Username, p.Address, portSuffix(p.Port), credential)
 	}
 	return tw.Flush()
 }

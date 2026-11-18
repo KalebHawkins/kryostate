@@ -61,6 +61,37 @@ var obsoleteColumns = map[string]map[string]bool{
 	"assertion": {"decided": true},
 }
 
+// renamedColumns map a column an older dump carries to the one that took its
+// place. Hosts were once retired rather than disabled; a retired host comes
+// back disabled, from the same moment, so it is still not contacted.
+var renamedColumns = map[string]map[string]string{
+	"ci": {"retired_at": "disabled_at"},
+}
+
+// upgradeRow rewrites an older row's renamed columns. A value already in the
+// new column wins.
+func upgradeRow(table string, row Row) Row {
+	renames := renamedColumns[table]
+	if len(renames) == 0 {
+		return row
+	}
+	out := make(Row, len(row))
+	for c, v := range row {
+		out[c] = v
+	}
+	for old, cur := range renames {
+		v, ok := out[old]
+		if !ok {
+			continue
+		}
+		delete(out, old)
+		if out[cur] == nil && v != nil {
+			out[cur] = v
+		}
+	}
+	return out
+}
+
 // Export reads every table into a dump.
 func Export(ctx context.Context, st *store.Store) (*Dump, error) {
 	d := &Dump{Format: Format, Tables: map[string][]Row{}, Order: tables, Counts: map[string]int{}}
@@ -139,6 +170,7 @@ func Restore(ctx context.Context, st *store.Store, d *Dump) error {
 			return err
 		}
 		for _, row := range d.Tables[t] {
+			row = upgradeRow(t, row)
 			cols := make([]string, 0, len(row))
 			for c := range row {
 				if obsoleteColumns[t][c] {
