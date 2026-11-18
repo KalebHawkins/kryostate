@@ -232,6 +232,17 @@ Secret Service) as `kryostate/svc-ro`, and points the targets at
 only asks for the password at a keyboard-interactive prompt, as PAM and
 directory-joined hosts often do, is answered there.
 
+To add one more host like the others, name just the host. Without `--user`
+it logs in as the one user your other targets use (or the user named by a
+`keyring:kryostate/<user>` credential), and without `--credential` it uses the
+credential your other targets for that user use, else a password stored for
+the user, else `agent:`. It says what it picked:
+
+```sh
+kryostate host add pmap13was2 --fqdn pmap13was2.example.com
+kryostate target add pmap13was2
+```
+
 To move every target that already logs in as a user onto the password, or
 onto any other credential:
 

@@ -128,6 +128,35 @@ func (s *Store) PutConnProfile(ctx context.Context, p ConnProfile) error {
 	return err
 }
 
+// CredentialUse is how many connections log in as one user with one
+// credential.
+type CredentialUse struct {
+	Username      string
+	CredentialRef string
+	Count         int
+}
+
+// CredentialUses lists, for a transport, which credentials the existing
+// connections use for each user, most used first.
+func (s *Store) CredentialUses(ctx context.Context, transport string) ([]CredentialUse, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT username, credential_ref, COUNT(*) FROM conn_profile WHERE transport=?
+		GROUP BY username, credential_ref ORDER BY COUNT(*) DESC, username, credential_ref`, transport)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CredentialUse
+	for rows.Next() {
+		var u CredentialUse
+		if err := rows.Scan(&u.Username, &u.CredentialRef, &u.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 // SetCredentialForUser points every connection that logs in as username at
 // ref, leaving everything else about them alone, and reports how many it
 // changed. An empty transport means every transport.

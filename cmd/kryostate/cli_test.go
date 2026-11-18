@@ -210,3 +210,43 @@ func TestTargetUpdateChangesOnlyWhatIsGiven(t *testing.T) {
 		t.Errorf("profile %+v", ps)
 	}
 }
+
+// TestTargetAddReusesWhatTheOthersUse: adding one more host like the others
+// needs only its name; naming a kryostate keyring credential names the user;
+// and with users that differ, the command asks rather than guesses.
+func TestTargetAddReusesWhatTheOthersUse(t *testing.T) {
+	ctx := context.Background()
+	db := filepath.Join(t.TempDir(), "k.db")
+	for _, h := range []string{"was1", "was2", "was3", "was4"} {
+		if err := execute(t, "host", "add", h, "--db", db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := execute(t, "target", "add", "was1", "-u", "ops", "-c", "keyring:kryostate/ops", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if err := execute(t, "target", "add", "was2", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if err := execute(t, "target", "add", "was3", "-c", "keyring:kryostate/svc", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if err := execute(t, "target", "add", "was4", "--db", db); err == nil {
+		t.Error("with two users in use, a target was added without --user")
+	}
+	st, err := openStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for h, want := range map[string][2]string{
+		"was2": {"ops", "keyring:kryostate/ops"},
+		"was3": {"svc", "keyring:kryostate/svc"},
+	} {
+		id, _ := st.LookupCI(ctx, h)
+		ps, _ := st.ConnProfiles(ctx, id)
+		if len(ps) != 1 || ps[0].Username != want[0] || ps[0].CredentialRef != want[1] {
+			t.Errorf("%s: %+v, want %s with %s", h, ps, want[0], want[1])
+		}
+	}
+}

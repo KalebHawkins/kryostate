@@ -102,7 +102,11 @@ func (a *app) hostAdd(ctx context.Context, name, fqdn string) error {
 	}
 	if created {
 		fmt.Printf("created %s (id %s)\n", name, id)
-		fmt.Printf("next: kryostate target add %s --user <user>\n", name)
+		if uses, _ := st.CredentialUses(ctx, "ssh"); len(uses) > 0 {
+			fmt.Printf("next: kryostate target add %s   (same user and credential as your other targets; --user/--credential to choose)\n", name)
+		} else {
+			fmt.Printf("next: kryostate target add %s --user <user>\n", name)
+		}
 	} else {
 		fmt.Printf("already known as %s\n", id)
 	}

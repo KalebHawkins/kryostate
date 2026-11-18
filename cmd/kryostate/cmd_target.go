@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/secret"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -49,8 +50,8 @@ func addTargetFlags(cmd *cobra.Command, o *targetOpts) {
 	fs.StringVarP(&o.transport, "transport", "t", "ssh", "ssh or winrm")
 	fs.StringVarP(&o.address, "address", "a", "", "address or name to connect to, blank for the host's fqdn or name")
 	fs.IntVarP(&o.port, "port", "p", 0, "port, zero for the transport default")
-	fs.StringVarP(&o.user, "user", "u", "", "username")
-	fs.StringVarP(&o.credential, "credential", "c", "agent:", "credential reference, for example agent: or keyring:kryostate/ops")
+	fs.StringVarP(&o.user, "user", "u", "", "username; blank on add: the user named by a keyring:kryostate/<user> credential, or the one user your other targets log in as")
+	fs.StringVarP(&o.credential, "credential", "c", "", "credential reference, such as agent: or keyring:kryostate/ops; blank on add: what your other targets for the user use, else a password stored for the user, else agent:")
 	fs.BoolVar(&o.password, "password", false, "log in with a password: prompt for it, keep it in the OS credential store as kryostate/<user>, and use keyring:kryostate/<user>. Run again when the password changes")
 	fs.StringVar(&o.bastion, "bastion", "", "bastion as user@host:port/credential-ref")
 	fs.BoolVar(&o.disable, "disable", false, "record the profile but never collect through it")
@@ -67,6 +68,7 @@ fqdn or name unless --address is given, which names one host. Adding a
 connection a host already has over the same transport replaces it; a pinned
 host key is kept.`,
 		Example: `  kryostate target add web01 --user ops
+  kryostate target add web02                      # same user and credential as your other targets
   kryostate target add web01 web02 db01 --user ops --password
   kryostate target add win01 -t winrm --user 'CORP\svc' -c keyring:kryostate/svc`,
 		Args: cobra.MinimumNArgs(1),
@@ -75,7 +77,6 @@ host key is kept.`,
 		},
 	}
 	addTargetFlags(cmd, &o)
-	_ = cmd.MarkFlagRequired("user")
 	return cmd
 }
 
@@ -133,6 +134,11 @@ func (a *app) targetPut(cmd *cobra.Command, refs []string, o targetOpts, update 
 			return fmt.Errorf("%s has no %s connection; add one with: kryostate target add %s --user <user>", refs[i], o.transport, refs[i])
 		}
 	}
+	if !update {
+		if err := fillTargetDefaults(ctx, st, &o, changed("credential")); err != nil {
+			return err
+		}
+	}
 	if o.password {
 		user := o.user
 		if user == "" && update {
@@ -147,7 +153,7 @@ func (a *app) targetPut(cmd *cobra.Command, refs []string, o targetOpts, update 
 			return err
 		}
 	}
-	if o.credential == "" {
+	if o.credential == "" && (!update || changed("credential")) {
 		return errors.New("--credential cannot be empty")
 	}
 	for i, id := range ids {
@@ -192,6 +198,58 @@ func (a *app) targetPut(cmd *cobra.Command, refs []string, o targetOpts, update 
 		fmt.Printf("recorded: %s via %s as %s@%s using %s\n", refs[i], p.Transport, p.Username, p.Address, p.CredentialRef)
 	}
 	fmt.Printf("try it with: kryostate refresh --only %s\n", strings.Join(refs, ","))
+	return nil
+}
+
+// fillTargetDefaults works out a new target's user and credential when they
+// are not given, from what the other targets already use, so that adding one
+// more host like the others needs only its name. Whatever it picks is said.
+func fillTargetDefaults(ctx context.Context, st *store.Store, o *targetOpts, credGiven bool) error {
+	uses, err := st.CredentialUses(ctx, o.transport)
+	if err != nil {
+		return err
+	}
+	if o.user == "" {
+		if acct, ok := strings.CutPrefix(o.credential, "keyring:kryostate/"); ok && acct != "" {
+			o.user = acct
+			fmt.Printf("user %s, from the credential\n", o.user)
+		} else {
+			users := map[string]bool{}
+			var names []string
+			for _, u := range uses {
+				if !users[u.Username] {
+					users[u.Username] = true
+					names = append(names, u.Username)
+				}
+			}
+			if len(names) != 1 {
+				if len(names) > 1 {
+					return fmt.Errorf("give --user: your %s targets log in as %s", o.transport, strings.Join(names, ", "))
+				}
+				return errors.New("a target needs --user")
+			}
+			o.user = names[0]
+			fmt.Printf("user %s, as your other %s targets\n", o.user, o.transport)
+		}
+	}
+	if credGiven || o.password {
+		return nil
+	}
+	for _, u := range uses {
+		if u.Username == o.user {
+			o.credential = u.CredentialRef
+			fmt.Printf("credential %s, as your other %s targets for %s\n", o.credential, o.transport, o.user)
+			return nil
+		}
+	}
+	ref := "keyring:kryostate/" + o.user
+	if s, err := secret.NewRegistry(nil).Resolve(ctx, ref); err == nil {
+		s.Zero()
+		o.credential = ref
+		fmt.Printf("credential %s, the password stored for %s\n", ref, o.user)
+		return nil
+	}
+	o.credential = "agent:"
 	return nil
 }
 
