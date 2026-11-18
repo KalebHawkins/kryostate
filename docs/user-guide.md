@@ -239,8 +239,8 @@ credential your other targets for that user use, else a password stored for
 the user, else `agent:`. It says what it picked:
 
 ```sh
-kryostate host add pmap13was2 --fqdn pmap13was2.example.com
-kryostate target add pmap13was2
+kryostate host add web03 --fqdn web03.example.com
+kryostate target add web03
 ```
 
 To move every target that already logs in as a user onto the password, or
