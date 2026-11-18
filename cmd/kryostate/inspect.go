@@ -10,13 +10,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strings"
-	"text/tabwriter"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/query"
@@ -31,10 +30,6 @@ func shortID(id string) string {
 		return id[:8]
 	}
 	return id
-}
-
-func newTable(w io.Writer) *tabwriter.Writer {
-	return tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 }
 
 func writeJSON(v any) error {
@@ -175,25 +170,26 @@ func (a *app) hostShow(ctx context.Context, host string, asJSON bool, at string)
 		})
 	}
 
-	fmt.Printf("%s  (id %s)\n", ci.Label, ci.ID)
+	lipgloss.Printf("%s  %s\n", render(os.Stdout, styleTitle, ci.Label), render(os.Stdout, styleFaint, "(id "+ci.ID+")"))
 	if ci.DisabledAt != nil {
-		fmt.Printf("status: DISABLED since %s", ci.DisabledAt.Local().Format("2006-01-02 15:04"))
+		state := fmt.Sprintf("DISABLED since %s", ci.DisabledAt.Local().Format("2006-01-02 15:04"))
 		if ci.DisabledBy != "" {
-			fmt.Printf(" by %s", ci.DisabledBy)
+			state += " by " + ci.DisabledBy
 		}
 		if ci.DisabledReason != "" {
-			fmt.Printf(": %s", ci.DisabledReason)
+			state += ": " + ci.DisabledReason
 		}
-		fmt.Printf("\n        not contacted; enable with: kryostate host enable %s\n", ci.Label)
+		field("status", render(os.Stdout, styleWarn, state))
+		fmt.Printf("        not contacted; enable with: kryostate host enable %s\n", ci.Label)
 	} else {
-		fmt.Println("status: enabled")
+		field("status", render(os.Stdout, styleGood, "enabled"))
 	}
 	if len(idents) > 0 {
 		var parts []string
 		for _, i := range idents {
-			parts = append(parts, string(i.Scheme)+"="+i.Value)
+			parts = append(parts, render(os.Stdout, styleLabel, string(i.Scheme)+"=")+i.Value)
 		}
-		fmt.Printf("identity: %s\n", strings.Join(parts, "  "))
+		field("identity", strings.Join(parts, "  "))
 	}
 
 	fmt.Println()
@@ -253,9 +249,10 @@ func (a *app) hostShow(ctx context.Context, host string, asJSON bool, at string)
 		for _, p := range profiles {
 			state := ""
 			if !p.Enabled {
-				state = " (disabled)"
+				state = " " + render(os.Stdout, styleWarn, "(disabled)")
 			}
-			fmt.Printf("target: %s %s@%s%s %s%s\n", p.Transport, p.Username, p.Address, portSuffix(p.Port), p.CredentialRef, state)
+			field("target", fmt.Sprintf("%s %s@%s%s %s%s", p.Transport, p.Username, p.Address, portSuffix(p.Port),
+				render(os.Stdout, styleFaint, p.CredentialRef), state))
 		}
 	} else {
 		fmt.Printf("\nno connection profile; add one with: kryostate target add %s --user <user> [--address <addr>]\n", ci.Label)

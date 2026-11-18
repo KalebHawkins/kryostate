@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/notify"
@@ -186,7 +185,7 @@ func listNotify(ctx context.Context, st *store.Store, w io.Writer) error {
 		fmt.Fprintln(w, "No destinations. Add one with: kryostate notify add-webhook or add-email.")
 		return nil
 	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	tw := newTable(w)
 	fmt.Fprintln(tw, "NAME\tKIND\tWHERE\tSECRET")
 	for _, d := range dests {
 		switch d.Kind {

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 
+	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -36,7 +37,7 @@ func main() {
 	err := newRootCmd(log).ExecuteContext(ctx)
 	stop()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "kryostate:", err)
+		lipgloss.Fprintln(os.Stderr, render(os.Stderr, styleBad, "kryostate:"), err)
 		os.Exit(1)
 	}
 }

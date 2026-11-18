@@ -494,6 +494,12 @@ serve:
 [docs/operations.md](docs/operations.md#configuration) lists the settings
 that can be given this way.
 
+At a terminal, tables are drawn with borders and states are coloured (green
+for ok and enabled, yellow for disabled or never, red for failures and
+credentials on hold). Piped or redirected output is plain tab-aligned text,
+unchanged for scripts. `NO_COLOR=1` turns styling off; `CLICOLOR_FORCE=1`
+turns it on for a pager such as `less -R`.
+
 ## 6. Credentials
 
 Each host can use a different credential. The database stores a reference. It
