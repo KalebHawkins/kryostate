@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -34,16 +35,158 @@ const starterCollectors = `{
 }
 `
 
+// exampleCollector is what "kryostate collectors add --example" prints: one
+// working, read-only collector in the form "collectors add" takes.
+const exampleCollector = `{
+  "id": "example.kernel",
+  "attr": "custom.kernel",
+  "os": ["linux"],
+  "comment": "An example to copy. It runs 'uname -r' and keeps the first line: the kernel release.",
+  "command": "uname -r",
+  "parse": { "kind": "first_line" },
+  "type": "version"
+}
+`
+
+// addCollectors adds the collectors in a file to the database, or with dryRun
+// says what it would add. Every collector is checked before any is written,
+// so a file with one mistake in it changes nothing.
+func addCollectors(ctx context.Context, w io.Writer, eng *engine.Engine, path string, dryRun bool) error {
+	var (
+		b   []byte
+		err error
+	)
+	if path == "-" {
+		b, err = io.ReadAll(os.Stdin)
+	} else {
+		b, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return err
+	}
+	specs, err := collect.ParseSpecList(b)
+	if err == nil {
+		err = eng.CheckAdd(ctx, specs)
+	}
+	if err != nil {
+		return fmt.Errorf("%s: %w\nnothing was added", path, err)
+	}
+	have, err := eng.Store.UserCollectors(ctx)
+	if err != nil {
+		return err
+	}
+	added := map[string]bool{}
+	for _, u := range have {
+		added[u.Spec.ID] = true
+	}
+	for _, sp := range specs {
+		verb, done := "add", "added"
+		if added[sp.ID] {
+			verb, done = "update", "updated"
+		}
+		line := fmt.Sprintf("%s records %s on %s (%s), with: %s", sp.ID, sp.Attr, runsOn(engine.SpecTarget(sp)), strings.Join(sp.OS, ", "), oneLine(sp.Command, 60))
+		if dryRun {
+			fmt.Fprintf(w, "would %s %s\n", verb, line)
+			continue
+		}
+		if _, err := eng.Store.PutUserCollector(ctx, sp, actor()); err != nil {
+			return fmt.Errorf("%s: %w", sp.ID, err)
+		}
+		fmt.Fprintf(w, "%s %s\n", done, line)
+	}
+	if dryRun {
+		fmt.Fprintln(w, "\nNothing was saved (--dry-run).")
+		return nil
+	}
+	fmt.Fprintf(w, "\ntry it now:  kryostate collectors try %s --host <name>\n", specs[0].ID)
+	fmt.Fprintln(w, "collect:     kryostate refresh")
+	fmt.Fprintln(w, "A running kryostate serve picks this up at its next collection and page view; no restart is needed.")
+	return nil
+}
+
+// removeCollectors removes collectors added with "collectors add". Every id is
+// checked first, so a typo removes nothing.
+func removeCollectors(ctx context.Context, w io.Writer, eng *engine.Engine, ids []string) error {
+	have, err := eng.Store.UserCollectors(ctx)
+	if err != nil {
+		return err
+	}
+	added := map[string]bool{}
+	for _, u := range have {
+		added[u.Spec.ID] = true
+	}
+	file := map[string]bool{}
+	for _, sp := range eng.OwnSpecs() {
+		file[sp.ID] = true
+	}
+	builtin := map[string]bool{}
+	if set, err := collect.BuiltinSpecs(); err == nil {
+		for _, sp := range set.Specs {
+			builtin[sp.ID] = true
+		}
+	}
+	for i, id := range ids {
+		id = strings.TrimPrefix(id, collect.RefSpec)
+		ids[i] = id
+		switch {
+		case added[id]:
+		case builtin[id] || strings.HasPrefix(id, collect.RefBuiltin):
+			return fmt.Errorf("%s is built in and cannot be removed; nothing was removed", id)
+		case file[id]:
+			return fmt.Errorf("%s comes from the collectors file; remove it there; nothing was removed", id)
+		default:
+			if _, ok := collect.Lookup(id); ok {
+				return fmt.Errorf("%s is a catalog entry; switch it off with: kryostate collectors disable %s; nothing was removed", id, id)
+			}
+			return fmt.Errorf("no collector %q was added; see them with: kryostate collectors list; nothing was removed", id)
+		}
+	}
+	for _, id := range ids {
+		if err := eng.Store.DeleteUserCollector(ctx, id, actor()); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%s: %w", id, err)
+		}
+		fmt.Fprintf(w, "removed %s. Values it already collected are kept.\n", id)
+	}
+	return nil
+}
+
+// sourceOf says where a collector named on the command line comes from.
+func sourceOf(ctx context.Context, eng *engine.Engine, ref string) string {
+	id := strings.TrimPrefix(ref, collect.RefSpec)
+	if u, ok := eng.Added(ctx, id); ok {
+		s := "added"
+		if u.AddedBy != "" {
+			s += " by " + u.AddedBy
+		}
+		return s + " on " + u.AddedAt.Local().Format("2006-01-02 15:04")
+	}
+	for _, sp := range eng.OwnSpecs() {
+		if sp.ID == id {
+			return "from the collectors file"
+		}
+	}
+	switch {
+	case strings.HasPrefix(ref, collect.RefBuiltin):
+		return "built in"
+	case strings.HasPrefix(ref, collect.RefExternal):
+		return "external program"
+	}
+	if _, ok := collect.Lookup(ref); ok {
+		return "catalog"
+	}
+	return "built in"
+}
+
 // showDefinition prints one collector as it would be written in a file, so a
 // catalog entry or a built-in can be copied as the start of one's own. The
 // definition goes to standard output on its own, so it can be redirected into
 // a file; the note about which file goes to standard error.
-func showDefinition(w io.Writer, eng *engine.Engine, ref, param string) error {
-	file, b, err := eng.Definition(ref, param)
+func showDefinition(ctx context.Context, w io.Writer, eng *engine.Engine, ref, param string) error {
+	file, b, err := eng.Definition(ctx, ref, param)
 	if err != nil {
 		return fmt.Errorf("%w; see them with: kryostate collectors list, and the catalog with: kryostate collectors catalog", err)
 	}
-	fmt.Fprintf(os.Stderr, "# %s as written in %s\n", ref, file)
+	fmt.Fprintf(os.Stderr, "# %s (%s) as written in %s\n", ref, sourceOf(ctx, eng, ref), file)
 	_, err = w.Write(b)
 	return err
 }
@@ -206,6 +349,45 @@ func listCatalog(ctx context.Context, st *store.Store) error {
 	return nil
 }
 
+// listAdded lists the collectors added with "collectors add", with who added
+// them and when.
+func listAdded(ctx context.Context, eng *engine.Engine, st *store.Store) error {
+	all, err := st.UserCollectors(ctx)
+	if err != nil {
+		return err
+	}
+	if len(all) == 0 {
+		fmt.Println("When nothing in the catalog fits, add your own:")
+		fmt.Println("  kryostate collectors add --example > mine.json")
+		fmt.Println("  kryostate collectors add mine.json")
+		return nil
+	}
+	running := map[string]bool{}
+	added, err := eng.AddedCollectors(ctx)
+	if err != nil {
+		return err
+	}
+	for _, u := range added {
+		running[u.Spec.ID] = true
+	}
+	fmt.Println("Added with kryostate collectors add:")
+	tw := newTable(os.Stdout)
+	fmt.Fprintln(tw, "  ID\tATTRIBUTE\tSYSTEMS\tADDED BY\tADDED\tCOMMAND")
+	for _, u := range all {
+		id := u.Spec.ID
+		if !running[id] {
+			id += " (skipped: the collectors file has the same id)"
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\n", id, u.Spec.Attr, strings.Join(u.Spec.OS, ","), u.AddedBy,
+			u.AddedAt.Local().Format("2006-01-02 15:04"), oneLine(u.Spec.Command, 50))
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	fmt.Println("  replace one: kryostate collectors add <file>    remove one: kryostate collectors rm <id>")
+	return nil
+}
+
 func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, path string) error {
 	choices, err := st.Choices(ctx)
 	if err != nil {
@@ -255,10 +437,11 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 		}
 	}
 	fmt.Println()
-	if _, err := os.Stat(path); err != nil {
-		fmt.Println("When nothing in the catalog fits, write your own: kryostate collectors init")
-	} else {
-		fmt.Printf("Your own, from %s:\n", path)
+	if err := listAdded(ctx, eng, st); err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); err == nil {
+		fmt.Printf("\nFrom the collectors file %s:\n", path)
 		tw := newTable(os.Stdout)
 		fmt.Fprintln(tw, "  ID\tATTRIBUTE\tSYSTEMS\tCOMMAND")
 		for _, s := range mine {

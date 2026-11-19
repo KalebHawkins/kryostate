@@ -362,8 +362,8 @@ func (s *Server) attrNotes(ctx context.Context, ev store.RuleEval) []attrNote {
 			recorded[attr] = true
 		}
 	}
-	if s.Engine != nil && s.Engine.Specs != nil {
-		for _, sp := range s.Engine.Specs.Specs {
+	if loaded, err := s.Engine.LoadedSpecs(ctx); err == nil {
+		for _, sp := range loaded {
 			recorded[sp.Attr] = true
 		}
 	}

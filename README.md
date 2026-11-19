@@ -312,7 +312,7 @@ completion script.
 | `host disable`, `host enable` | `host disable` stops all contact with hosts (collection, external collectors, checks, DNS) while keeping them listed, charted and queryable with their history and connections; `--reason` is recorded. `host enable` brings them back as they were |
 | `host rm` | Deletes hosts and everything recorded about them, after asking (`--yes` skips the question). The audit log is kept, with one more entry naming each deleted host |
 | `refresh` | Runs `collect`, then the checks |
-| `collectors` | `list` lists collectors, `catalog` the catalog; `enable` and `disable` switch catalog collectors on and off; `init` creates a file for your own; `show` prints any collector as it would be written in that file; `try` tests any collector without saving; `schedules` and `schedule` list and change schedules |
+| `collectors` | `list` lists collectors, `catalog` the catalog; `enable` and `disable` switch catalog collectors on and off; `add <file.json>` stores your own in the database (`--dry-run` checks only, `--example` prints a starter) and `rm <id>` removes them; `init` creates a file for your own instead; `show` prints any collector as it would be written in that file; `try` tests any collector without saving; `schedules` and `schedule` list and change schedules |
 | `import` | Reads hosts, addresses, stacks, roles and applications from a Markdown or CSV document. Common column names are recognised; `--map` names them otherwise. Other columns are reported as not imported |
 | `target` | `list`, `add`, `update` and `rm` connection profiles; `list` shows whether each is used, switched off, or belongs to a disabled host. `forget-host-key` clears a pinned key after a host is rebuilt |
 | `stack` | `list` stacks; `add` creates a stack and adds members, singly or from a list with roles (`--file`, `--create`, `--user`); `update` changes its details; `rm` takes members out; `delete` deletes the stack |
@@ -367,7 +367,10 @@ guide](docs/collectors.md) explains how to write one, step by step, and the
 [query guide](docs/queries.md) covers the query language.
 
 ```sh
-./kryostate collectors init                        # creates collectors.json next to the database
+./kryostate collectors add --example > mine.json   # a starting point
+./kryostate collectors add mine.json               # checks it and stores it in the database
+./kryostate collectors rm mine.kernel              # removes one added that way
+./kryostate collectors init                        # or: creates collectors.json next to the database
 ./kryostate collectors try <id> --host appnode1    # runs it once and saves nothing
 ```
 
@@ -643,8 +646,9 @@ status. Groups are switched on from the buttons above the list.
 Each collector has its own page: what it records, where it runs, its
 commands, its schedule, and **View definition**, the collector as it would be
 written in `collectors.json`. Catalog collectors are switched on and off here.
-Collectors written by hand are listed from their file and can be tested here,
-but not written here: the page has no login, and a collector is a command
+Collectors written by hand, in `collectors.json` or added with `kryostate
+collectors add` (marked **added**, with who added them), are listed and can
+be tested here, but not written, changed or removed here: the page has no login, and a collector is a command
 that runs on every host.
 
 ![Collector](docs/images/collector.png)

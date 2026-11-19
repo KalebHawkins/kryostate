@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -60,9 +61,9 @@ func RedactEnv(ex collect.External) collect.External {
 
 // Definition writes a collector out as it would be written in a file: the
 // file's name and its contents. id is a catalog id, builtin.ATTR, spec.ID,
-// external.NAME, or the id of any loaded spec. param is the value for a
-// catalog template, blank for its example value.
-func (e *Engine) Definition(id, param string) (file string, body []byte, err error) {
+// external.NAME, or the id of any loaded or added spec. param is the value
+// for a catalog template, blank for its example value.
+func (e *Engine) Definition(ctx context.Context, id, param string) (file string, body []byte, err error) {
 	switch {
 	case strings.HasPrefix(id, collect.RefBuiltin):
 		_, by, err := collect.BuiltinRefs()
@@ -99,6 +100,12 @@ func (e *Engine) Definition(id, param string) (file string, body []byte, err err
 				b, err := collect.SpecsJSON([]collect.Spec{s})
 				return "collectors.json", b, err
 			}
+		}
+	}
+	for _, ref := range []string{want, id} {
+		if u, ok := e.Added(ctx, ref); ok {
+			b, err := collect.SpecsJSON([]collect.Spec{u.Spec})
+			return "collectors.json", b, err
 		}
 	}
 	return "", nil, fmt.Errorf("no collector named %q", id)

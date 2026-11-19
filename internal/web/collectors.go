@@ -14,6 +14,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/model"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // ConfigFiles says where this process looks for the files a person writes,
@@ -34,6 +35,7 @@ const (
 	srcBuiltin  = "builtin"
 	srcCatalog  = "catalog"
 	srcOwn      = "own"
+	srcAdded    = "added"
 	srcExternal = "external"
 )
 
@@ -41,6 +43,7 @@ var sourceLabels = map[string]string{
 	srcBuiltin:  "built-in",
 	srcCatalog:  "catalog",
 	srcOwn:      "your own",
+	srcAdded:    "added",
 	srcExternal: "external",
 }
 
@@ -85,6 +88,8 @@ type collectorRow struct {
 	AttrExample bool
 	Reveals     bool
 	Hidden      bool
+	// Added is set for a collector added with "kryostate collectors add".
+	Added *store.UserCollector
 }
 
 func (r collectorRow) SourceLabel() string { return sourceLabels[r.Source] }
@@ -146,6 +151,8 @@ type collectorsData struct {
 	Groups     []groupView
 	Chips      targetChips
 	Own        int
+	// Added counts the collectors added with "kryostate collectors add".
+	Added int
 	// Externals counts the external programs loaded; ExternalsPath is the
 	// file they were read from, or where that file would go.
 	Externals     int
@@ -212,6 +219,16 @@ func (s *Server) collectorRows(ctx context.Context) ([]collectorRow, error) {
 			Category: "Custom", Source: srcOwn, On: true, Status: "on", Where: whereText(engine.SpecTarget(sp)),
 			Attrs: []string{sp.Attr}, Systems: systemNames(sp.OS)})
 	}
+	added, err := s.Engine.AddedCollectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range added {
+		sp := added[i].Spec
+		rows = append(rows, collectorRow{ID: collect.RefSpec + sp.ID, Title: sp.ID, Description: sp.Comment,
+			Category: "Custom", Source: srcAdded, On: true, Status: "on", Where: whereText(engine.SpecTarget(sp)),
+			Attrs: []string{sp.Attr}, Systems: systemNames(sp.OS), Added: &added[i]})
+	}
 	if s.Engine != nil {
 		for _, ex := range s.Engine.Externals {
 			rows = append(rows, collectorRow{ID: collect.RefExternal + ex.Name, Title: ex.Name,
@@ -231,7 +248,7 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 		Categories: collectorCategories,
 		Filter: collectorFilter{Q: r.URL.Query().Get("q"), Cat: r.URL.Query().Get("cat"),
 			Source: r.URL.Query().Get("source"), Status: r.URL.Query().Get("status")}}
-	for _, k := range []string{srcBuiltin, srcCatalog, srcOwn, srcExternal} {
+	for _, k := range []string{srcBuiltin, srcCatalog, srcOwn, srcAdded, srcExternal} {
 		d.Sources = append(d.Sources, collectorCategory{k, sourceLabels[k]})
 	}
 	if d.WantPath == "" && s.Config.Dir != "" {
@@ -262,6 +279,9 @@ func (s *Server) handleCollectors(w http.ResponseWriter, r *http.Request) {
 			}
 			if row.Source == srcOwn {
 				d.Own++
+			}
+			if row.Source == srcAdded {
+				d.Added++
 			}
 			d.Total++
 			sec.Rows = append(sec.Rows, row)
@@ -448,6 +468,13 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 		d.FileProblem = s.collectorsFileProblem()
 		d.DefNote = "As loaded from your collectors.json when the server started. Edit that file on the server to change it."
 
+	case srcAdded:
+		sp := d.Row.Added.Spec
+		d.specDetail([]collect.Spec{sp})
+		d.SpecWhere, d.SpecStacks = sp.Where, sp.Stacks
+		d.Target = describeTarget(tg, engine.SpecTarget(sp), sp.OS, members)
+		d.DefNote = "Added on the command line. To change it, edit the definition and run kryostate collectors add <file> again; to remove it, kryostate collectors rm " + sp.ID + ". This page never changes a collector."
+
 	case srcExternal:
 		ex, _ := s.Engine.External(strings.TrimPrefix(id, collect.RefExternal))
 		ex = engine.RedactEnv(ex)
@@ -456,7 +483,7 @@ func (s *Server) handleCollector(w http.ResponseWriter, r *http.Request) {
 		d.DefNote = "As loaded from externals.json when the server started. Values of environment variables are hidden here, because they may be the program's own credential."
 	}
 
-	file, def, err := s.Engine.Definition(id, "")
+	file, def, err := s.Engine.Definition(ctx, id, "")
 	if err != nil {
 		d.DefErr = err.Error()
 	}

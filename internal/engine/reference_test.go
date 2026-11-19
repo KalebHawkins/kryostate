@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -51,7 +52,7 @@ func TestDefinitionFindsEveryKind(t *testing.T) {
 		"linux.os.family":    `"id": "linux.os.family"`,
 		"external.vm":        `"TOKEN=(hidden)"`,
 	} {
-		file, b, err := e.Definition(id, "")
+		file, b, err := e.Definition(context.Background(), id, "")
 		if err != nil {
 			t.Errorf("%s: %v", id, err)
 			continue
@@ -63,7 +64,7 @@ func TestDefinitionFindsEveryKind(t *testing.T) {
 			t.Errorf("%s shows an external program's secret", id)
 		}
 	}
-	if _, _, err := e.Definition("made.up", ""); err == nil {
+	if _, _, err := e.Definition(context.Background(), "made.up", ""); err == nil {
 		t.Error("an unknown id gave a definition")
 	}
 }

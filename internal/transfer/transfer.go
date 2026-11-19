@@ -44,7 +44,7 @@ var tables = []string{
 	"precedence", "fact_meta",
 	"address", "conn_profile", "check_def", "evidence",
 	"stack", "stack_member",
-	"run", "probe", "audit", "collector_choice",
+	"run", "probe", "audit", "collector_choice", "user_collector",
 	"collector_schedule", "collector_state",
 	"notify_dest", "notify_config", "notify_send",
 	"rule", "rule_snapshot",

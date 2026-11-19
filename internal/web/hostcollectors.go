@@ -29,6 +29,8 @@ type hostCollector struct {
 	Schedule string
 	Values   []hostValue
 	More     int
+	// Added marks a collector added with "kryostate collectors add".
+	Added bool
 }
 
 // hostValue is one value a collector recorded on the host.
@@ -107,7 +109,7 @@ func (s *Server) hostCollectorsFor(ctx context.Context, ciID string, facts []mod
 
 	for _, h := range on {
 		row := hostCollector{Title: h.Title, Href: hostCollectorHref(h.Collector), Kind: h.Kind,
-			Schedule: scheduleText(h.Key, h.Schedule)}
+			Schedule: scheduleText(h.Key, h.Schedule), Added: h.Added != nil}
 		if !h.Runs {
 			row.Why, row.Query = skipReason(h, family)
 			out.Skipped = append(out.Skipped, row)
@@ -170,7 +172,7 @@ func runReason(h engine.OnHost) (why, query string) {
 	case engine.KindExternal:
 		return "External program · every host, run on the KryoState server", ""
 	case engine.KindSpec:
-		return specReason(h.Spec), ""
+		return specReason(h.Spec, h.Added), ""
 	}
 	if h.Target == "" {
 		return "every host", ""
@@ -178,9 +180,17 @@ func runReason(h engine.OnHost) (why, query string) {
 	return "matches", h.Target
 }
 
-// specReason is where a spec from collectors.json says it runs, in its own
-// fields: "collectors.json: os linux, stacks web".
-func specReason(sp collect.Spec) string {
+// specReason is where a spec from collectors.json, or one added on the
+// command line, says it runs, in its own fields: "collectors.json: os linux;
+// stacks web", or "added by ops: os linux".
+func specReason(sp collect.Spec, added *store.UserCollector) string {
+	from := "collectors.json"
+	if added != nil {
+		from = "added"
+		if added.AddedBy != "" {
+			from += " by " + added.AddedBy
+		}
+	}
 	var parts []string
 	if len(sp.OS) > 0 {
 		parts = append(parts, "os "+strings.Join(sp.OS, ", "))
@@ -192,9 +202,9 @@ func specReason(sp collect.Spec) string {
 		parts = append(parts, "where "+sp.Where)
 	}
 	if len(parts) == 0 {
-		return "collectors.json: every host"
+		return from + ": every host"
 	}
-	return "collectors.json: " + strings.Join(parts, "; ")
+	return from + ": " + strings.Join(parts, "; ")
 }
 
 // skipReason says why a collector that is on does not run on a host.
@@ -206,7 +216,7 @@ func skipReason(h engine.OnHost, family string) (why, query string) {
 	case h.BadTarget != "":
 		return "its target does not parse, so it runs nowhere: " + h.BadTarget, h.Target
 	case h.Kind == engine.KindSpec:
-		return "excluded by " + specReason(h.Spec), ""
+		return "excluded by " + specReason(h.Spec, h.Added), ""
 	}
 	return "target excludes this host:", h.Target
 }

@@ -29,15 +29,20 @@ func (e *Engine) warnSkipped(c collect.Choice, err error) {
 }
 
 // AllSpecs is every spec that may run: the built-in ones, any from a spec
-// file, and the catalog collectors switched on in the store. The catalog part
-// is read on each call, so switching one on in the web interface takes effect
-// at the next collection without a restart.
+// file, those added with "collectors add", and the catalog collectors
+// switched on in the store. The added and catalog parts are read on each
+// call, so adding one on the command line or switching one on in the web
+// interface takes effect at the next collection without a restart.
 func (e *Engine) AllSpecs(ctx context.Context) (*collect.SpecSet, error) {
 	set := &collect.SpecSet{}
 	if e.Specs != nil {
 		set.Version = e.Specs.Version
-		set.Specs = append(set.Specs, e.Specs.Specs...)
 	}
+	loaded, err := e.LoadedSpecs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set.Specs = append(set.Specs, loaded...)
 	if e.Store == nil {
 		return set, nil
 	}
