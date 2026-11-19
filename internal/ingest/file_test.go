@@ -369,3 +369,53 @@ func TestFromStoreReadsBackUnchanged(t *testing.T) {
 		t.Fatalf("the example does not load: %v", err)
 	}
 }
+
+func TestBastionCredentialMayHoldSlashes(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	for _, b := range []string{
+		"ops@jump.example.com:22/keyring:kryostate/ops",
+		"ops@jump.example.com/file:/etc/kryostate/jump.key",
+		"ops@jump.example.com:2222/exec:/usr/local/bin/jump-key",
+	} {
+		src := "hosts:\n  - name: web01\n    target: {user: ops, credential: \"agent:\", bastion: \"" + b + "\"}\n"
+		if _, err := Load([]byte(src), FormatYAML); err != nil {
+			t.Errorf("bastion %q refused: %v", b, err)
+		}
+	}
+	f := mustLoad(t, "hosts:\n  - name: web01\n    target: {user: ops, credential: \"agent:\", bastion: \"ops@jump.example.com:22/keyring:kryostate/jump\"}\n", FormatYAML)
+	p, err := PlanImport(ctx, st, f, Options{CredentialMissing: func(ref string) bool { return ref == "keyring:kryostate/jump" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Warnings) != 1 || !strings.Contains(p.Warnings[0], "kryostate secret set kryostate/jump") {
+		t.Fatalf("warnings %q", p.Warnings)
+	}
+}
+
+func TestWinRMDefaultPortIs5986(t *testing.T) {
+	ctx := context.Background()
+	for _, ports := range [][2]string{{"", "port: 5986, "}, {"port: 5986, ", ""}} {
+		st := testStore(t)
+		file := func(port string) *File {
+			return mustLoad(t, "hosts:\n  - name: win01\n    target: {transport: winrm, "+port+"user: ops, credential: \"keyring:kryostate/win\"}\n", FormatYAML)
+		}
+		opt := Options{By: "ops"}
+		p, err := PlanImport(ctx, st, file(ports[0]), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := Apply(ctx, st, p, opt); err != nil {
+			t.Fatal(err)
+		}
+		again, err := PlanImport(ctx, st, file(ports[1]), opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !again.Empty() {
+			var b strings.Builder
+			again.Write(&b)
+			t.Fatalf("%q then %q changes:\n%s", ports[0], ports[1], b.String())
+		}
+	}
+}

@@ -100,8 +100,8 @@ func listEvidence(ctx context.Context, st *store.Store, f evidenceFlags) error {
 		fmt.Printf("%s  %s  %s  %d bytes%s  %s\n",
 			e.CIID, e.SpecID, e.Attr, len(e.Output), marker, e.At.Format(time.RFC3339))
 		if f.show {
-			fmt.Printf("  $ %s\n", e.Command)
-			for _, line := range strings.Split(strings.TrimRight(e.Output, "\n"), "\n") {
+			fmt.Printf("  $ %s\n", safeText(e.Command, false))
+			for _, line := range strings.Split(strings.TrimRight(safeText(e.Output, true), "\n"), "\n") {
 				fmt.Printf("  | %s\n", line)
 			}
 		}

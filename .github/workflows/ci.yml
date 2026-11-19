@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27.x"   # the newest patch release; 1.27.0 and 1.27.1 lack html/template fixes
+          go-version: "1.27.x"   # the newest patch release; go.mod requires 1.27.4 or later for security fixes
 
       - name: gofmt
         run: |
@@ -47,7 +47,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.27.x"   # the newest patch release; 1.27.0 and 1.27.1 lack html/template fixes
+          go-version: "1.27.x"   # the newest patch release; go.mod requires 1.27.4 or later for security fixes
 
       - uses: docker/setup-qemu-action@v3
 

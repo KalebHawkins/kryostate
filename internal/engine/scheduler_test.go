@@ -104,7 +104,7 @@ func TestSpreadOffsets(t *testing.T) {
 	now := last.Add(time.Minute)
 
 	// Deterministic, and the same as what the page says.
-	if SpreadClock("builtin.os") != SpreadClock("builtin.os") {
+	if a, b := SpreadClock("builtin.os"), SpreadClock("builtin.os"); a != b {
 		t.Fatal("SpreadClock is not deterministic")
 	}
 	daily := Schedule{Every: 24 * time.Hour}

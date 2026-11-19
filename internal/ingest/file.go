@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/KalebHawkins/kryostate/internal/collect"
 )
 
 // File is an import file: every host it lists, how each is reached, and the
@@ -526,27 +528,16 @@ func CheckCredentialRef(ref string) error {
 }
 
 // checkBastion reads a bastion the way the ssh transport does:
-// user@host[:port]/credential-ref, the credential after the last /.
+// user@host[:port]/credential-ref, the credential after the first /.
 func checkBastion(b string) error {
-	userHost, ref, ok := cutLast(b, "/")
-	if !ok {
-		return fmt.Errorf("bastion %q should be user@host:port/credential-ref", b)
-	}
-	if u, h, ok := strings.Cut(userHost, "@"); !ok || u == "" || h == "" {
-		return fmt.Errorf("bastion %q needs user@host before the /", b)
+	_, _, _, ref, err := collect.ParseBastion(b)
+	if err != nil {
+		return fmt.Errorf("bastion %q: %w", b, err)
 	}
 	if err := CheckCredentialRef(ref); err != nil {
 		return fmt.Errorf("bastion: %w", err)
 	}
 	return nil
-}
-
-func cutLast(s, sep string) (string, string, bool) {
-	i := strings.LastIndex(s, sep)
-	if i < 0 {
-		return s, "", false
-	}
-	return s[:i], s[i+len(sep):], true
 }
 
 func contains(list []string, s string) bool {

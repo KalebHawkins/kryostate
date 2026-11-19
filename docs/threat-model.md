@@ -230,8 +230,7 @@ one database.
 - `env:` credentials stay in memory for the life of the process.
 - No rate limit on web requests. A person who can connect can start full
   runs, one at a time, without a limit.
-- With Go 1.27.1, `govulncheck` reports fourteen standard library findings.
-  Two are escaping bugs in `html/template` (GO-2026-6600, GO-2026-6599), fixed
-  in Go 1.27.2. Build with a current toolchain and run `govulncheck ./...`.
-  The `go` directive stays at 1.27.1 only so that older toolchains can build
-  the project.
+- Go 1.27.1 has fourteen standard library vulnerabilities that this code
+  calls, fixed in Go 1.27.2 to 1.27.4. The `go` directive is 1.27.4, so the
+  `go` command builds with Go 1.27.4 or later. Run `govulncheck ./...` before a
+  release.

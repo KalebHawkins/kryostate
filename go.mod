@@ -1,6 +1,6 @@
 module github.com/KalebHawkins/kryostate
 
-go 1.27.1
+go 1.27.4
 
 require (
 	charm.land/lipgloss/v2 v2.1.1

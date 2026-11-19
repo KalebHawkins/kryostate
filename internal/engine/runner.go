@@ -321,11 +321,11 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 		CIID: p.CIID, Kind: probeKindFor(p.Transport), Outcome: model.OutcomeOK, Target: p.Address,
 	})
 	if p.HostKey == "" && t.HostKey() != "" {
-		_ = e.Store.PinHostKey(ctx, p.CIID, p.Transport, t.HostKey())
+		_ = e.Store.PinHostKey(rec, p.CIID, p.Transport, t.HostKey())
 	}
 	if bk, ok := t.(interface{ BastionHostKey() string }); ok {
 		if p.BastionHostKey == "" && bk.BastionHostKey() != "" {
-			_ = e.Store.PinBastionHostKey(ctx, p.CIID, p.Transport, bk.BastionHostKey())
+			_ = e.Store.PinBastionHostKey(rec, p.CIID, p.Transport, bk.BastionHostKey())
 		}
 	}
 
@@ -362,7 +362,7 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 		// exists for. Output from a command that failed is not kept: replaying
 		// a rule over an error message would manufacture a value.
 		if e.KeepEvidence && r.Ran {
-			if eerr := e.Store.RecordEvidence(ctx, store.Evidence{
+			if eerr := e.Store.RecordEvidence(rec, store.Evidence{
 				CIID: p.CIID, SpecID: r.SpecID, Attr: r.Attr, Scope: r.Scope,
 				Command: r.Command, Output: r.Output, RunID: runID, At: r.ObservedAt,
 			}); eerr != nil && e.Log != nil {
@@ -377,7 +377,7 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 			// last time is no longer known to be true. A reading that never
 			// completed is our failure, not the host's, and changes nothing.
 			if r.Completed {
-				if ferr := e.Store.RecordReadFailure(ctx, store.ReadFailure{
+				if ferr := e.Store.RecordReadFailure(rec, store.ReadFailure{
 					CIID: p.CIID, Attr: r.Attr, Scope: r.Scope, SourceID: srcID,
 					SpecID: r.SpecID, Error: readError(r), LastAt: r.ObservedAt,
 				}); ferr != nil && e.Log != nil {
@@ -386,8 +386,14 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 			}
 			continue
 		}
-		aid, err := e.assertID(ctx, p.CIID, r, srcID, runID)
+		aid, err := e.assertID(rec, p.CIID, r, srcID, runID)
 		if err != nil {
+			// The run stops here, but the values already written and the
+			// reason it stopped are still recorded against the host.
+			_ = e.Store.RecordProbe(rec, model.Probe{
+				CIID: p.CIID, Kind: model.ProbeCollectorRun, Outcome: model.OutcomeError,
+				Target: p.Address, Detail: trimErr(err),
+			})
 			return written, err
 		}
 		written++
@@ -395,17 +401,17 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 		// repair replace its own derivation instead of guessing from whichever
 		// source currently wins.
 		if e.KeepEvidence && r.Ran {
-			_ = e.Store.LinkEvidence(ctx, p.CIID, r.SpecID, r.Scope, aid)
+			_ = e.Store.LinkEvidence(rec, p.CIID, r.SpecID, r.Scope, aid)
 		}
 
 		// Identity evidence is filed as identity, not as a fact about the
 		// machine, so that a rebuilt host with a fresh machine-id becomes a
 		// question rather than an automatic second record.
 		if r.Attr == "host.machine_id" && r.Value != "" {
-			_ = e.Store.AddIdentity(ctx, p.CIID, model.IdentMachineID, r.Value)
+			_ = e.Store.AddIdentity(rec, p.CIID, model.IdentMachineID, r.Value)
 		}
 		if r.Attr == "hw.serial" && r.Value != "" {
-			_ = e.Store.AddIdentity(ctx, p.CIID, model.IdentSerial, r.Value)
+			_ = e.Store.AddIdentity(rec, p.CIID, model.IdentSerial, r.Value)
 		}
 	}
 

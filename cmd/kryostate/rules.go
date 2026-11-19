@@ -216,10 +216,11 @@ func showRule(ctx context.Context, st *store.Store, out io.Writer, name string, 
 	if len(ev.NotYet) > 0 {
 		fmt.Fprintf(out, "\nNOT YET (%d)\n", len(ev.NotYet))
 		tw := newTable(out)
+		fmt.Fprintln(tw, "  HOST\tVALUES")
 		for _, h := range ev.NotYet {
 			var vals []string
 			for a, v := range h.Values {
-				vals = append(vals, a+" = "+v)
+				vals = append(vals, a+" = "+safeText(v, false))
 			}
 			sort.Strings(vals)
 			fmt.Fprintf(tw, "  %s\t%s\n", h.Name, dash(strings.Join(vals, ", ")))
@@ -229,6 +230,7 @@ func showRule(ctx context.Context, st *store.Store, out io.Writer, name string, 
 	if len(ev.Unknown) > 0 {
 		fmt.Fprintf(out, "\nUNKNOWN (%d)\n", len(ev.Unknown))
 		tw := newTable(out)
+		fmt.Fprintln(tw, "  HOST\tWHY")
 		for _, h := range ev.Unknown {
 			fmt.Fprintf(tw, "  %s\tno value for %s yet\n", h.Name, strings.Join(h.Missing, ", "))
 		}

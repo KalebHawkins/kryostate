@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/KalebHawkins/kryostate/internal/collect"
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
@@ -358,6 +359,10 @@ func effectivePort(transport string, port int) int {
 	if port == 0 && transport == "ssh" {
 		return 22
 	}
+	// The engine always dials WinRM over HTTPS, where 0 means 5986.
+	if port == 0 && transport == "winrm" {
+		return 5986
+	}
 	return port
 }
 
@@ -382,8 +387,9 @@ func credentialWarnings(f *File, opt Options) []string {
 		}
 		refs[t.Credential] = true
 		if t.Bastion != "" {
-			_, ref, _ := cutLast(t.Bastion, "/")
-			refs[ref] = true
+			if _, _, _, ref, err := collect.ParseBastion(t.Bastion); err == nil {
+				refs[ref] = true
+			}
 		}
 	}
 	var out []string
