@@ -23,7 +23,9 @@ defaults:
   transport: ssh            # ssh or winrm
   user: ops
   # A reference, never a password: agent:, keyring:service/account,
-  # env:NAME, file:PATH or exec:COMMAND. Store a keyring password with
+  # env:NAME, file:PATH or exec:COMMAND. Quote agent: as "agent:", because
+  # YAML does not accept a value that ends in a colon. Store a keyring
+  # password with
   #   kryostate secret set kryostate/ops
   credential: keyring:kryostate/ops
   port: 22

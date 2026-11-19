@@ -134,3 +134,16 @@ func FuzzExtract(f *testing.F) {
 		}
 	})
 }
+
+// TestJSONPathCollectorPassesTheLoadCheck: the load check runs a rule over no
+// output, which for json_path is no value, not a refusal of the collector.
+func TestJSONPathCollectorPassesTheLoadCheck(t *testing.T) {
+	s := Spec{ID: "mine.cluster", Attr: "custom.cluster", OS: []string{"linux"},
+		Command: "cat /etc/app.json", Parse: Parse{Kind: ParseJSONPath, Path: "cluster.name"}}
+	if err := CheckSpec(s); err != nil {
+		t.Fatalf("a json_path collector was refused: %v", err)
+	}
+	if v, err := Extract(s.Parse, `{"cluster":{"name":"blue"}}`); err != nil || v != "blue" {
+		t.Fatalf("got %q %v", v, err)
+	}
+}

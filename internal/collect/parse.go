@@ -208,6 +208,10 @@ func byJSONPath(path, out string) (string, error) {
 	if path == "" {
 		return "", errors.New("json_path parse needs a path")
 	}
+	// No output is no value, as for the other rules, not malformed JSON.
+	if strings.TrimSpace(out) == "" {
+		return "", ErrNoMatch
+	}
 	var doc any
 	if err := json.Unmarshal([]byte(out), &doc); err != nil {
 		return "", fmt.Errorf("parse json: %w", err)
