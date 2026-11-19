@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/model"
@@ -126,6 +127,31 @@ func (s *Store) PutConnProfile(ctx context.Context, p ConnProfile) error {
 		p.CIID, p.Transport, p.Address, p.Port, p.Username, p.CredentialRef,
 		p.BastionRef, p.HostKey, p.BastionHostKey, p.HostKeyPolicy, en, ts(time.Now()))
 	return err
+}
+
+// CredentialRefs counts, for each credential reference, the connections that
+// use it, as their own credential or their bastion's.
+func (s *Store) CredentialRefs(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT credential_ref, bastion_ref FROM conn_profile`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var ref, bastion string
+		if err := rows.Scan(&ref, &bastion); err != nil {
+			return nil, err
+		}
+		if ref != "" {
+			out[ref]++
+		}
+		// user@host:port/credential-ref: the address part holds no slash.
+		if _, b, ok := strings.Cut(bastion, "/"); ok && b != "" {
+			out[b]++
+		}
+	}
+	return out, rows.Err()
 }
 
 // CredentialUse is how many connections log in as one user with one

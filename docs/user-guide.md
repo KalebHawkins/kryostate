@@ -191,6 +191,21 @@ kryostate target set-credential --for-user svc-ro --credential agent:
 If the password changes, run `kryostate secret set kryostate/svc-ro`. All
 targets that use the password read this one entry.
 
+Give `secret set` the part of the reference after `keyring:`. It refuses a
+whole reference such as `keyring:kryostate/svc-ro`, because no target reads
+an entry stored under that name.
+
+#### Find and remove stored passwords
+
+1. Run `kryostate secret list`. It shows each stored password, the number of
+   connections that use it, entries made by mistake, and references that are
+   missing.
+2. Run each command that the list shows under **To fix**.
+
+To remove an entry by the name in the **STORED AS** column, run
+`kryostate secret delete --entry '<name>'`. On macOS and Linux the credential
+store cannot be listed, so the list shows only the keyring references in use.
+
 #### Lockout protection
 
 **CAUTION:** A directory account usually locks after some incorrect

@@ -193,9 +193,9 @@ matches more than one host, the command stops and shows each match.
 | `target rm <host>...` | Removes the targets of the hosts. The collected values stay |
 | `target set-credential --for-user <user>` | Changes the credential of each target that logs in as `<user>`. Give `-c <ref>` or `--password` |
 | `target forget-host-key <host>` | Removes the pinned host key. Use it only after a host was rebuilt |
-| `secret list` | Shows the credential reference types that this build accepts |
+| `secret list` | Shows the stored passwords, the number of connections that use each, entries made by mistake and references that are missing, with the commands to fix them. On macOS and Linux, shows only the keyring references in use |
 | `secret set <service/account>` | Stores a secret in the operating system credential store. It also releases a hold on `keyring:service/account` |
-| `secret delete <service/account>` | Removes a secret from the operating system credential store |
+| `secret delete <service/account>` | Removes a secret from the operating system credential store. `--entry <name>` removes an entry by the name that `secret list` shows, which also removes entries made by mistake |
 | `secret test <ref>` | Resolves a credential reference and shows only if it worked |
 | `secret holds` | Shows the password credentials that failed to log in, and the credentials that are on hold |
 | `secret release <ref>` | Releases the hold on a credential reference, so that KryoState tries it again |

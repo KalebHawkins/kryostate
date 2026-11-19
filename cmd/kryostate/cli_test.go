@@ -211,6 +211,19 @@ func TestTargetUpdateChangesOnlyWhatIsGiven(t *testing.T) {
 	}
 }
 
+// TestSecretNamesThatAreReferencesAreRefused: a whole reference, or a service
+// with a colon, would be stored under a name no target reads.
+func TestSecretNamesThatAreReferencesAreRefused(t *testing.T) {
+	for _, bad := range []string{"keyring:kryostate/ops", "kryring:kryostate/ops", "kryostate", "kryostate/", "/ops", "a/b/c"} {
+		if _, _, err := serviceAccount(bad); err == nil {
+			t.Errorf("serviceAccount(%q) accepted", bad)
+		}
+	}
+	if s, a, err := serviceAccount("kryostate/ops"); err != nil || s != "kryostate" || a != "ops" {
+		t.Errorf("kryostate/ops: %s %s %v", s, a, err)
+	}
+}
+
 // TestTargetAddReusesWhatTheOthersUse: adding one more host like the others
 // needs only its name; naming a kryostate keyring credential names the user;
 // and with users that differ, the command asks rather than guesses.

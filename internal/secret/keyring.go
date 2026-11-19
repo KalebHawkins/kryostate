@@ -43,6 +43,39 @@ func DeleteKeyring(service, account string) error {
 	return keyring.Delete(service, account)
 }
 
+// KeyringEntry is one entry in the OS credential store, by name. Name is
+// what the store calls it: on Windows, service:account.
+type KeyringEntry struct {
+	Name    string
+	Service string
+	Account string
+}
+
+// Ref is the credential reference that reads this entry.
+func (e KeyringEntry) Ref() string { return "keyring:" + e.Service + "/" + e.Account }
+
+// Mistaken reports whether the entry cannot be what it was meant to be: a
+// service holding a colon or a slash was almost always a whole reference,
+// such as keyring:kryostate/ops, given where service/account was wanted.
+func (e KeyringEntry) Mistaken() bool { return strings.ContainsAny(e.Service, ":/") }
+
+// ErrListUnsupported means this operating system's credential store cannot
+// be listed.
+var ErrListUnsupported = errors.New("this operating system's credential store cannot be listed")
+
+// EntryFromName splits a stored entry's name, as ListKeyring shows it, back
+// into service and account. The account is after the last colon, because an
+// account never holds one and a mistaken service may.
+func EntryFromName(name string) (KeyringEntry, bool) { return entryFromName(name) }
+
+func entryFromName(name string) (KeyringEntry, bool) {
+	i := strings.LastIndex(name, ":")
+	if i <= 0 || i == len(name)-1 {
+		return KeyringEntry{}, false
+	}
+	return KeyringEntry{Name: name, Service: name[:i], Account: name[i+1:]}, true
+}
+
 // identityEnv names the environment variable holding the path to the age
 // identity used to open local encrypted files. Keeping the identity outside
 // the data directory is the point: an identity file sitting beside the

@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	charm.land/lipgloss/v2 v2.1.1
 	filippo.io/age v1.3.2
+	github.com/danieljoos/wincred v1.2.3
 	github.com/masterzen/winrm v0.0.0-20261004123143-57b335310d59
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -28,7 +29,6 @@ require (
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
