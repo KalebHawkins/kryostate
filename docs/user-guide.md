@@ -880,6 +880,23 @@ address of the host. Compare the fingerprints before you clear the key.
 4. If the fingerprints are the same, run `kryostate target forget-host-key web01`.
 5. Collect from the host. The next collection pins the new key.
 
+### A name that gives several addresses
+
+DNS can give more than one address for a host, for example the host's own
+address and a virtual IP that moves between hosts.
+
+**CAUTION:** If KryoState connects through a virtual IP, the host key changes
+when the IP moves to a different host. Then the connection is refused. Choose
+the host's own address.
+
+1. Run `kryostate resolve` to record the addresses that DNS gives.
+2. Run `kryostate host address web01` to show the addresses.
+3. Run `kryostate host address web01 192.0.2.11` to choose one.
+
+You can also choose the address on the host page. All targets of the host use
+the chosen address. To use the address of the target again, run
+`kryostate host address web01 --clear`.
+
 ## 10. Glossary
 
 | Term | Meaning |

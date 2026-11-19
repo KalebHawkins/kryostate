@@ -58,6 +58,18 @@ func (s *Store) Addresses(ctx context.Context, ciID string) ([]Address, error) {
 	return out, rows.Err()
 }
 
+// ClearAddressChoice forgets which address a person chose, so connections go
+// to the address their target names again. It reports whether there was a
+// choice to forget.
+func (s *Store) ClearAddressChoice(ctx context.Context, ciID string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE address SET selected=0, selected_by='' WHERE ci_id=? AND selected=1`, ciID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // SelectAddress records a person's decision about which address a collector
 // should use. The decision is attributed, because the next person will ask why.
 func (s *Store) SelectAddress(ctx context.Context, ciID, addr, by string) error {

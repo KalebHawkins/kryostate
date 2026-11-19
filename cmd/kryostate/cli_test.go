@@ -292,3 +292,60 @@ func TestChangesCommand(t *testing.T) {
 		t.Error("an unknown host was accepted")
 	}
 }
+
+// TestHostAddressChoice: an address DNS recorded for a host can be chosen
+// and cleared from the command line, and the choice is what a collection
+// dials; an address not recorded for the host is refused.
+func TestHostAddressChoice(t *testing.T) {
+	ctx := context.Background()
+	db := filepath.Join(t.TempDir(), "k.db")
+	if err := execute(t, "host", "add", "web01", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if err := execute(t, "target", "add", "web01", "-u", "ops", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	st, err := openStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := st.LookupCI(ctx, "web01")
+	for _, a := range []string{"192.0.2.10", "192.0.2.11"} {
+		if err := st.RecordAddress(ctx, id, a, "ipv4", "dns", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.Close()
+
+	dialled := func() string {
+		t.Helper()
+		st, err := openStore(db)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		ps, _ := st.CollectTargets(ctx, "ssh")
+		if len(ps) != 1 {
+			t.Fatalf("targets %+v", ps)
+		}
+		return ps[0].Address
+	}
+	if err := execute(t, "host", "address", "web01", "192.0.2.11", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if got := dialled(); got != "192.0.2.11" {
+		t.Errorf("dials %s after choosing 192.0.2.11", got)
+	}
+	if err := execute(t, "host", "address", "web01", "198.51.100.1", "--db", db); err == nil {
+		t.Error("an address not recorded for the host was chosen")
+	}
+	if err := execute(t, "host", "address", "web01", "--clear", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if got := dialled(); got != "web01" {
+		t.Errorf("dials %s after clearing, want the target's own address", got)
+	}
+	if err := execute(t, "host", "address", "web01", "--db", db); err != nil {
+		t.Errorf("listing: %v", err)
+	}
+}

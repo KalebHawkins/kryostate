@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -22,7 +23,81 @@ type hostListOpts struct {
 func (a *app) hostCmd() *cobra.Command {
 	cmd := group("host", "list, show, add, update, disable, enable and delete hosts", "hosts")
 	cmd.AddCommand(a.hostListCmd(), a.hostShowCmd("show"), a.hostAddCmd(), a.hostUpdateCmd("update"),
-		a.hostDisableCmd(), a.hostEnableCmd(), a.hostRmCmd())
+		a.hostDisableCmd(), a.hostEnableCmd(), a.hostRmCmd(), a.hostAddressCmd())
+	return cmd
+}
+
+func (a *app) hostAddressCmd() *cobra.Command {
+	var clear bool
+	cmd := &cobra.Command{
+		Use:   "address <host> [address]",
+		Short: "list the addresses DNS gave a host, or choose the one to connect to",
+		Long: `List the addresses DNS gave a host, or choose the one kryostate connects to.
+The choice is used instead of the address the host's targets name, as when it
+is chosen on the host page. Choose a host's own address rather than a virtual
+IP that moves between hosts: when a virtual IP moves, the host key changes and
+the connection is refused. --clear forgets the choice.
+
+Addresses are recorded by "kryostate resolve"; an address not recorded for the
+host cannot be chosen.`,
+		Example: "  kryostate host address web01\n  kryostate host address web01 192.0.2.11\n  kryostate host address web01 --clear",
+		Args:    cobra.RangeArgs(1, 2),
+		RunE: a.withStore(func(ctx context.Context, st *store.Store, args []string) error {
+			id, err := st.LookupCI(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			switch {
+			case clear && len(args) == 2:
+				return errors.New("give an address or --clear, not both")
+			case clear:
+				changed, err := st.ClearAddressChoice(ctx, id)
+				if err != nil {
+					return err
+				}
+				if !changed {
+					fmt.Printf("%s has no chosen address\n", args[0])
+					return nil
+				}
+				if err := st.Audit(ctx, actor(), "clear address", id, ""); err != nil {
+					return err
+				}
+				fmt.Printf("forgot the chosen address of %s; its targets name the address again\n", args[0])
+				return nil
+			case len(args) == 2:
+				if err := st.SelectAddress(ctx, id, args[1], actor()); err != nil {
+					return fmt.Errorf("%s: %w; list them with: kryostate host address %s", args[1], err, args[0])
+				}
+				if err := st.Audit(ctx, actor(), "select address", id, args[1]); err != nil {
+					return err
+				}
+				fmt.Printf("%s is now reached at %s\n", args[0], args[1])
+				return nil
+			}
+			addrs, err := st.Addresses(ctx, id)
+			if err != nil {
+				return err
+			}
+			if len(addrs) == 0 {
+				fmt.Printf("no addresses recorded for %s; record them with: kryostate resolve\n", args[0])
+				return nil
+			}
+			tw := newTable(os.Stdout)
+			fmt.Fprintln(tw, "ADDRESS\tCHOSEN\tRESOLVER\tSEEN")
+			for _, ad := range addrs {
+				chosen := "-"
+				if ad.Selected {
+					chosen = "yes"
+					if ad.SelectedBy != "" {
+						chosen += ", by " + ad.SelectedBy
+					}
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", ad.Addr, chosen, dash(ad.Resolver), agoText(ad.ObservedAt))
+			}
+			return tw.Flush()
+		}),
+	}
+	cmd.Flags().BoolVar(&clear, "clear", false, "forget the chosen address")
 	return cmd
 }
 

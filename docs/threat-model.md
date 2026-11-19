@@ -168,6 +168,8 @@ write any user name into the record.
 | Response headers | Each response has `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`, so other sites cannot put the page in a frame. Each response also has `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`. Pages, exports and the API have `Cache-Control: no-store`. Static files can be cached. |
 | Browser history | htmx keeps no page snapshots in `localStorage`. The page removes old snapshots. After the proxy withdraws access, the browser keeps no copy of the inventory. |
 | Exports and command hints | Column names from the URL must be attribute names. The server drops other names. The command hint puts the column list in single quotes. The CSV export defuses formulas in the header and in the values. |
+| DNS rebinding | If `serve` listens on a loopback address, it answers only requests to `localhost` or a loopback IP. It refuses other host names with 421. This stops a web page that points its own name at `127.0.0.1` from reading the interface. On other addresses, the proxy controls which names reach the server. |
+| Address choice | A person can choose the address of a host on the host page or with `kryostate host address`. The choice applies to all targets of the host, password targets included. Only an address that DNS gave for the host can be chosen. A recorded host key still stops a connection to a different machine before a password goes out. |
 
 ### Changes the page cannot make
 

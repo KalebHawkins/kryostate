@@ -183,6 +183,7 @@ matches more than one host, the command stops and shows each match.
 | `host disable <host>...` | Stops all contact with the hosts: no collection, external collectors, checks or DNS lookups. The hosts and their targets stay in the inventory. `--reason` is recorded |
 | `host enable <host>...` | Starts contact with disabled hosts again, through the same targets |
 | `host rm <host>...` | Deletes the hosts and all their values permanently. The audit log is kept. `--yes` does not ask for confirmation |
+| `host address <host> [address]` | Shows the addresses that DNS gave a host, or chooses the one to connect to. `--clear` forgets the choice |
 | `import <file>` | Adds or updates hosts, targets and stack memberships from a YAML or JSON file. Refer to [Import](#import) |
 
 ### Targets and credentials

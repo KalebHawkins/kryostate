@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -43,6 +44,11 @@ type Server struct {
 	// StaleAfter is how long a collected value may go unconfirmed before the
 	// overview counts it as stale. Zero keeps the default window.
 	StaleAfter time.Duration
+	// LoopbackOnly answers only requests addressed to a loopback name, such
+	// as localhost or 127.0.0.1. Set when the server listens on a loopback
+	// address: then nothing else should reach it, and a request addressed to
+	// another name is a web page using DNS rebinding to read the interface.
+	LoopbackOnly bool
 	// TrustedOrigins are extra origins allowed to submit forms, for a proxy
 	// that serves this interface under a different host name than it
 	// forwards. Same-origin requests need no entry.
@@ -170,7 +176,39 @@ func (s *Server) Routes() http.Handler {
 			s.Log.Error("trusted origin", "origin", o, "err", err)
 		}
 	}
-	return secureHeaders(cop.Handler(mux))
+	h := secureHeaders(cop.Handler(mux))
+	if s.LoopbackOnly {
+		h = loopbackHosts(h)
+	}
+	return h
+}
+
+// loopbackHosts refuses a request whose Host is not a loopback name. A page
+// on another site can point its own name at 127.0.0.1 (DNS rebinding) and
+// read this interface as the same origin; the Host header it sends still
+// carries its own name, which is what this rejects.
+func loopbackHosts(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !IsLoopbackHost(r.Host) {
+			http.Error(w, "kryostate answers only to localhost here", http.StatusMisdirectedRequest)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// IsLoopbackHost reports whether host, with or without a port, is localhost
+// or a loopback IP address.
+func IsLoopbackHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // secureHeaders sets on every response the headers that keep the interface

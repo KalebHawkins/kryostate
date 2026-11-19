@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -105,6 +106,12 @@ func (a *app) serve(ctx context.Context, addr, trusted string, files engineFiles
 	srv.StaleAfter = stale
 	srv.TrustedOrigins = splitIDs(trusted)
 	srv.AllowRevealing = allowContent
+	// On a loopback address nothing but this machine should reach the
+	// server, so a request addressed to any other name is refused. Behind a
+	// proxy, on a real address, the proxy decides which names are served.
+	if h, _, err := net.SplitHostPort(addr); err == nil && web.IsLoopbackHost(h) {
+		srv.LoopbackOnly = true
+	}
 	// The scheduler stops with the server, and the store is not closed
 	// until a run in flight has written its results.
 	if !noSchedule && srv.Scheduler != nil {
