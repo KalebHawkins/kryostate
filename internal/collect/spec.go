@@ -235,45 +235,121 @@ type Reading struct {
 	ObservedAt time.Time
 }
 
-// Run executes every applicable spec over a transport and returns one reading
-// per spec.
+// DefaultParallel is how many of a host's commands run at once over its one
+// connection. OpenSSH allows 10 sessions on a connection by default; four
+// leaves room for a person logged in through a multiplexed connection, and a
+// host that allows fewer drops to one at a time (see Run).
+const DefaultParallel = 4
+
+// refusedTries is how many times a command is sent again, one at a time,
+// after the host refused a session for it.
+const refusedTries = 3
+
+// Run executes every applicable spec over a transport, DefaultParallel at a
+// time, and returns one reading per spec in the order of specs.
+func Run(ctx context.Context, t Transport, specs []Spec) []Reading {
+	return RunParallel(ctx, t, specs, DefaultParallel)
+}
+
+// RunParallel executes every applicable spec over a transport and returns
+// one reading per spec, in the order of specs.
+//
+// At most parallel commands run at once, each in its own session on the one
+// connection; a transport that reports Serial runs one at a time. If the host
+// refuses a session (ErrSessionRefused), the rest of the run is one command
+// at a time and the refused command is sent again when the others finish: a
+// refusal is a limit of the connection, never the host's answer.
 //
 // A failure on one spec does not abandon the rest: a host missing one vendor
 // binary should still report its operating system. Failures are returned, not
 // swallowed, because the caller must be able to tell "this host has no value
 // for X" apart from "we never asked".
-func Run(ctx context.Context, t Transport, specs []Spec) []Reading {
-	out := make([]Reading, 0, len(specs))
-	for _, sp := range specs {
-		select {
-		case <-ctx.Done():
-			out = append(out, Reading{SpecID: sp.ID, Attr: sp.Attr, Err: ctx.Err(), ObservedAt: time.Now()})
-			continue
-		default:
+func RunParallel(ctx context.Context, t Transport, specs []Spec, parallel int) []Reading {
+	if s, ok := t.(Serial); ok && s.Serial() {
+		parallel = 1
+	}
+	parallel = max(1, min(parallel, len(specs)))
+	out := make([]Reading, len(specs))
+
+	type done struct {
+		i       int
+		r       Reading
+		refused bool
+	}
+	// Buffered for every spec, so no command goroutine can block on sending
+	// after this function has stopped receiving.
+	results := make(chan done, len(specs))
+	queue := make([]int, len(specs))
+	for i := range queue {
+		queue[i] = i
+	}
+	refusals := make([]int, len(specs))
+	inFlight := 0
+	for len(queue) > 0 || inFlight > 0 {
+		for inFlight < parallel && len(queue) > 0 {
+			i := queue[0]
+			queue = queue[1:]
+			sp := specs[i]
+			if err := ctx.Err(); err != nil {
+				out[i] = Reading{SpecID: sp.ID, Attr: sp.Attr, Err: err, ObservedAt: time.Now()}
+				continue
+			}
+			if refusals[i] > 0 && inFlight == 0 {
+				// The host refused even with nothing else open; give it a
+				// moment to finish closing the sessions it still counts.
+				select {
+				case <-time.After(time.Duration(refusals[i]) * 50 * time.Millisecond):
+				case <-ctx.Done():
+				}
+			}
+			inFlight++
+			go func() {
+				r, refused := runOne(ctx, t, sp)
+				results <- done{i, r, refused}
+			}()
 		}
-		r := Reading{SpecID: sp.ID, Attr: sp.Attr, Scope: sp.Scope, Type: sp.Type,
-			Command: sp.Command, ObservedAt: time.Now()}
-		res, err := t.Run(ctx, sp.Command)
-		r.Output = res.Stdout
-		r.Stderr = strings.TrimSpace(res.Stderr)
-		r.Completed = err == nil
-		switch {
-		case err != nil:
-			r.Err = err
-		case res.ExitCode != 0:
-			r.Err = fmt.Errorf("%s exited %d: %s", firstWord(sp.Command), res.ExitCode, truncate(res.Stderr, 200))
-		default:
-			r.Ran = true
-			v, perr := Extract(sp.Parse, res.Stdout)
-			if perr != nil {
-				r.Err = fmt.Errorf("%s: %w", sp.ID, perr)
-			} else {
-				r.Value = v
+		if inFlight == 0 {
+			break
+		}
+		d := <-results
+		inFlight--
+		if d.refused {
+			parallel = 1
+			refusals[d.i]++
+			if refusals[d.i] <= refusedTries {
+				queue = append(queue, d.i)
+				continue
 			}
 		}
-		out = append(out, r)
+		out[d.i] = d.r
 	}
 	return out
+}
+
+// runOne runs one spec and reads its value. refused reports that the host
+// would not open a session for it, so nothing was asked.
+func runOne(ctx context.Context, t Transport, sp Spec) (Reading, bool) {
+	r := Reading{SpecID: sp.ID, Attr: sp.Attr, Scope: sp.Scope, Type: sp.Type,
+		Command: sp.Command, ObservedAt: time.Now()}
+	res, err := t.Run(ctx, sp.Command)
+	r.Output = res.Stdout
+	r.Stderr = strings.TrimSpace(res.Stderr)
+	r.Completed = err == nil
+	switch {
+	case err != nil:
+		r.Err = err
+	case res.ExitCode != 0:
+		r.Err = fmt.Errorf("%s exited %d: %s", firstWord(sp.Command), res.ExitCode, truncate(res.Stderr, 200))
+	default:
+		r.Ran = true
+		v, perr := Extract(sp.Parse, res.Stdout)
+		if perr != nil {
+			r.Err = fmt.Errorf("%s: %w", sp.ID, perr)
+		} else {
+			r.Value = v
+		}
+	}
+	return r, errors.Is(err, ErrSessionRefused)
 }
 
 // withLine adds the line and column to a JSON error, which otherwise reports a

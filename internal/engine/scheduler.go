@@ -143,9 +143,12 @@ func (g *Gate) endScheduled() {
 // with nobody watching, against hosts other people are responsible for.
 type Scheduler struct {
 	Engine *Engine
-	// MaxSessions caps sessions open at once across the estate.
+	// MaxSessions caps connections (logins) open at once across the estate.
+	// One connection runs up to Engine.HostParallel commands at once, as
+	// channels inside it; those are not counted here.
 	MaxSessions int
-	// PerHost caps sessions open at once to any one host.
+	// PerHost caps connections open at once to any one host, counted the
+	// same way.
 	PerHost int
 	// Tick is how often due collectors are looked for.
 	Tick time.Duration
@@ -196,9 +199,10 @@ type backoff struct {
 	last  string
 }
 
-// Default limits. Four sessions at once is half what a manual run uses; one
-// per host means two collectors due at once on one host take turns rather
-// than logging in twice.
+// Default limits. Four sessions (connections) at once is half what a manual
+// run uses; one per host means two collectors due at once on one host take
+// turns rather than logging in twice. Commands inside one connection run in
+// parallel channels (Engine.HostParallel), which these limits do not count.
 const (
 	DefaultMaxSessions = 4
 	DefaultPerHost     = 1

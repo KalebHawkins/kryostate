@@ -50,6 +50,12 @@ type Engine struct {
 	// CredentialFailLimit is how many authentication failures in a row put a
 	// password credential on hold; zero means DefaultCredentialFailLimit.
 	CredentialFailLimit int
+	// HostParallel is how many of one host's commands run at once over its
+	// one connection, each in its own SSH channel; zero means
+	// collect.DefaultParallel. It adds no logins: the connection limits
+	// (Options.Concurrency, Scheduler.MaxSessions and PerHost) count
+	// connections. WinRM runs one command at a time whatever this says.
+	HostParallel int
 
 	// creds keeps password logins in step within a run.
 	creds credGate
@@ -87,7 +93,8 @@ type Options struct {
 	Transport string
 	// Only limits the run to specific configuration items.
 	Only []string
-	// Concurrency caps simultaneous hosts.
+	// Concurrency caps simultaneous hosts, which is to say connections. Each
+	// connection runs up to Engine.HostParallel commands at once.
 	Concurrency int
 	// HostTimeout bounds everything done against one host.
 	HostTimeout time.Duration
@@ -96,6 +103,13 @@ type Options struct {
 	// Trigger is recorded on the run, so the runs page can say what started
 	// it. Empty means a person at the command line.
 	Trigger string
+}
+
+func (e *Engine) hostParallel() int {
+	if e.HostParallel > 0 {
+		return e.HostParallel
+	}
+	return collect.DefaultParallel
 }
 
 func (o *Options) applyDefaults() {
@@ -353,7 +367,7 @@ func (e *Engine) collectSome(ctx context.Context, runID string, p store.ConnProf
 			optional[s.ID] = true
 		}
 	}
-	readings := collect.Run(ctx, t, specs)
+	readings := collect.RunParallel(ctx, t, specs, e.hostParallel())
 	written := 0
 	var failures []string
 	for _, r := range readings {

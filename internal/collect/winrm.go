@@ -93,6 +93,12 @@ func (t *WinRMTransport) Run(ctx context.Context, cmd string) (Result, error) {
 // HostKey has no meaning for WinRM; peer identity comes from TLS.
 func (t *WinRMTransport) HostKey() string { return "" }
 
+// Serial keeps WinRM to one command at a time. Each command opens a remote
+// shell, and Windows caps shells and operations per user
+// (MaxShellsPerUser, MaxConcurrentOperationsPerUser); the client library also
+// makes no promise that one client is safe to use from several goroutines.
+func (t *WinRMTransport) Serial() bool { return true }
+
 // Close releases the client. WinRM holds no long-lived connection.
 func (t *WinRMTransport) Close() error { return nil }
 
