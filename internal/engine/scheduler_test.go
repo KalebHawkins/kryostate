@@ -400,7 +400,9 @@ func TestScheduledRunIsOnlyThatCollector(t *testing.T) {
 	fx.clock.add(91 * time.Minute) // its own slot comes round within an interval and a half
 	keys, err = fx.s.RunDue(ctx)
 	fx.s.Wait()
-	if err != nil || len(keys) != 1 {
+	// A daily collector may come due in the same 91 minutes, depending on the
+	// time of day the test starts at; only the hourly one is asked about.
+	if err != nil || !slices.Contains(keys, cpu.Key) {
 		t.Errorf("not due after its interval: %v %v", keys, err)
 	}
 }
