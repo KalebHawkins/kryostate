@@ -257,10 +257,18 @@ func ParseBastion(spec string) (user, host string, port int, credRef string, err
 	return user, host, port, credRef, nil
 }
 
-// Run executes one command.
+// Run executes one command. It is safe to call from several goroutines: each
+// call opens its own session (an SSH channel) on the one connection.
 func (t *SSHTransport) Run(ctx context.Context, cmd string) (Result, error) {
 	sess, err := t.client.NewSession()
 	if err != nil {
+		// A channel the server rejects (OpenSSH past MaxSessions answers
+		// "administratively prohibited") is a limit of the connection, not
+		// an answer from the host.
+		var oce *ssh.OpenChannelError
+		if errors.As(err, &oce) {
+			return Result{}, fmt.Errorf("%w: %v", ErrSessionRefused, err)
+		}
 		return Result{}, err
 	}
 	defer sess.Close()

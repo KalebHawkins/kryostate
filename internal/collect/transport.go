@@ -40,6 +40,19 @@ type Transport interface {
 	Close() error
 }
 
+// Serial is implemented by a transport that must not run two commands at
+// once, whatever the caller asks for. Run keeps such a transport to one
+// command at a time when Serial reports true.
+type Serial interface {
+	Serial() bool
+}
+
+// ErrSessionRefused is returned when the host refused to open a session for
+// a command, as OpenSSH does past its MaxSessions. It says nothing about the
+// host's answer to the command, which was never sent: Run tries the command
+// again, one at a time, rather than record the refusal as the result.
+var ErrSessionRefused = errors.New("host refused another session on this connection")
+
 // ErrHostKeyChanged is returned when a host presents a key other than the one
 // recorded. Collection stops rather than continuing against an unverified
 // host: a configuration database is not worth handing credentials to an

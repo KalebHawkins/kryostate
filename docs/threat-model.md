@@ -160,7 +160,7 @@ write any user name into the record.
 |---|---|
 | Cross-site requests | All changes are `POST`, and each `POST` goes through Go `http.CrossOriginProtection`. It refuses a request that a browser marks as from a different site. It is not a token and does not stop other clients. Give proxy origins with `serve --trusted-origin`. |
 | Runs | Only one collection run at a time. |
-| Schedules | Maximum 4 sessions and 1 for each host. Hosts are spread at random. Backoff for an unreachable host is 10 minutes to 6 hours. The shortest schedule is 5 minutes. Manual and scheduled sessions wait for each other. |
+| Schedules | Maximum 4 connections and 1 for each host. One SSH connection runs a maximum of 4 commands at the same time, each in its own channel; if the host refuses a channel, the commands run one at a time. Hosts are spread at random. Backoff for an unreachable host is 10 minutes to 6 hours. The shortest schedule is 5 minutes. Manual and scheduled sessions wait for each other. |
 | Queries | Go evaluates them on loaded values. No part goes to SQL. Go regular expressions run in linear time. |
 | JSON API `/api/v1` | Read-only: methods other than `GET` get 405. Same port and no login, so the same proxy must protect it. It omits credential references, host keys, notification destinations and passwords. |
 | Progress stream | Drops updates to a slow client. It does not block the run. |

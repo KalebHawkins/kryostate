@@ -532,7 +532,10 @@ and file checks run every 6 hours. Scheduled runs have these limits, to keep
 the load on the hosts low:
 
 - A scheduled run connects only to the hosts of its collector.
-- A maximum of 4 sessions are open at the same time, and 1 on each host.
+- A maximum of 4 connections are open at the same time, and 1 on each host.
+  On one SSH connection, a maximum of 4 commands run at the same time. If the
+  host refuses more sessions, its commands run one at a time. On WinRM,
+  commands always run one at a time.
 - The hosts start at random times in a period of up to 2 minutes.
 - If a host cannot be reached, the schedule stops for 10 minutes for that
   host. After each failure the time doubles, to a maximum of 6 hours. A
