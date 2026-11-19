@@ -90,7 +90,7 @@ KRYOSTATE_DB or KRYOSTATE_ADDR), then the config file, then the defaults.`,
 			root.AddCommand(c)
 		}
 	}
-	add("everyday", a.refreshCmd(), a.serveCmd(), a.hostShowCmd("show"), a.hostUpdateCmd("set"))
+	add("everyday", a.refreshCmd(), a.serveCmd(), a.hostShowCmd("show"), a.hostUpdateCmd("set"), a.changesCmd())
 	add("resources", a.hostCmd(), a.targetCmd(), a.stackCmd(), a.secretCmd(),
 		a.collectorsCmd(), a.rulesCmd(), a.notifyCmd(), a.evidenceCmd())
 	add("ops", a.collectCmd(), a.checkCmd(), a.resolveCmd(), a.renormalizeCmd(), a.reparseCmd(),

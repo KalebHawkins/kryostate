@@ -574,6 +574,17 @@ same collector. The **Changes** page shows the changes of the last 24 hours,
 7 days or 30 days. On the host page, **changed** marks a value that changed
 in the last week. Put the pointer on it to see the old value.
 
+On the command line, `kryostate changes` shows the same list:
+
+```sh
+kryostate changes                           # the last 24 hours
+kryostate changes web01 --since 30d         # one host
+kryostate changes --attr os.version --since 7d
+kryostate changes --json
+```
+
+`--since` takes hours (`24h`), days (`7d`) or a duration such as `90m`.
+
 ### Notifications
 
 KryoState can send a daily digest of changes to a chat channel or by email.

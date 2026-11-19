@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
@@ -261,5 +262,33 @@ func TestTargetAddReusesWhatTheOthersUse(t *testing.T) {
 		if len(ps) != 1 || ps[0].Username != want[0] || ps[0].CredentialRef != want[1] {
 			t.Errorf("%s: %+v, want %s with %s", h, ps, want[0], want[1])
 		}
+	}
+}
+
+// TestChangesCommand: --since takes days as well as Go durations, a host
+// narrows the list, and a bad period or unknown host is an error.
+func TestChangesCommand(t *testing.T) {
+	for in, want := range map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "90m": 90 * time.Minute} {
+		if got, err := parseSince(in); err != nil || got != want {
+			t.Errorf("parseSince(%q) = %v %v, want %v", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "0d", "-1h", "week", "7"} {
+		if _, err := parseSince(bad); err == nil {
+			t.Errorf("parseSince(%q) accepted", bad)
+		}
+	}
+	db := filepath.Join(t.TempDir(), "k.db")
+	if err := execute(t, "host", "add", "web01", "--db", db); err != nil {
+		t.Fatal(err)
+	}
+	if err := execute(t, "changes", "web01", "--since", "30d", "--db", db); err != nil {
+		t.Errorf("changes for a host: %v", err)
+	}
+	if err := execute(t, "changes", "--since", "soon", "--db", db); err == nil {
+		t.Error("a bad --since was accepted")
+	}
+	if err := execute(t, "changes", "nosuchhost", "--db", db); err == nil {
+		t.Error("an unknown host was accepted")
 	}
 }

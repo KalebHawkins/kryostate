@@ -167,6 +167,7 @@ matches more than one host, the command stops and shows each match.
 |---|---|
 | `refresh` | Runs `collect`, then the checks. `--resolve` does a DNS lookup of each host first. `--no-checks` does not run the checks |
 | `serve` | Starts the web interface and the collection schedules. `--no-schedule` stops the schedules |
+| `changes [host]` | Lists the values that changed, newest first, as on the **Changes** page. `--since` (default `24h`; days as `7d`), `--attr`, `--limit`, `--json` |
 | `show` | The same as `host show` |
 | `set` | The same as `host update` |
 
