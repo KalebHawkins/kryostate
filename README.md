@@ -78,8 +78,9 @@ and the backups of a container.
 
 ### Go
 
-You must have Go 1.27.1 or later. Use Go 1.27.2 or later if possible,
-because earlier 1.27 releases do not have the `html/template` escaping fixes.
+You must have Go 1.27.4 or later. Earlier 1.27 releases have security
+vulnerabilities. An older `go` command downloads Go 1.27.4 if `GOTOOLCHAIN` is
+`auto`, which is the default.
 
 ```sh
 CGO_ENABLED=0 go install github.com/KalebHawkins/kryostate/cmd/kryostate@latest

@@ -74,7 +74,7 @@ KryoState is one binary file that contains the web interface.
 | Release archive | Download the archive for Linux, macOS or Windows from the GitHub releases page. Put `kryostate` on your `PATH`. |
 | `.deb` or `.rpm` package | Install the package. It adds a `kryostate` system user, the settings file `/etc/kryostate/kryostate.env` and the database folder `/var/lib/kryostate`. Run `sudo systemctl enable --now kryostate`. Refer to `docs/operations.md`. |
 | Container image | Run the command below. |
-| Go 1.27.1 or later | Run the command below. Go 1.27.2 or later is better. |
+| Go 1.27.4 or later | Run the command below. |
 
 ```sh
 podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data \

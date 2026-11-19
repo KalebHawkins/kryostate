@@ -281,7 +281,7 @@ func (a *app) secretHoldsCmd() *cobra.Command {
 					state = "on hold"
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\n", h.Ref, h.Username, h.Fails, state,
-					dash(h.LastHost), h.UpdatedAt.Local().Format("2006-01-02 15:04"), dash(h.LastError))
+					dash(h.LastHost), h.UpdatedAt.Local().Format("2006-01-02 15:04"), dash(oneLine(h.LastError, 200)))
 			}
 			return tw.Flush()
 		}),

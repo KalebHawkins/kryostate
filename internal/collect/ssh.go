@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -200,22 +201,11 @@ var errPasswordRefused = errors.New("ssh: unable to authenticate: password refus
 // dialBastion parses "user@host:port/credential-ref" and connects, pinning the
 // jump host's key under the same rules as a target.
 func dialBastion(ctx context.Context, spec string, reg *secret.Registry, known string, captured *string, require bool) (*ssh.Client, error) {
-	userHost, credRef, ok := cutLast(spec, "/")
-	if !ok {
-		return nil, errors.New("bastion should be user@host:port/credential-ref")
-	}
-	user, hostPort, ok := cutLast(userHost, "@")
-	if !ok {
-		return nil, errors.New("bastion needs a user")
-	}
-	host, portStr, err := net.SplitHostPort(hostPort)
+	user, host, port, credRef, err := ParseBastion(spec)
 	if err != nil {
-		host, portStr = hostPort, "22"
+		return nil, err
 	}
-	port, _ := strconv.Atoi(portStr)
-	if port == 0 {
-		port = 22
-	}
+	portStr := strconv.Itoa(port)
 	auth, cleanup, err := sshAuth(ctx, credRef, reg)
 	if err != nil {
 		return nil, err
@@ -239,13 +229,32 @@ func dialBastion(ctx context.Context, spec string, reg *secret.Registry, known s
 	return ssh.NewClient(cc, chans, reqs), nil
 }
 
-func cutLast(s, sep string) (string, string, bool) {
-	for i := len(s) - len(sep); i >= 0; i-- {
-		if s[i:i+len(sep)] == sep {
-			return s[:i], s[i+len(sep):], true
-		}
+// ParseBastion splits "user@host[:port]/credential-ref". The address part
+// holds no slash, so the credential is everything after the first / and can
+// itself hold slashes (keyring:kryostate/ops, file:/path, exec:/bin/x). The
+// port is 22 if it is not given.
+func ParseBastion(spec string) (user, host string, port int, credRef string, err error) {
+	userHost, credRef, ok := strings.Cut(spec, "/")
+	if !ok {
+		return "", "", 0, "", errors.New("bastion should be user@host:port/credential-ref")
 	}
-	return s, "", false
+	i := strings.LastIndex(userHost, "@")
+	if i <= 0 || i == len(userHost)-1 {
+		return "", "", 0, "", errors.New("bastion needs user@host before the /")
+	}
+	user, hostPort := userHost[:i], userHost[i+1:]
+	host, portStr, splitErr := net.SplitHostPort(hostPort)
+	if splitErr != nil {
+		host, portStr = hostPort, "22"
+	}
+	if host == "" {
+		return "", "", 0, "", errors.New("bastion needs user@host before the /")
+	}
+	port, _ = strconv.Atoi(portStr)
+	if port == 0 {
+		port = 22
+	}
+	return user, host, port, credRef, nil
 }
 
 // Run executes one command.

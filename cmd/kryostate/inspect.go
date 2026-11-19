@@ -83,7 +83,7 @@ func (a *app) hostList(ctx context.Context, o hostListOpts) error {
 			if v == "" {
 				v = "-"
 			}
-			fmt.Fprintf(tw, "\t%s", v)
+			fmt.Fprintf(tw, "\t%s", safeText(v, false))
 		}
 		collected := "never"
 		if r.HasCollected {
@@ -187,7 +187,7 @@ func (a *app) hostShow(ctx context.Context, host string, asJSON bool, at string)
 	if len(idents) > 0 {
 		var parts []string
 		for _, i := range idents {
-			parts = append(parts, render(os.Stdout, styleLabel, string(i.Scheme)+"=")+i.Value)
+			parts = append(parts, render(os.Stdout, styleLabel, string(i.Scheme)+"=")+safeText(i.Value, false))
 		}
 		field("identity", strings.Join(parts, "  "))
 	}
@@ -274,9 +274,9 @@ func factValue(f model.Fact) string {
 	if f.Norm != "" {
 		raw := strings.TrimSpace(f.Raw)
 		if raw != "" && raw != f.Norm && len(raw) <= 40 && !strings.ContainsAny(raw, "\r\n") {
-			return f.Norm + " (" + raw + ")"
+			return safeText(f.Norm+" ("+raw+")", false)
 		}
-		return f.Norm
+		return safeText(f.Norm, false)
 	}
 	return oneLine(f.Raw, 60)
 }
@@ -448,7 +448,7 @@ func runCollect(ctx context.Context, eng *engine.Engine, opt engine.Options, qui
 		defer close(done)
 		for p := range progress {
 			if !quiet {
-				fmt.Printf("[%d/%d] %-28s %-10s %s\n", p.Done, p.Total, p.Label, p.Outcome, p.Detail)
+				fmt.Printf("[%d/%d] %-28s %-10s %s\n", p.Done, p.Total, p.Label, p.Outcome, safeText(p.Detail, false))
 			}
 		}
 	}()
@@ -474,9 +474,9 @@ func agoText(t time.Time) string {
 	}
 }
 
-// oneLine keeps remote text from breaking a table row.
+// oneLine keeps remote text from breaking a table row or the terminal.
 func oneLine(s string, n int) string {
-	s = strings.Join(strings.Fields(s), " ")
+	s = safeText(strings.Join(strings.Fields(s), " "), false)
 	if r := []rune(s); len(r) > n {
 		return string(r[:n-1]) + "…"
 	}

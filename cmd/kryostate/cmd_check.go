@@ -78,7 +78,7 @@ func (a *app) runChecks(ctx context.Context, only []string) error {
 			status = string(r.Outcome)
 		}
 		fmt.Printf("%-24s %-16s %-8s %6dms  %s\n",
-			r.Check.Label, r.Check.Name, status, r.Took.Milliseconds(), r.Detail)
+			r.Check.Label, r.Check.Name, status, r.Took.Milliseconds(), safeText(r.Detail, false))
 	}
 	ok, failed := engine.CheckSummary(results)
 	fmt.Printf("%d ok, %d failed\n", ok, failed)

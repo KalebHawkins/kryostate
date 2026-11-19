@@ -463,6 +463,7 @@ func listCollectors(ctx context.Context, eng *engine.Engine, st *store.Store, pa
 
 	fmt.Println("\nAlways collected:")
 	tw := newTable(os.Stdout)
+	fmt.Fprintln(tw, "  ATTRIBUTE\tSYSTEMS")
 	var order []string
 	systems := map[string][]string{}
 	for _, s := range builtin.Specs {
@@ -544,18 +545,18 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 			return err
 		}
 		spec = res.Spec
-		hostLine = fmt.Sprintf("host       %s (%s@%s, %s)", host, prof.Username, prof.Address, res.OS)
+		hostLine = fmt.Sprintf("host       %s (%s@%s, %s)", host, prof.Username, prof.Address, safeText(res.OS, false))
 		printTryHeader(spec, hostLine)
 		hostLine = ""
 		if !res.OSMatches {
 			fmt.Printf("\nNOTE: the host says it is %q, and this collector only runs on %s.\n"+
 				"It ran now because you asked, but a real collection will skip this host.\n",
-				res.OS, strings.Join(spec.OS, ", "))
+				safeText(res.OS, false), strings.Join(spec.OS, ", "))
 		}
 		output = res.Reading.Output
 		if res.Reading.Err != nil && !res.Reading.Ran {
-			fmt.Printf("\nRESULT     the command failed: %v\n\n", res.Reading.Err)
-			fmt.Println(wrap(collect.Explain(res.Reading), 76))
+			fmt.Printf("\nRESULT     the command failed: %s\n\n", safeText(res.Reading.Err.Error(), true))
+			fmt.Println(wrap(safeText(collect.Explain(res.Reading), true), 76))
 			fmt.Println("\nWhat to check:")
 			fmt.Println("  - Log in to the host as the same user and run the command by hand.")
 			fmt.Println("  - A \"not found\" error means the program is not installed or not on the PATH.")
@@ -571,7 +572,7 @@ func tryCollector(ctx context.Context, eng *engine.Engine, st *store.Store, spec
 	}
 
 	fmt.Println("\n--- what the command printed ---")
-	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	lines := strings.Split(strings.TrimRight(safeText(output, true), "\n"), "\n")
 	for i, l := range lines {
 		if i == 20 {
 			fmt.Printf("... %d more lines\n", len(lines)-20)
