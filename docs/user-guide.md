@@ -670,13 +670,32 @@ The **Overview** shows the open rules under **Rollouts**. The page of a rule
 shows 50 hosts for each list, with their values, and a trend chart. If you
 change the queries of a rule, the chart starts again.
 
-```sh
-kryostate rules list
-kryostate rules add 'nginx 1.24' --scope 'stack == "web"' --expect 'nginx.version >= "1.24"'
-kryostate rules show 'nginx 1.24'                 # the hosts not yet done, and the unknown hosts
-kryostate rules show 'nginx 1.24' --json          # all hosts in the scope
-kryostate rules rm 'nginx 1.24'
-```
+#### Track a rollout on the command line
+
+1. Make the rule:
+
+   ```sh
+   kryostate rules add 'nginx 1.24' --scope 'stack == "web"' --expect 'nginx.version >= "1.24"' \
+       --owner web-team --description 'CHG-1234, by June'
+   ```
+
+2. Run `kryostate rules list`. It shows each rule with the number of hosts
+   that are done, not yet done and unknown.
+3. Run `kryostate rules show 'nginx 1.24'`. It shows the hosts that are not
+   yet done, and the unknown hosts with the value that is missing.
+4. After you change a host, run `kryostate refresh --only <host>`. The host
+   moves to **Done** when its new value matches.
+5. When the rollout is complete, run `kryostate rules rm 'nginx 1.24'`. This
+   deletes the rule and its history. It does not change a host.
+
+For a report of all hosts in the scope, run
+`kryostate rules show 'nginx 1.24' --json`. To find the attribute names for
+the expect query, run `kryostate host show <host>`. If you omit `--scope`,
+the rule covers all hosts.
+
+A disabled host stays in the scope of a rule. To leave out disabled hosts,
+add `&& !disabled` to the scope, for example
+`stack == "web" && !disabled`.
 
 ### A host on a past day
 

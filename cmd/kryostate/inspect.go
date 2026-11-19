@@ -103,10 +103,10 @@ func (a *app) hostList(ctx context.Context, o hostListOpts) error {
 		return err
 	}
 	if disabled > 0 {
-		fmt.Printf("%d hosts, %d of them disabled (not contacted).\n", len(rows), disabled)
+		fmt.Printf("%d host%s, %d of them disabled (not contacted).\n", len(rows), pluralS(len(rows)), disabled)
 		return nil
 	}
-	fmt.Printf("%d hosts.\n", len(rows))
+	fmt.Printf("%d host%s.\n", len(rows), pluralS(len(rows)))
 	return nil
 }
 
