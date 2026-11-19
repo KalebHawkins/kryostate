@@ -402,3 +402,30 @@ func cell(body, label string) (string, bool) {
 	}
 	return "", false
 }
+
+// TestSecurityHeaders: no page may be framed by another site, and nothing
+// that holds the inventory may be kept by the browser.
+func TestSecurityHeaders(t *testing.T) {
+	_, h, st := testServer(t)
+	seed(t, st)
+	for _, u := range []string{"/", "/hosts", "/hosts.csv", "/hosts.json", "/api/v1/hosts", "/static/app.css", "/no/such/page"} {
+		hd := get(t, h, u, nil).Header()
+		for k, want := range map[string]string{
+			"Content-Security-Policy": "frame-ancestors 'none'",
+			"X-Frame-Options":         "DENY",
+			"X-Content-Type-Options":  "nosniff",
+			"Referrer-Policy":         "same-origin",
+		} {
+			if got := hd.Values(k); len(got) != 1 || got[0] != want {
+				t.Errorf("%s: %s is %q", u, k, got)
+			}
+		}
+		if cc := hd.Get("Cache-Control"); (cc == "no-store") == strings.HasPrefix(u, "/static/") {
+			t.Errorf("%s: Cache-Control is %q", u, cc)
+		}
+	}
+	page := get(t, h, "/hosts", nil).Body.String()
+	if !strings.Contains(page, `<meta name="htmx-config" content='{"historyCacheSize":0,"refreshOnHistoryMiss":true}'>`) {
+		t.Error("htmx may keep page snapshots in localStorage")
+	}
+}

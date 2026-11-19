@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"embed"
-	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -26,6 +25,7 @@ import (
 	"github.com/KalebHawkins/kryostate/internal/engine"
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/notify"
+	"github.com/KalebHawkins/kryostate/internal/query"
 	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
@@ -116,15 +116,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /stacks/{name}/query", s.handleStackQueryPreview)
 	mux.HandleFunc("GET /charts", s.handleCharts)
 	mux.HandleFunc("POST /hosts/{id}/address", s.handleSelectAddress)
-	mux.HandleFunc("POST /hosts/{id}/application", s.handleApplication)
 	mux.HandleFunc("POST /hosts", s.handleCreateHost)
 	mux.HandleFunc("POST /hosts/{id}/disable", s.handleDisableHost)
 	mux.HandleFunc("POST /hosts/{id}/enable", s.handleEnableHost)
-	mux.HandleFunc("POST /hosts/{id}/delete", s.handleDeleteHost)
-	mux.HandleFunc("POST /hosts/{id}/connection", s.handleConnection)
-	mux.HandleFunc("POST /hosts/{id}/connection/delete", s.handleDeleteConnection)
-	mux.HandleFunc("POST /hosts/{id}/checks", s.handleAddCheck)
-	mux.HandleFunc("POST /hosts/{id}/checks/delete", s.handleDeleteCheck)
 	mux.HandleFunc("POST /stacks", s.handleCreateStack)
 	mux.HandleFunc("POST /stacks/edit", s.handleEditStack)
 	mux.HandleFunc("POST /stacks/delete", s.handleDeleteStack)
@@ -176,7 +170,27 @@ func (s *Server) Routes() http.Handler {
 			s.Log.Error("trusted origin", "origin", o, "err", err)
 		}
 	}
-	return cop.Handler(mux)
+	return secureHeaders(cop.Handler(mux))
+}
+
+// secureHeaders sets on every response the headers that keep the interface
+// out of frames on other sites, stop a browser guessing content types, and
+// keep the address of a page out of requests to other sites. Pages, exports
+// and the API hold the inventory and the interface has no login of its own,
+// so they are not stored by the browser or a proxy: once access is withdrawn
+// at the proxy, nothing is left behind to read. Static files may be cached.
+func secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "same-origin")
+		if !strings.HasPrefix(r.URL.Path, "/static/") {
+			h.Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 type pageData struct {
@@ -228,12 +242,14 @@ var defaultColumns = []string{"os.version", model.AttrApplication}
 
 // columnsFrom reads the chosen columns from the URL. Both repeated
 // "col=a&col=b" (what a form of checkboxes sends) and "col=a,b" (what a person
-// types) are accepted.
+// types) are accepted. Only attribute names and * are kept: a column name ends
+// up in a command line to copy and in a spreadsheet's header, and a link must
+// not be able to put anything else there.
 func columnsFrom(q url.Values) []string {
 	var cols []string
 	for _, v := range q["col"] {
 		for _, c := range strings.Split(v, ",") {
-			if c = strings.TrimSpace(c); c != "" && !contains(cols, c) {
+			if c = strings.TrimSpace(c); (c == "*" || query.IsName(c)) && !contains(cols, c) {
 				cols = append(cols, c)
 			}
 		}
@@ -267,10 +283,7 @@ type hostData struct {
 	// AllStacks feeds the "add to stack" suggestions.
 	AllStacks []string
 	Checks    []store.Check
-	// SSH is the ssh profile when the browser may edit it, and SSHLocked
-	// says one exists that only the command line may change.
-	SSH       *store.ConnProfile
-	SSHLocked bool
+
 	// FreeText names the attributes no rule was ever written for, so that the
 	// value column shows what the source said instead of calling it unparsed.
 	FreeText map[string]bool
@@ -349,16 +362,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 			d.AllStacks = append(d.AllStacks, v.Stack.Name)
 		}
 	}
-	for i, p := range profiles {
-		if p.Transport != "ssh" {
-			continue
-		}
-		if webEditable(p) {
-			d.SSH = &profiles[i]
-		} else {
-			d.SSHLocked = true
-		}
-	}
+
 	d.Labels = s.attrTitles(ctx)
 	d.Changed = s.hostChanges(ctx, id)
 	d.Collectors = s.hostCollectorsFor(ctx, id, facts, d.Changed)
@@ -395,29 +399,6 @@ func (s *Server) handleSelectAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/hosts/"+id, http.StatusSeeOther)
-}
-
-// handleApplication records the application a person says a host runs. It is
-// the only attribute the page accepts: role and stack are set as stack
-// membership, and everything else is what the host reports. No reason is
-// asked for: the audit log records who set it, when, and that it was set
-// here.
-func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if _, err := s.Store.CI(r.Context(), id); err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	value := strings.TrimSpace(r.FormValue("application"))
-	if value == "" {
-		refuse(w, r, hostURL(id), errors.New("name the application"))
-		return
-	}
-	if err := s.Store.SetApplication(r.Context(), id, value, actorOf(r), "set on the host page"); err != nil {
-		refuse(w, r, hostURL(id), err)
-		return
-	}
-	done(w, r, hostURL(id), "Recorded the application as "+value+".")
 }
 
 func (s *Server) handleGuide(w http.ResponseWriter, r *http.Request) {

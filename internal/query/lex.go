@@ -134,6 +134,21 @@ func errAt(src string, off int, format string, args ...any) *Error {
 	return &Error{Offset: off, Col: utf8.RuneCountInString(src[:off]) + 1, Msg: fmt.Sprintf(format, args...)}
 }
 
+// IsName reports whether s is an attribute name as a query writes it, such
+// as os.version or hw.cpu.cores: letters, digits, _, . and -, not starting
+// with a digit, a dot or a dash.
+func IsName(s string) bool {
+	if s == "" || !isIdentStart(s[0]) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		if !isIdentPart(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func isIdentStart(c byte) bool {
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }

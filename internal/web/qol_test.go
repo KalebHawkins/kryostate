@@ -4,12 +4,9 @@ import (
 	"context"
 	"encoding/csv"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-
-	"github.com/KalebHawkins/kryostate/internal/model"
 )
 
 // TestCSVExportMatchesTheView: the export takes the same query string as the
@@ -66,43 +63,37 @@ func TestColumnsAreChosenInTheURL(t *testing.T) {
 	}
 }
 
-// TestApplicationFromTheHostPage: stating a host's application carries the
-// person's name and needs no reason; the audit log notes where it was set.
-func TestApplicationFromTheHostPage(t *testing.T) {
+// TestCraftedColumnsAreDropped: a column name from a link reaches the command
+// line shown to copy and the spreadsheet's header, so only attribute names
+// are taken.
+func TestCraftedColumnsAreDropped(t *testing.T) {
 	_, h, st := testServer(t)
-	id := seed(t, st)
-
-	set := func(form url.Values) *httptest.ResponseRecorder {
-		return post(t, h, "/hosts/"+id+"/application", form)
+	seed(t, st)
+	bad := []string{`x;touch${IFS}pwned`, `$(id)`, "a`id`", `=HYPERLINK("http://x.invalid")`, `os.version'`, "@SUM(1)"}
+	q := "?col=os.version"
+	for _, b := range bad {
+		q += "&col=" + url.QueryEscape(b)
 	}
-	if _, msg := followFlash(t, h, set(url.Values{"application": {"  "}})); !strings.Contains(msg, "name the application") {
-		t.Errorf("an empty application gave %q", msg)
+	body := get(t, h, "/hosts"+q, nil).Body.String()
+	if !strings.Contains(body, "kryostate host list --cols os.version") {
+		t.Error("the command line does not name the valid column")
 	}
-	if _, msg := followFlash(t, h, set(url.Values{"application": {"ledger"}})); !strings.Contains(msg, "ledger") {
-		t.Fatalf("setting the application gave %q", msg)
-	}
-	var detail string
-	if err := st.DB().QueryRow(`SELECT detail FROM audit WHERE action='set application' AND subject=?`, id).Scan(&detail); err != nil {
-		t.Fatal(err)
-	}
-	if detail != "application=ledger: set on the host page" {
-		t.Errorf("audit detail is %q", detail)
-	}
-	facts, err := st.Facts(context.Background(), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, f := range facts {
-		if f.Attr == model.AttrApplication {
-			found = true
-			if f.Raw != "ledger" || f.SourceName != "operator@example.invalid" {
-				t.Errorf("application is %q from %q", f.Raw, f.SourceName)
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.Contains(line, "kryostate host list") {
+			continue
+		}
+		for _, b := range []string{"pwned", "$(id)", "`id`", "HYPERLINK", "os.version&#39;", "SUM(1)"} {
+			if strings.Contains(line, b) {
+				t.Errorf("the command line carries %q: %s", b, line)
 			}
 		}
 	}
-	if !found {
-		t.Error("the application was not recorded")
+	recs, err := csv.NewReader(get(t, h, "/hosts.csv"+q, nil).Body).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs[0]) != 7 || recs[0][2] != "os.version" {
+		t.Errorf("CSV header %q", recs[0])
 	}
 }
 

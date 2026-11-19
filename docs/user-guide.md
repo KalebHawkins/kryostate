@@ -460,7 +460,11 @@ correct command on each host. You do not need a query for the system.
 The collector page then shows where it runs, for example **Hosts in web**.
 **Change where it runs** changes the query. To test the collector, type a
 host name under **Test on a host**, select the host, then select **Test**. A
-test does not save the value.
+test does not save the value. The page offers only the hosts that the
+collector runs on. If the host's system has no command, the test runs nothing
+and tells you so. To test a content collector on the page, start the server
+with `serve --allow-content-collectors`. `kryostate collectors try` has none
+of these limits.
 
 ```sh
 kryostate collectors catalog

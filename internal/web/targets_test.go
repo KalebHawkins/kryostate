@@ -134,14 +134,14 @@ func TestTryHostsFollowTheTarget(t *testing.T) {
 		t.Errorf("narrowed by name: %s", body)
 	}
 
-	// A target with no connected host falls back to every host, capped, and
-	// says so.
+	// A target with no connected host offers none, since Test would refuse
+	// every other host, and says so.
 	if _, err := st.PutChoice(ctx, collect.Choice{Template: "cpu.cores", Target: `name == "nobody"`}, "t"); err != nil {
 		t.Fatal(err)
 	}
 	body = get(t, h, "/collectors/try/hosts?into=try-x&choice="+id+"&host=", nil).Body.String()
-	if n := len(reItem.FindAllString(body, -1)); n != pickLimit || !strings.Contains(body, "targets no host with a connection") || !strings.Contains(body, "and 7 more") {
-		t.Errorf("fallback: %s", body)
+	if n := len(reItem.FindAllString(body, -1)); n != 0 || !strings.Contains(body, "targets no host with a connection") {
+		t.Errorf("no targeted host: %s", body)
 	}
 	// Built-in specs target every host.
 	body = get(t, h, "/collectors/try/hosts?into=try-x&spec=linux.os.version&host=win", nil).Body.String()

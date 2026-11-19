@@ -6,9 +6,10 @@
 {{if .Err}}
 <div class="flash flash--error">{{.Err}}</div>
 <p class="muted">KryoState could not run the command. Check the host's connection on <a href="/hosts/{{.HostID}}#connection">its page</a>.</p>
+{{else if .Result.Skipped}}
+<div class="notice">The host says it runs <span class="mono">{{.Result.OS}}</span>. This collector has no command for that system, so it would not run on this host's system. Nothing was run.</div>
 {{else}}
 {{with .Result}}
-{{if not .OSMatches}}<div class="notice">The host says it runs <span class="mono">{{.OS}}</span>, and this collector has no command for it, so a real collection will skip this host. The command below was run anyway because you asked.</div>{{end}}
 <div class="card">
   <p class="muted small">Command</p>
   <pre><code>{{.Spec.Command}}</code></pre>

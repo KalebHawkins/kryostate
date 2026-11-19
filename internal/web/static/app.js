@@ -1,3 +1,9 @@
+// ---- No page snapshots in the browser ----
+//
+// htmx keeps no history snapshots (see the htmx-config meta in the layout).
+// Older versions of this page did, in localStorage, where the inventory
+// outlived access to the server; remove what they left.
+try { localStorage.removeItem("htmx-history-cache"); } catch (e) {}
 // ---- Theme: System, Light or Dark ----
 //
 // The choice is an attribute on <html>; the stylesheet does the rest. A

@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 func TestSwitchCatalogCollectorsOnAndOff(t *testing.T) {
@@ -123,5 +126,74 @@ func TestAddAStackOfHostsAtOnce(t *testing.T) {
 	}
 	if _, msg := followFlash(t, h, post(t, h, "/stacks/hosts", url.Values{"stack": {"payments"}, "hosts": {"web03"}, "user": {"bad user"}})); !strings.Contains(msg, "spaces") {
 		t.Errorf("a bad user gave %q", msg)
+	}
+}
+
+// fakeHost answers every command with "4" and remembers what it was asked.
+type fakeHost struct{ ran []string }
+
+func (f *fakeHost) Run(_ context.Context, cmd string) (collect.Result, error) {
+	f.ran = append(f.ran, cmd)
+	return collect.Result{Stdout: "4\n"}, nil
+}
+func (f *fakeHost) HostKey() string { return "" }
+func (f *fakeHost) Close() error    { return nil }
+
+// TestTryFollowsTheCollectionRules: Test in the browser runs a collector only
+// where a real collection would, and never a content collector the server
+// does not allow.
+func TestTryFollowsTheCollectionRules(t *testing.T) {
+	s, h, st := testServer(t)
+	ctx := context.Background()
+	ids := estate(t, st, 2)
+	fake := &fakeHost{}
+	family := "linux"
+	dialed := 0
+	s.Engine.Dial = func(context.Context, store.ConnProfile) (collect.Transport, string, error) {
+		dialed++
+		return fake, family, nil
+	}
+	try := func(c collect.Choice, host string) (int, string) {
+		t.Helper()
+		c, err := st.PutChoice(ctx, c, "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fake.ran, dialed = nil, 0
+		rec := post(t, h, "/collectors/try", url.Values{"choice": {strconv.FormatInt(c.ID, 10)}, "host": {ids[host]}})
+		if rec.Code == 303 {
+			_, msg := followFlash(t, h, rec)
+			return rec.Code, msg
+		}
+		return rec.Code, rec.Body.String()
+	}
+
+	// A host outside the target is refused before anything connects.
+	code, msg := try(collect.Choice{Template: "cpu.cores", Target: `name == "db01"`}, "web01")
+	if code != 303 || !strings.Contains(msg, "outside where") || dialed != 0 {
+		t.Errorf("outside the target: %d %q, %d connections", code, msg, dialed)
+	}
+	code, body := try(collect.Choice{Template: "cpu.cores", Target: `name == "web01"`}, "web01")
+	if code != 200 || len(fake.ran) != 1 || !strings.Contains(body, "Recorded as") {
+		t.Errorf("inside the target: %d, ran %v", code, fake.ran)
+	}
+
+	// No command for the host's system: nothing runs.
+	family = "plan9"
+	code, body = try(collect.Choice{Template: "cpu.cores", Target: `name == "web01"`}, "web01")
+	if code != 200 || len(fake.ran) != 0 || !strings.Contains(body, "would not run on this host") {
+		t.Errorf("another system: %d, ran %v: %s", code, fake.ran, body)
+	}
+	family = "linux"
+
+	// Content collectors need the server's permission, as to switch them on.
+	reveal := collect.Choice{Template: "file.contents", Param: "/etc/resolv.conf"}
+	code, msg = try(reveal, "web01")
+	if code != 303 || !strings.Contains(msg, "-allow-content-collectors") || dialed != 0 {
+		t.Errorf("content collector: %d %q, %d connections", code, msg, dialed)
+	}
+	s.AllowRevealing = true
+	if code, _ = try(reveal, "web01"); code != 200 || len(fake.ran) != 1 {
+		t.Errorf("with permission: %d, ran %v", code, fake.ran)
 	}
 }

@@ -114,5 +114,5 @@
   </tbody>
 </table>
 </div>
-{{template "cli" (list (printf "kryostate host list%s --cols %s" (or (and .Expr (printf " -q %s" (shq .Expr))) "") (join .Columns ",")) (printf "kryostate host list%s --json" (or (and .Expr (printf " -q %s" (shq .Expr))) "")))}}
+{{template "cli" (list (printf "kryostate host list%s --cols %s" (or (and .Expr (printf " -q %s" (shq .Expr))) "") (shq (join .Columns ","))) (printf "kryostate host list%s --json" (or (and .Expr (printf " -q %s" (shq .Expr))) "")))}}
 {{end}}

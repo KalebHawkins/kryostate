@@ -26,7 +26,7 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back = collectorURL(t.ID) + "#where"
-	if t.Reveals && !s.AllowRevealing {
+	if s.contentLocked(t) {
 		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so it is switched on from the command line, or the server must be started with --allow-content-collectors"))
 		return
 	}
@@ -58,6 +58,13 @@ func (s *Server) handleChoose(w http.ResponseWriter, r *http.Request) {
 		" from the next collection. Use Test to try it on one host now.")
 }
 
+// contentLocked reports whether a catalog entry shows what is inside files or
+// variables while the server was not started with --allow-content-collectors.
+// Such an entry is neither switched on nor tested from the browser.
+func (s *Server) contentLocked(t collect.Template) bool {
+	return t.Reveals && !s.AllowRevealing
+}
+
 // targetPhrase names a target in a sentence.
 func targetPhrase(target string) string {
 	if target == "" {
@@ -80,7 +87,7 @@ func (s *Server) handleChooseWhere(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back := collectorURL(c.Template) + "#where"
-	if t, ok := collect.Lookup(c.Template); ok && t.Reveals && !s.AllowRevealing {
+	if t, ok := collect.Lookup(c.Template); ok && s.contentLocked(t) {
 		refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so where it runs is changed from the command line, or the server must be started with --allow-content-collectors"))
 		return
 	}
@@ -148,7 +155,10 @@ func specURL(sp collect.Spec) string {
 // handleTry runs one collector against one host and shows the result, saving
 // nothing. It runs only commands the page could already cause to run with the
 // Collect button: catalog entries that are switched on, specs loaded from
-// files on the server, and those added on its command line.
+// files on the server, and those added on its command line. It is held to the
+// same rules as a real collection: only on a host the collector targets, only
+// the command for the host's system, and no content collector unless the
+// server allows those.
 func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
@@ -170,6 +180,10 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		back = collectorURL(c.Template)
+		if t, ok := collect.Lookup(c.Template); ok && s.contentLocked(t) {
+			refuse(w, r, back, errors.New(t.Title+" shows what is inside files or variables, so it is tested from the command line, or the server must be started with --allow-content-collectors"))
+			return
+		}
 		if specs, err = c.Specs(); err != nil {
 			refuse(w, r, back, err)
 			return
@@ -224,8 +238,13 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 		d.Err = ci.Label + " is disabled, so nothing is run on it. Enable it on its page first."
 	} else if prof == nil {
 		d.Err = ci.Label + " has no enabled connection, so nothing can be run on it."
-	} else if res, err := s.Engine.TrySpecs(ctx, *prof, specs); err != nil {
+	} else if res, err := s.Engine.TryAsCollected(ctx, *prof, specs); errors.Is(err, engine.ErrNotTargeted) {
+		refuse(w, r, back, errors.New(ci.Label+" is outside where "+title+" runs, so it is not tested there. Test it on a host it targets."))
+		return
+	} else if err != nil {
 		d.Err = err.Error()
+	} else if res.Skipped {
+		d.Result = res
 	} else {
 		d.Result = res
 		switch {

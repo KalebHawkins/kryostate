@@ -165,6 +165,9 @@ write any user name into the record.
 | JSON API `/api/v1` | Read-only: methods other than `GET` get 405. Same port and no login, so the same proxy must protect it. It omits credential references, host keys, notification destinations and passwords. |
 | Progress stream | Drops updates to a slow client. It does not block the run. |
 | Assets | All are in the binary. The interface sends no requests to the internet. |
+| Response headers | Each response has `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`, so other sites cannot put the page in a frame. Each response also has `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`. Pages, exports and the API have `Cache-Control: no-store`. Static files can be cached. |
+| Browser history | htmx keeps no page snapshots in `localStorage`. The page removes old snapshots. After the proxy withdraws access, the browser keeps no copy of the inventory. |
+| Exports and command hints | Column names from the URL must be attribute names. The server drops other names. The command hint puts the column list in single quotes. The CSV export defuses formulas in the header and in the values. |
 
 ### Changes the page cannot make
 
@@ -180,8 +183,19 @@ commands or disclose credentials.
 - **No content templates by default.** File contents, configuration settings
   and environment variables can contain secrets. The page offers them only
   with `serve --allow-content-collectors`. The command line always can.
-- **Only `agent:` targets with no bastion.** Otherwise, a person could change
-  the address of a password target and get the password.
+- **Test follows the collection rules.** **Test** runs a collector only on a
+  host that the collector targets. It runs only the command for the host's
+  system. If no command is for that system, it runs nothing and says so.
+  **Test** refuses content collectors unless you start the server with
+  `serve --allow-content-collectors`. The command `kryostate collectors try`
+  has no such limits. It is for the operator.
+- **No connections.** Use `kryostate target add`. Otherwise, a person could
+  change the address of a password target and get the password.
+- **No health checks.** Use `kryostate check add`. A check makes the server
+  connect to an address. A check from the page could probe the internal
+  network.
+- **No host deletion and no application.** Use `kryostate host rm` and
+  `kryostate host update`.
 - **No host key reset.** Use `kryostate target forget-host-key`. The old key
   goes to the audit log.
 - **No collector changes.** The page shows your collector commands, and the

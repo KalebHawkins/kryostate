@@ -215,8 +215,8 @@ func (s *Server) handleTargetHosts(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTryHosts suggests hosts to test a collector on: those it targets that
-// have a connection, by name. When it targets none of those, every host with
-// a connection is offered, and the list says so.
+// have a connection, by name. Test refuses any other host, so no other is
+// offered.
 func (s *Server) handleTryHosts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -228,19 +228,24 @@ func (s *Server) handleTryHosts(w http.ResponseWriter, r *http.Request) {
 	d := hostPick{Into: into}
 	// What the collector targets: a switched-on catalog entry, or specs
 	// loaded from files. Unknown ids target every host.
-	where := ""
+	// A built-in collector is one spec per system, each with its own target;
+	// a host any of them targets is offered.
+	wheres := []string{""}
 	if v := q.Get("choice"); v != "" {
 		id, _ := strconv.ParseInt(v, 10, 64)
 		if c, err := s.Store.Choice(ctx, id); err == nil {
-			where = c.Target
+			wheres = []string{c.Target}
 		}
 	} else if ids := q["spec"]; len(ids) > 0 && s.Engine != nil {
 		loaded, _ := s.Engine.LoadedSpecs(ctx)
+		var found []string
 		for _, sp := range loaded {
 			if slices.Contains(ids, sp.ID) {
-				where = engine.SpecTarget(sp)
-				break
+				found = append(found, engine.SpecTarget(sp))
 			}
+		}
+		if len(found) > 0 {
+			wheres = found
 		}
 	}
 	tg, err := s.targetsNow(ctx)
@@ -270,15 +275,15 @@ func (s *Server) handleTryHosts(w http.ResponseWriter, r *http.Request) {
 		}
 		return names, total
 	}
-	only := func(id string) bool { return tg.Match(where, id) }
-	if where != "" && len(connected) > 0 && countWhere(tg, connected, only) == 0 {
-		d.Note = "It targets no host with a connection, so these are every host with one."
-		only = func(string) bool { return true }
+	only := func(id string) bool {
+		return slices.ContainsFunc(wheres, func(w string) bool { return tg.Match(w, id) })
 	}
 	names, total := pick(only)
 	d.Hosts, d.More = names, total-len(names)
 	if len(connected) == 0 {
 		d.Empty = "No host has a connection yet, so there is nothing to test on."
+	} else if countWhere(tg, connected, only) == 0 {
+		d.Empty = "It targets no host with a connection, so there is nothing to test it on."
 	} else if total == 0 {
 		d.Empty = "No host it runs on has a name containing " + strconv.Quote(text) + "."
 	}

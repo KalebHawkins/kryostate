@@ -243,7 +243,10 @@ func (s *Server) handleHostsCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="kryostate-inventory.csv"`)
 	cw := csv.NewWriter(w)
-	header := append([]string{"host", "id"}, cols...)
+	header := []string{"host", "id"}
+	for _, c := range cols {
+		header = append(header, csvSafe(c))
+	}
 	header = append(header, "stacks", "last_collected", "collect_ok", "disabled")
 	_ = cw.Write(header)
 	for _, h := range rows {

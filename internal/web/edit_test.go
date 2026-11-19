@@ -96,67 +96,42 @@ func TestAddHostFromTheBrowser(t *testing.T) {
 	}
 }
 
-func TestConnectionEditableOnlyForAgent(t *testing.T) {
+// TestHostManagementIsCommandLineOnly: the host page has no forms for
+// connections, checks, the application or deleting the host, and nothing
+// answers in their place. A check stored from a browser would make the server
+// connect wherever it names.
+func TestHostManagementIsCommandLineOnly(t *testing.T) {
 	_, h, st := testServer(t)
 	ctx := context.Background()
 	id := seed(t, st)
-
-	rec := post(t, h, "/hosts/"+id+"/connection", url.Values{
-		"address": {"appnode1.example.invalid"}, "user": {"svc-ro"}, "port": {"2222"}, "enabled": {"1"}})
-	if _, msg := followFlash(t, h, rec); !strings.Contains(msg, "Connection saved") {
-		t.Fatalf("message %q", msg)
-	}
-	ps, _ := st.ConnProfiles(ctx, id)
-	if len(ps) != 1 || ps[0].CredentialRef != "agent:" || ps[0].Port != 2222 || !ps[0].Enabled {
-		t.Fatalf("profile %+v", ps)
-	}
-
-	// A profile holding a password reference must not be redirectable from
-	// the browser.
-	other, _, _ := st.ResolveCI(ctx, model.KindHost, "locked", []model.Identity{{Scheme: model.IdentHostname, Value: "locked"}})
-	if err := st.PutConnProfile(ctx, store.ConnProfile{CIID: other, Transport: "ssh", Address: "real.invalid",
-		Username: "svc", CredentialRef: "keyring:kryostate/svc", Enabled: true}); err != nil {
-		t.Fatal(err)
-	}
-	for _, target := range []string{"/hosts/" + other + "/connection", "/hosts/" + other + "/connection/delete"} {
-		rec := post(t, h, target, url.Values{"address": {"attacker.invalid"}, "user": {"svc"}, "transport": {"ssh"}})
-		if _, msg := followFlash(t, h, rec); !strings.Contains(msg, "command line") {
-			t.Errorf("%s: message %q", target, msg)
+	for target, form := range map[string]url.Values{
+		"/hosts/" + id + "/checks":            {"name": {"x"}, "kind": {"http"}, "target": {"http://127.0.0.1:9/"}, "expect": {"2xx"}},
+		"/hosts/" + id + "/checks/delete":     {"name": {"x"}},
+		"/hosts/" + id + "/connection":        {"address": {"web01.example.invalid"}, "user": {"ops"}, "enabled": {"1"}},
+		"/hosts/" + id + "/connection/delete": {"transport": {"ssh"}},
+		"/hosts/" + id + "/application":       {"application": {"ledger"}},
+		"/hosts/" + id + "/delete":            {"confirm": {"appnode1"}},
+	} {
+		if rec := post(t, h, target, form); rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("POST %s answered %d", target, rec.Code)
 		}
 	}
-	ps, _ = st.ConnProfiles(ctx, other)
-	if len(ps) != 1 || ps[0].Address != "real.invalid" {
-		t.Fatalf("the locked profile changed: %+v", ps)
+	if cs, _ := st.Checks(ctx, id); len(cs) != 0 {
+		t.Errorf("a check was stored: %+v", cs)
 	}
-	if body := get(t, h, "/hosts/"+other, nil).Body.String(); strings.Contains(body, `action="/hosts/`+other+`/connection"`) {
-		t.Error("the page offers a form for a connection it will refuse")
+	if ps, _ := st.ConnProfiles(ctx, id); len(ps) != 0 {
+		t.Errorf("a connection was stored: %+v", ps)
 	}
-
-	if _, msg := followFlash(t, h, post(t, h, "/hosts/"+id+"/connection/delete", url.Values{"transport": {"ssh"}})); !strings.Contains(msg, "removed") {
-		t.Errorf("delete: %q", msg)
+	if _, err := st.CI(ctx, id); err != nil {
+		t.Error("the host was deleted")
 	}
-}
-
-func TestChecksFromTheBrowser(t *testing.T) {
-	_, h, st := testServer(t)
-	id := seed(t, st)
-	rec := post(t, h, "/hosts/"+id+"/checks", url.Values{"name": {"https"}, "kind": {"http"},
-		"target": {"https://appnode1.example.invalid/health"}, "expect": {"2xx"}})
-	if _, msg := followFlash(t, h, rec); !strings.Contains(msg, "saved") {
-		t.Fatalf("message %q", msg)
-	}
-	if cs, _ := st.Checks(context.Background(), id); len(cs) != 1 {
-		t.Fatalf("checks %+v", cs)
-	}
-	if _, msg := followFlash(t, h, post(t, h, "/hosts/"+id+"/checks", url.Values{"name": {"bad"}, "kind": {"tcp"}, "target": {"no-port"}})); !strings.HasPrefix(strings.TrimSpace(msg), `class="flash flash--error"`) {
-		t.Errorf("an invalid check gave %q", msg)
-	}
-	post(t, h, "/hosts/"+id+"/checks/delete", url.Values{"name": {"https"}})
-	if cs, _ := st.Checks(context.Background(), id); len(cs) != 0 {
-		t.Errorf("check not removed")
+	facts, _ := st.Facts(ctx, id)
+	for _, f := range facts {
+		if f.Attr == model.AttrApplication && f.Raw == "ledger" {
+			t.Error("the application was set")
+		}
 	}
 }
-
 func TestStacksFromTheBrowser(t *testing.T) {
 	_, h, st := testServer(t)
 	ctx := context.Background()
@@ -200,7 +175,7 @@ func TestStacksFromTheBrowser(t *testing.T) {
 	}
 }
 
-func TestDisableEnableAndDeleteFromTheBrowser(t *testing.T) {
+func TestDisableEnableFromTheBrowser(t *testing.T) {
 	_, h, st := testServer(t)
 	ctx := context.Background()
 	id := seed(t, st)
@@ -242,26 +217,6 @@ func TestDisableEnableAndDeleteFromTheBrowser(t *testing.T) {
 	post(t, h, "/hosts/"+id+"/enable", url.Values{})
 	if c, _ := st.CI(ctx, id); c.DisabledAt != nil {
 		t.Error("not enabled")
-	}
-
-	// Deleting needs the name typed, exactly.
-	if _, msg := followFlash(t, h, post(t, h, "/hosts/"+id+"/delete", url.Values{"confirm": {"appnode"}})); !strings.Contains(msg, "type the host") {
-		t.Errorf("delete without the name gave %q", msg)
-	}
-	if _, err := st.CI(ctx, id); err != nil {
-		t.Fatal("deleted without confirmation")
-	}
-	rec := post(t, h, "/hosts/"+id+"/delete", url.Values{"confirm": {"appnode1"}, "reason": {"test"}})
-	if loc := rec.Header().Get("Location"); loc != "/hosts" {
-		t.Errorf("after delete, redirected to %q", loc)
-	}
-	if _, err := st.CI(ctx, id); err == nil {
-		t.Error("not deleted")
-	}
-	var n int
-	st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM audit WHERE subject=?`, id).Scan(&n)
-	if n < 3 {
-		t.Errorf("the host's audit trail was not kept: %d rows", n)
 	}
 }
 
