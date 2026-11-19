@@ -174,3 +174,47 @@ func TestHostPageShowsUnreadableValuesAsUnknown(t *testing.T) {
 		t.Error("an unreadable value still matches a query")
 	}
 }
+
+// TestAddedCollectorIsShownNotEditable: a collector added on the command line
+// appears on the collectors list, its own page and the host page, marked as
+// added and by whom, with no way to change or remove it from the browser.
+func TestAddedCollectorIsShownNotEditable(t *testing.T) {
+	_, h, st := testServer(t)
+	ctx := context.Background()
+	id := linuxHost(t, st, "web01")
+	sp := collect.Spec{ID: "mine.kernel", Attr: "custom.kernel", OS: []string{"linux"}, Command: "uname -r",
+		Parse: collect.Parse{Kind: collect.ParseFirstLine}}
+	if _, err := st.PutUserCollector(ctx, sp, "ops"); err != nil {
+		t.Fatal(err)
+	}
+
+	list := get(t, h, "/collectors", nil).Body.String()
+	for _, want := range []string{`href="/collectors/spec.mine.kernel"`, `title="added by ops on `, ">added</span>"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("the collectors page lacks %q", want)
+		}
+	}
+
+	page := get(t, h, "/collectors/spec.mine.kernel", nil).Body.String()
+	for _, want := range []string{"Added by <span class=\"mono\">ops</span>", "uname -r", "kryostate collectors rm mine.kernel", "Read-only here"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the collector page lacks %q", want)
+		}
+	}
+	for _, never := range []string{`action="/collectors/remove"`, `action="/collectors/choose"`, `action="/collectors/where"`} {
+		if strings.Contains(page, never) {
+			t.Errorf("the added collector's page offers %s", never)
+		}
+	}
+
+	host := get(t, h, "/hosts/"+id, nil).Body.String()
+	at := strings.Index(host, "Collectors on this host")
+	if at < 0 {
+		t.Fatal("no Collectors on this host section")
+	}
+	for _, want := range []string{`href="/collectors/spec.mine.kernel"`, "added by ops: os linux", `<span class="chip chip--quiet">added</span>`} {
+		if !strings.Contains(host[at:], want) {
+			t.Errorf("the host page lacks %q", want)
+		}
+	}
+}

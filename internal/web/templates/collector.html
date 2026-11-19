@@ -28,7 +28,7 @@
     <dt>Systems</dt><dd>{{join .Row.Systems ", "}}</dd>
     <dt>Id</dt><dd class="mono">{{.Row.ID}}</dd>
     <dt>Defined</dt>
-    <dd>{{if eq .Row.Source "catalog"}}In KryoState's catalog.{{else if eq .Row.Source "builtin"}}Built into KryoState. It always runs.{{else}}In <span class="mono">{{if .File}}{{.File}}{{else}}a file on the server{{end}}</span>. Read-only here.{{end}}
+    <dd>{{if eq .Row.Source "catalog"}}In KryoState's catalog.{{else if eq .Row.Source "builtin"}}Built into KryoState. It always runs.{{else if .Row.Added}}Added{{with .Row.Added.AddedBy}} by <span class="mono">{{.}}</span>{{end}} on {{stamp .Row.Added.AddedAt}} with <span class="mono">kryostate collectors add</span>{{if .Row.Added.Replaced}}, last replaced{{with .Row.Added.UpdatedBy}} by <span class="mono">{{.}}</span>{{end}} on {{stamp .Row.Added.UpdatedAt}}{{end}}. Read-only here.{{else}}In <span class="mono">{{if .File}}{{.File}}{{else}}a file on the server{{end}}</span>. Read-only here.{{end}}
       {{if .Optional}}<span class="muted">A host without the program is left blank, not counted as a failure.</span>{{end}}</dd>
   </dl>
 </section>
@@ -104,13 +104,13 @@
     <p>Every host, once per collection. The program runs on the KryoState server, not on the host, and is told only which host to describe.</p>
   {{else}}
     {{template "target-summary" .Target}}
-    {{if eq .Row.Source "own"}}
+    {{if or (eq .Row.Source "own") (eq .Row.Source "added")}}
     <dl class="facts small">
       <dt>os</dt><dd>{{join .Row.Systems ", "}}</dd>
       {{with .SpecStacks}}<dt>stacks</dt><dd class="mono">{{join . ", "}}</dd>{{end}}
       {{with .SpecWhere}}<dt>where</dt><dd><code class="target__code">{{.}}</code></dd>{{end}}
     </dl>
-    <p class="muted small">Set by <span class="mono">os</span>, <span class="mono">stacks</span> and <span class="mono">where</span> in the file; a host must satisfy all of them. Read-only here.</p>
+    <p class="muted small">Set by <span class="mono">os</span>, <span class="mono">stacks</span> and <span class="mono">where</span> in its definition; a host must satisfy all of them. Read-only here.</p>
     {{else}}<p class="muted small">Built in, so it runs on every host it has a command for.</p>{{end}}
     <div class="ctry"><span class="small">Test on a host:</span> {{template "try-form" dict "CanTest" .CanTest "Name" "spec" "Values" .TrySpecs "Key" "spec"}}</div>
   {{end}}

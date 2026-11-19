@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
+	"github.com/KalebHawkins/kryostate/internal/store"
 )
 
 // Collector kinds, as the schedules page and the command line name them.
@@ -29,7 +30,7 @@ const (
 //	builtin.os, builtin.hw, builtin.host   built-in commands, by fact group
 //	catalog.cpu.cores                      a catalog entry that takes no value
 //	catalog.file.exists.7                  a catalog template, by its number
-//	spec.<id>                              a command from collectors.json
+//	spec.<id>                              a command from collectors.json, or added
 //	external.<name>                        a program from externals.json
 type Collector struct {
 	Key   string
@@ -43,6 +44,9 @@ type Collector struct {
 	Default Schedule
 	// Reveals marks a catalog collector that reads content, such as a file.
 	Reveals bool
+	// Added is set for a spec added with "kryostate collectors add", rather
+	// than read from the collectors file.
+	Added *store.UserCollector
 }
 
 // Schedule is an effective schedule: a stored one, or a default.
@@ -170,6 +174,14 @@ func (e *Engine) Collectors(ctx context.Context) ([]Collector, error) {
 		return c
 	}
 	builtin := builtinIDs()
+	added, err := e.AddedCollectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byAdded := map[string]*store.UserCollector{}
+	for i := range added {
+		byAdded[added[i].Spec.ID] = &added[i]
+	}
 	for _, sp := range all.Specs {
 		key := CollectorKey(sp.ID)
 		switch {
@@ -187,6 +199,7 @@ func (e *Engine) Collectors(ctx context.Context) ([]Collector, error) {
 		default:
 			c := add(key, KindSpec, sp.ID+" ("+sp.Attr+")")
 			c.Specs = append(c.Specs, sp)
+			c.Added = byAdded[sp.ID]
 		}
 	}
 	// Catalog titles come from the choice, which says what a person chose

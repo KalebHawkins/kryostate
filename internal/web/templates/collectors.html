@@ -81,7 +81,7 @@
     <tr data-row data-text="{{.Search}}" data-cat="{{.CategoryKey}}" data-source="{{.Source}}" data-status="{{if .On}}on{{else}}off{{end}}" {{if .Hidden}}hidden{{end}}>
       <td class="clist__name">
         <a href="/collectors/{{.ID}}" hx-get="/collectors/{{.ID}}" hx-target="#main" hx-push-url="true">{{.Title}}</a>
-        {{if ne .Source "catalog"}}<span class="chip chip--quiet">{{.SourceLabel}}</span>{{end}}
+        {{if ne .Source "catalog"}}<span class="chip chip--quiet"{{with .Added}} title="added by {{.AddedBy}} on {{stamp .AddedAt}}"{{end}}>{{.SourceLabel}}</span>{{end}}
         {{if .Reveals}}<span class="chip chip--unknown" title="Shows what is inside a file or variable">content</span>{{end}}
         {{with .Description}}<div class="muted small clist__desc">{{short . 110}}</div>{{end}}
       </td>
@@ -100,12 +100,12 @@
 <div class="cards cfoot">
   <div class="card">
     <h2>Your own</h2>
+    <p class="muted small">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Every catalog entry's page shows its definition as a worked example to copy. Collectors are added on the KryoState server's command line; this page never takes a command.</p>
+    <pre><code>kryostate collectors add --example &gt; mine.json
+kryostate collectors add mine.json</code></pre>
+    {{if .Added}}<p class="muted small">{{.Added}} added. <a href="/collectors?source=added" hx-get="/collectors?source=added" hx-target="#main" hx-push-url="true">Show them</a></p>{{end}}
     {{if .Config.Collectors}}
-    <p class="muted small">{{.Own}} read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file on the server and restart to change them; this page never takes a command.</p>
-    {{else}}
-    <p class="muted small">When nothing in the catalog fits, write your own: any read-only command, and a rule for which part of its output to keep. Every catalog entry's page shows its definition as a worked example to copy.</p>
-    <pre><code>kryostate collectors init</code></pre>
-    {{with .WantPath}}<p class="muted small">That creates <span class="mono">{{.}}</span>.</p>{{end}}
+    <p class="muted small">{{.Own}} read from <span class="mono">{{.Config.Collectors}}</span>. Edit that file on the server and restart to change them.</p>
     {{end}}
     <p class="small"><a href="/guide/collectors" hx-get="/guide/collectors" hx-target="#main" hx-push-url="true">The collector guide</a> explains each field.</p>
   </div>

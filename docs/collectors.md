@@ -222,6 +222,57 @@ nginx is also in the catalog; it is used as the example here because its
 output has a typical shape. The six steps below take you from nothing to a
 working collector. You do not need to write a program.
 
+### Adding a collector with `collectors add`
+
+The quickest way to keep your own collector is in the KryoState database.
+Write it in a JSON file, in the same format as an entry in `collectors.json`
+(see the steps below and [every field](#every-field-for-reference)), and add
+it:
+
+```sh
+kryostate collectors add --example > mine.json   # a working example to edit
+kryostate collectors add mine.json --dry-run     # check it, save nothing
+kryostate collectors add mine.json
+```
+
+```json
+{
+  "id": "mine.kernel",
+  "attr": "custom.kernel",
+  "os": ["linux"],
+  "command": "uname -r",
+  "parse": { "kind": "first_line" },
+  "type": "version"
+}
+```
+
+The file may hold one collector, a list of them (`[ {...}, {...} ]`), or a
+whole collectors file (`{"version": 1, "specs": [...]}`). Every collector in
+it is checked before any is saved, so a file with one mistake changes nothing.
+
+- Adding a file again with the same `id` **replaces** that collector; the
+  command says `updated`.
+- An `id` that a built-in collector, a catalog entry or your `collectors.json`
+  already uses is refused.
+- `kryostate collectors rm mine.kernel` removes it. Values it collected are
+  kept. Only collectors added this way can be removed.
+- `kryostate collectors list` shows them under *Added with kryostate
+  collectors add*, with who added them and when; `collectors show <id>` prints
+  one and says where it comes from. Adding, replacing and removing are
+  recorded in the audit log.
+
+Added collectors run, are scheduled and are shown in the web interface like
+the others, marked **added**. A running `kryostate serve` reads them from the
+database at each collection and page view, so there is no need to restart
+it. The web interface shows them but never creates, changes or removes them.
+
+If `collectors.json` and an added collector have the same `id`, the one in
+the file is used and the added one is skipped (the server log and
+`collectors list` say so). Built-in collectors always come first.
+
+The steps below write your collectors in `collectors.json` instead. Both
+work, and the format is the same; steps 1, 3, 4 and 5 apply either way.
+
 ### Start from a worked example
 
 Every collector's page in the web interface has **View definition**: that
@@ -672,8 +723,8 @@ program appears on the **Collectors** page with the source "external".
 A collector you write is a command that KryoState runs on every host. The web
 interface has no login of its own, so if it could take a command, anyone who
 can open the page could run commands across your estate. Your own collectors
-therefore live in a file that only people with access to the KryoState machine
-can change.
+therefore live in a file, or are added with `kryostate collectors add`, which
+only people with access to the KryoState machine can do.
 
 The catalog is different: its commands are built into KryoState, and the page
 can only switch them on or off and choose where they run. A path or a name

@@ -234,8 +234,9 @@ func (s *Server) handleTryHosts(w http.ResponseWriter, r *http.Request) {
 		if c, err := s.Store.Choice(ctx, id); err == nil {
 			where = c.Target
 		}
-	} else if ids := q["spec"]; len(ids) > 0 && s.Engine != nil && s.Engine.Specs != nil {
-		for _, sp := range s.Engine.Specs.Specs {
+	} else if ids := q["spec"]; len(ids) > 0 && s.Engine != nil {
+		loaded, _ := s.Engine.LoadedSpecs(ctx)
+		for _, sp := range loaded {
 			if slices.Contains(ids, sp.ID) {
 				where = engine.SpecTarget(sp)
 				break

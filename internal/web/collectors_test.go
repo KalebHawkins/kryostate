@@ -77,7 +77,7 @@ func TestEveryCollectorHasAPage(t *testing.T) {
 				t.Errorf("%s: the page lacks %q", id, want)
 			}
 		}
-		file, def, err := s.Engine.Definition(id, "")
+		file, def, err := s.Engine.Definition(context.Background(), id, "")
 		if err != nil {
 			t.Errorf("%s: %v", id, err)
 			continue

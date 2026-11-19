@@ -74,3 +74,38 @@ func TestSpecFileMistakesAreExplained(t *testing.T) {
 		t.Errorf("a missing comma gave %v", err)
 	}
 }
+
+// TestParseSpecList: "collectors add" takes one spec, a list, or a whole
+// collectors file, and refuses the mistakes a collectors file would.
+func TestParseSpecList(t *testing.T) {
+	one := `{"id": "a.b", "attr": "a.b", "os": ["linux"], "command": "true", "parse": {"kind": "first_line"}}`
+	two := `{"id": "a.c", "attr": "a.c", "os": ["linux"], "command": "true", "parse": {"kind": "first_line"}}`
+	for _, c := range []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{one, 1, ""},
+		{"[" + one + ", " + two + "]", 2, ""},
+		{`{"version": 1, "specs": [` + one + `]}`, 1, ""},
+		{`{"id": "a.b", "attr": "a.b", "os": ["linux"], "command": "true", "optinal": true}`, 0, "optinal"},
+		{`{"id": "a.b", "attr": "a.b", "command": "true"}`, 0, "which systems"},
+		{`{"id": "a.b", "attr": "a.b", "os": ["linux"], "command": "true", "parse": {"kind": "regex", "pattern": "("}}`, 0, "a.b"},
+		{"[" + one + ", " + one + "]", 0, "duplicate"},
+		{"[]", 0, "no collectors"},
+		{one + one, 0, "after top-level value"},
+		{"[" + one + "][" + two + "]", 0, "more than one"},
+		{"{\n  \"id\": 3\n}", 0, "line 2"},
+	} {
+		specs, err := ParseSpecList([]byte(c.in))
+		if c.want != "" {
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("%s: got %v, want an error with %q", c.in, err, c.want)
+			}
+			continue
+		}
+		if err != nil || len(specs) != c.n {
+			t.Errorf("%s: got %d specs, %v", c.in, len(specs), err)
+		}
+	}
+}

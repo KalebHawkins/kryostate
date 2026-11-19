@@ -182,7 +182,7 @@ func TestShowPrintsALoadableDefinition(t *testing.T) {
 		{"linux.os.family", "", `"command": "uname -s"`},
 	} {
 		var out strings.Builder
-		if err := showDefinition(&out, eng, c.ref, c.param); err != nil {
+		if err := showDefinition(context.Background(), &out, eng, c.ref, c.param); err != nil {
 			t.Errorf("%s: %v", c.ref, err)
 			continue
 		}
@@ -193,7 +193,7 @@ func TestShowPrintsALoadableDefinition(t *testing.T) {
 			t.Errorf("%s does not load: %v", c.ref, err)
 		}
 	}
-	if err := showDefinition(io.Discard, eng, "made.up", ""); err == nil {
+	if err := showDefinition(context.Background(), io.Discard, eng, "made.up", ""); err == nil {
 		t.Error("an unknown collector was shown")
 	}
 }
@@ -209,5 +209,117 @@ func TestServeSurvivesABrokenCollectorsFile(t *testing.T) {
 	os.WriteFile(p, []byte(starterCollectors), 0o600)
 	if err := checkCollectorsFile(p); err != nil {
 		t.Errorf("the starter file gave %v", err)
+	}
+}
+
+// addTestEngine is an engine with the built-in collectors and an empty
+// database, as "collectors add" sees one.
+func addTestEngine(t *testing.T) (*engine.Engine, *store.Store) {
+	t.Helper()
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	specs, err := collect.BuiltinSpecs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &engine.Engine{Specs: specs, Store: st}, st
+}
+
+func writeFile(t *testing.T, body string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "mine.json")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func addedIDs(t *testing.T, st *store.Store) []string {
+	t.Helper()
+	all, err := st.UserCollectors(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, u := range all {
+		ids = append(ids, u.Spec.ID)
+	}
+	return ids
+}
+
+// TestCollectorsAdd: one spec or a list is added; --dry-run saves nothing; a
+// second add replaces; a built-in id or an invalid spec anywhere in the file
+// writes nothing; rm removes only added ones.
+func TestCollectorsAdd(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("KRYOSTATE_ACTOR", "ops")
+	eng, st := addTestEngine(t)
+	spec := func(id, cmd string) string {
+		return `{"id": "` + id + `", "attr": "custom.` + id + `", "os": ["linux"], "command": "` + cmd + `", "parse": {"kind": "first_line"}}`
+	}
+
+	var out strings.Builder
+	if err := addCollectors(ctx, &out, eng, writeFile(t, exampleCollector), true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "would add example.kernel") || len(addedIDs(t, st)) != 0 {
+		t.Errorf("dry run: %q, stored %v", out.String(), addedIDs(t, st))
+	}
+
+	out.Reset()
+	if err := addCollectors(ctx, &out, eng, writeFile(t, exampleCollector), false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "added example.kernel") {
+		t.Errorf("single: %q", out.String())
+	}
+
+	out.Reset()
+	list := "[" + spec("a1", "true") + ", " + spec("example.kernel", "uname -rv") + "]"
+	if err := addCollectors(ctx, &out, eng, writeFile(t, list), false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "added a1") || !strings.Contains(out.String(), "updated example.kernel") {
+		t.Errorf("list: %q", out.String())
+	}
+	if got := strings.Join(addedIDs(t, st), ","); got != "a1,example.kernel" {
+		t.Errorf("stored %s", got)
+	}
+	if u, _ := eng.Added(ctx, "example.kernel"); u.Spec.Command != "uname -rv" || u.AddedBy != "ops" {
+		t.Errorf("not replaced: %+v", u)
+	}
+
+	for want, body := range map[string]string{
+		"built-in":      "[" + spec("b1", "true") + ", " + spec("linux.os.family", "true") + "]",
+		"optinal":       "[" + spec("b1", "true") + `, {"id": "b2", "attr": "b2", "os": ["linux"], "command": "true", "optinal": true}]`,
+		"which systems": `[` + spec("b1", "true") + `, {"id": "b2", "attr": "b2", "command": "true"}]`,
+	} {
+		err := addCollectors(ctx, io.Discard, eng, writeFile(t, body), false)
+		if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "nothing was added") {
+			t.Errorf("%s: got %v", want, err)
+		}
+	}
+	if got := strings.Join(addedIDs(t, st), ","); got != "a1,example.kernel" {
+		t.Errorf("a refused file wrote: %s", got)
+	}
+
+	for _, ids := range [][]string{{"a1", "linux.os.family"}, {"a1", "made.up"}, {"cpu.cores"}} {
+		if err := removeCollectors(ctx, io.Discard, eng, ids); err == nil || !strings.Contains(err.Error(), "nothing was removed") {
+			t.Errorf("rm %v: %v", ids, err)
+		}
+	}
+	if err := removeCollectors(ctx, io.Discard, eng, []string{"a1", "spec.example.kernel"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := addedIDs(t, st); len(got) != 0 {
+		t.Errorf("left after rm: %v", got)
+	}
+	var n int
+	st.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM audit WHERE actor='ops' AND action LIKE 'collector %'`).Scan(&n)
+	if n != 5 {
+		t.Errorf("%d audit rows, want 5", n)
 	}
 }

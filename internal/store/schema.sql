@@ -331,6 +331,17 @@ CREATE TABLE IF NOT EXISTS collector_choice (
     UNIQUE (template, param)
 );
 
+-- Collectors a person added with "kryostate collectors add": one spec each,
+-- stored as the JSON it was written in. They run beside the built-in ones.
+CREATE TABLE IF NOT EXISTS user_collector (
+    id         TEXT PRIMARY KEY,
+    spec_json  TEXT NOT NULL,
+    added_by   TEXT NOT NULL DEFAULT '',
+    added_at   TEXT NOT NULL,
+    updated_by TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+
 -- When a collector runs on its own. A row exists only where somebody chose a
 -- schedule; a collector without one runs on the default for its kind, which
 -- lives in code so that a better default reaches every estate that never

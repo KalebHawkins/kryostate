@@ -147,8 +147,8 @@ func specURL(sp collect.Spec) string {
 
 // handleTry runs one collector against one host and shows the result, saving
 // nothing. It runs only commands the page could already cause to run with the
-// Collect button: catalog entries that are switched on, and specs loaded from
-// files on the server.
+// Collect button: catalog entries that are switched on, specs loaded from
+// files on the server, and those added on its command line.
 func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
@@ -175,10 +175,15 @@ func (s *Server) handleTry(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		title = c.Label()
-	} else if ids := r.Form["spec"]; len(ids) > 0 && s.Engine != nil && s.Engine.Specs != nil {
+	} else if ids := r.Form["spec"]; len(ids) > 0 && s.Engine != nil {
 		// A built-in collector is several specs, one per system; the one
 		// for the host's system is the one that runs.
-		for _, sp := range s.Engine.Specs.Specs {
+		loaded, err := s.Engine.LoadedSpecs(ctx)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		for _, sp := range loaded {
 			if slices.Contains(ids, sp.ID) {
 				specs = append(specs, sp)
 			}

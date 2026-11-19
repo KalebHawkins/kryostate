@@ -375,9 +375,9 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 			d.Testable = append(d.Testable, testOption{Value: "choice:" + strconv.FormatInt(c.ID, 10), Label: c.Label(), Group: "Switched on"})
 		}
 	}
-	if s.Engine != nil && s.Engine.Specs != nil {
+	if loaded, err := s.Engine.LoadedSpecs(ctx); err == nil {
 		seen := map[string]bool{}
-		for _, sp := range s.Engine.Specs.Specs {
+		for _, sp := range loaded {
 			if !seen[sp.ID] {
 				seen[sp.ID] = true
 				d.Testable = append(d.Testable, testOption{Value: "spec:" + sp.ID, Label: sp.ID + " (" + sp.Attr + ")", Group: "Always collected and your own"})

@@ -74,24 +74,101 @@ func LoadSpecs(b []byte) (*SpecSet, error) {
 	}
 	seen := map[string]bool{}
 	for i, s := range f.Specs {
-		switch {
-		case s.ID == "":
+		if s.ID == "" {
 			return nil, fmt.Errorf("collector %d has no id", i)
-		case seen[s.ID]:
+		}
+		if seen[s.ID] {
 			return nil, fmt.Errorf("duplicate collector id %q", s.ID)
-		case s.Attr == "":
-			return nil, fmt.Errorf("collector %s has no attribute", s.ID)
-		case s.Command == "":
-			return nil, fmt.Errorf("collector %s has no command", s.ID)
-		case len(s.OS) == 0:
-			return nil, fmt.Errorf("collector %s does not say which systems it applies to", s.ID)
 		}
 		seen[s.ID] = true
-		if _, err := Extract(s.Parse, ""); err != nil && !errors.Is(err, ErrNoMatch) {
-			return nil, fmt.Errorf("collector %s: %w", s.ID, err)
+		if err := CheckSpec(s); err != nil {
+			return nil, err
 		}
 	}
 	return &SpecSet{Version: f.Version, Specs: f.Specs}, nil
+}
+
+// CheckSpec checks one spec the way LoadSpecs does: it has an id, an
+// attribute, a command, the systems it applies to, and a parse rule that
+// compiles.
+func CheckSpec(s Spec) error {
+	switch {
+	case s.ID == "":
+		return errors.New("collector has no id")
+	case s.Attr == "":
+		return fmt.Errorf("collector %s has no attribute", s.ID)
+	case s.Command == "":
+		return fmt.Errorf("collector %s has no command", s.ID)
+	case len(s.OS) == 0:
+		return fmt.Errorf("collector %s does not say which systems it applies to", s.ID)
+	}
+	if _, err := Extract(s.Parse, ""); err != nil && !errors.Is(err, ErrNoMatch) {
+		return fmt.Errorf("collector %s: %w", s.ID, err)
+	}
+	return nil
+}
+
+// ParseSpecList reads the specs in a file given to "collectors add": one spec
+// object, a list of them, or a whole collectors file with a version and
+// specs. Unknown fields are refused, as in LoadSpecs, and every spec is
+// checked before any is returned.
+func ParseSpecList(b []byte) ([]Spec, error) {
+	trimmed := bytes.TrimSpace(b)
+	var specs []Spec
+	switch {
+	case len(trimmed) == 0:
+		return nil, errors.New("the file is empty")
+	case trimmed[0] == '[':
+		if err := decodeStrict(b, &specs); err != nil {
+			return nil, err
+		}
+	default:
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(b, &probe); err != nil {
+			return nil, fmt.Errorf("parse collectors: %w", withLine(b, err))
+		}
+		if _, ok := probe["specs"]; ok {
+			set, err := LoadSpecs(b)
+			if err != nil {
+				return nil, err
+			}
+			return set.Specs, nil
+		}
+		var one Spec
+		if err := decodeStrict(b, &one); err != nil {
+			return nil, err
+		}
+		specs = []Spec{one}
+	}
+	if len(specs) == 0 {
+		return nil, errors.New("the file has no collectors in it")
+	}
+	seen := map[string]bool{}
+	for i, s := range specs {
+		if s.ID == "" {
+			return nil, fmt.Errorf("collector %d has no id", i+1)
+		}
+		if seen[s.ID] {
+			return nil, fmt.Errorf("duplicate collector id %q", s.ID)
+		}
+		seen[s.ID] = true
+		if err := CheckSpec(s); err != nil {
+			return nil, err
+		}
+	}
+	return specs, nil
+}
+
+func decodeStrict(b []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("parse collectors: %w", withLine(b, err))
+	}
+	if dec.More() {
+		return errors.New("parse collectors: more than one JSON value; put several collectors in a list: [ {...}, {...} ]")
+	}
+	return nil
 }
 
 // Merge adds operator-supplied specs after the builtin ones.

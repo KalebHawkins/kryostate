@@ -47,7 +47,7 @@ func (p templateParam) value(ref string) string {
 }
 
 func (a *app) collectorsCmd() *cobra.Command {
-	cmd := group("collectors", "list, switch on, test and schedule collectors; create your own", "collector")
+	cmd := group("collectors", "list, switch on, test and schedule collectors; add your own", "collector")
 	var file string
 	cmd.PersistentFlags().StringVar(&file, "collectors", "", "collector spec file, instead of "+defaultCollectorsFile+" next to the database")
 	run := func(fn func(ctx context.Context, e collectorsEnv, args []string) error) func(*cobra.Command, []string) error {
@@ -170,7 +170,7 @@ builtin.<attribute>, spec.<id>, external.<name>, or any spec id.`,
 			if err != nil {
 				return err
 			}
-			return showDefinition(os.Stdout, eng, args[0], showP.value(args[0]))
+			return showDefinition(ctx, os.Stdout, eng, args[0], showP.value(args[0]))
 		}),
 	}
 	showP.add(show, true)
@@ -229,7 +229,56 @@ builtin.<attribute>, spec.<id>, external.<name>, or any spec id.`,
 	schedule.Flags().BoolVar(&manual, "manual", false, "only run it when somebody collects")
 	schedule.Flags().BoolVar(&resetTo, "default", false, "go back to the default schedule for its kind")
 
-	cmd.AddCommand(list, catalog, enable, disable, try, show, initCmd, schedules, schedule)
+	var dryRun, example bool
+	add := &cobra.Command{
+		Use:   "add <file.json>",
+		Short: "add your own collectors from a JSON file, or replace ones added before",
+		Long: `Add your own collectors from a JSON file. The file holds one collector, a
+list of them, or a whole collectors file ({"version": 1, "specs": [...]}),
+each written as in ` + defaultCollectorsFile + `. Every collector is checked before any
+is saved. One added before under the same id is replaced; an id that a
+built-in collector, a catalog entry or the collectors file already uses is
+refused. Added collectors are kept in the database, and a running server
+collects, schedules and shows them without a restart. Use - to read the
+file from standard input.`,
+		Example: `  kryostate collectors add --example > mine.json
+  kryostate collectors add mine.json --dry-run
+  kryostate collectors add mine.json`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if example {
+				return cobra.NoArgs(cmd, args)
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
+		RunE: run(func(ctx context.Context, e collectorsEnv, args []string) error {
+			if example {
+				fmt.Print(exampleCollector)
+				return nil
+			}
+			eng, err := e.engine()
+			if err != nil {
+				return err
+			}
+			return addCollectors(ctx, os.Stdout, eng, args[0], dryRun)
+		}),
+	}
+	add.Flags().BoolVar(&dryRun, "dry-run", false, "check the file and say what would be added, saving nothing")
+	add.Flags().BoolVar(&example, "example", false, "print an example collector to start from")
+
+	rm := &cobra.Command{
+		Use: "rm <id>...", Aliases: []string{"remove"},
+		Short: "remove collectors added with collectors add; the values they recorded are kept",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: run(func(ctx context.Context, e collectorsEnv, args []string) error {
+			eng, err := e.engine()
+			if err != nil {
+				return err
+			}
+			return removeCollectors(ctx, os.Stdout, eng, args)
+		}),
+	}
+
+	cmd.AddCommand(list, catalog, enable, disable, try, show, initCmd, add, rm, schedules, schedule)
 	return cmd
 }
 
