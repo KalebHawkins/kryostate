@@ -33,7 +33,7 @@ KryoState stores no "current value" for anything. Each value is a **claim**
 | Host | `web01` |
 | Attribute | `os.version` |
 | Value | `RHEL 8.6` |
-| Source | `ssh` (a collector), or for an application a person or `inventory.md` |
+| Source | `ssh` (a collector), or for an application a person |
 | Time | when the source said it |
 
 Claims are never overwritten. When a value changes, the old claim stays in the
@@ -50,7 +50,7 @@ number wins.
 | collector | first | A command run on the host |
 | human | 20 | A person, with `kryostate host update` or the host page (application only) |
 | dns | 30 | A DNS lookup |
-| document | 40 | An imported document (application only) |
+| document | 40 | A Markdown or CSV document imported by an older version (application only) |
 | derived | 90 | Inferred from another value |
 
 ### 2.3 What a person may state
@@ -460,46 +460,60 @@ kryostate stack delete payments-prod                # the stack itself; its host
 
 Flags you leave out of `stack update` keep their current values.
 
-### Importing stacks from a document
+### Importing hosts in bulk
 
-If your inventory already has a stack column, the importer creates the stacks
-for you:
+To create many hosts at once, with their targets and stacks, write them in a
+YAML (or JSON, same structure) file and import it:
+
+```yaml
+defaults:            # optional; a host's own target fields override these
+  transport: ssh
+  user: ops
+  credential: keyring:kryostate/ops
+  port: 22
+stacks:              # optional stack details
+  - name: payments-prod
+    description: Payment services
+    owner: team-payments
+    environment: prod
+hosts:
+  - name: web01
+    fqdn: web01.example.com
+    application: ledger
+    stacks: [payments-prod:app, {stack: edge, role: proxy}]
+    target: {user: svc-ro, address: 10.0.0.5, bastion: "ops@jump.example.com:22/agent:"}
+  - name: db01
+    stacks: [payments-prod:database]
+  - name: lab01
+    target: false    # listed, but no connection
+```
 
 ```sh
-kryostate import inventory.md --name inventory.md
+kryostate import --example > hosts.yaml   # a commented file to start from
+kryostate import hosts.yaml --dry-run     # print what would change
+kryostate import hosts.yaml
+kryostate import - --format json < hosts.json
+kryostate import --from-db > hosts.yaml   # the current hosts, in this format
 ```
 
-An inventory supplies the hosts, their names and addresses, the stack each
-belongs to, its role there, and the application it runs. Nothing else is
-imported: the operating system, versions and the rest come from the hosts.
+- The whole file is checked first. Every problem is listed with its line,
+  and nothing is written while there are any. Unknown keys are problems, so a
+  misspelt key is not silently ignored.
+- Hosts are matched to recorded ones by name or fqdn. Importing the same file
+  again changes nothing. A host's target is created or updated per transport,
+  keeping a pinned host key. The address defaults to the fqdn, then the name.
+- Stacks are created as needed, with any details given under `stacks:`.
+- Nothing is ever removed: hosts, targets and stack memberships that are not
+  in the file are left as they are, and a stack named without a role keeps
+  the role already recorded.
+- A credential is always a reference (`agent:`, `keyring:service/account`,
+  `env:NAME`, `file:PATH`, `exec:COMMAND`), never a password. A keyring
+  credential that is not stored yet is a warning that gives the
+  `kryostate secret set` command to store it.
+- Every change is written to the audit log.
 
-KryoState reads the column headings and prints what it understood. It
-recognises common names: Host or Hostname, FQDN, Address or IP, Stack, Role and
-Application. It lists every other column as not imported, so a column such as
-OS or Owner is named rather than dropped without a word. If your headings use
-other names, write a mapping file that says which column means what:
-
-```json
-{
-  "host_column": "Server",
-  "fqdn_column": "DNS name",
-  "address_column": "IP",
-  "stack_column": "System",
-  "role_column": "Function",
-  "application_column": "Product"
-}
-```
-
-and pass it with `--map`:
-
-```sh
-kryostate import inventory.md --name inventory.md --map mapping.json
-```
-
-The `--name` is the source name shown beside every application from this
-file. Import the same file again after you edit it; unchanged values are not
-duplicated, and stack details you set by hand are kept. A CSV file works the
-same way.
+The application from a file is recorded as said by the person importing; an
+application the host itself reports wins over it.
 
 ## 6. Tutorial: choose what to collect
 

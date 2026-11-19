@@ -4,14 +4,11 @@ package main
 // what has been stored, and moving a whole store in and out.
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,8 +16,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/KalebHawkins/kryostate/internal/engine"
-	"github.com/KalebHawkins/kryostate/internal/ingest"
-	"github.com/KalebHawkins/kryostate/internal/normalize"
 	"github.com/KalebHawkins/kryostate/internal/store"
 	"github.com/KalebHawkins/kryostate/internal/transfer"
 	"github.com/KalebHawkins/kryostate/internal/web"
@@ -151,111 +146,6 @@ func (a *app) serve(ctx context.Context, addr, trusted string, files engineFiles
 	log.Info("listening", "addr", addr, "db", a.db)
 	if err := h.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
-	}
-	return nil
-}
-
-func (a *app) importCmd() *cobra.Command {
-	var name, mapPath string
-	cmd := &cobra.Command{
-		Use:   "import <file.md|file.csv>",
-		Short: "read hosts, stacks, roles and applications from a Markdown or CSV inventory",
-		Long: `Read hosts, stacks, roles and applications from a Markdown or CSV inventory.
-
-Without --map, columns such as Host, Address, Stack, Role and Application are
-recognised by name.`,
-		Example: "  kryostate import --name cmdb-2026 inventory.md\n  kryostate import --name sheet --map map.json hosts.csv",
-		Args:    cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.importFile(cmd.Context(), name, mapPath, args[0])
-		},
-	}
-	cmd.Flags().StringVar(&name, "name", "", "name for this document, used as the source (required)")
-	cmd.Flags().StringVar(&mapPath, "map", "", "JSON file describing which column means what")
-	_ = cmd.MarkFlagRequired("name")
-	return cmd
-}
-
-func (a *app) importFile(ctx context.Context, name, mapPath, path string) error {
-	var m ingest.Mapping
-	if mapPath != "" {
-		b, err := os.ReadFile(mapPath)
-		if err != nil {
-			return err
-		}
-		dec := json.NewDecoder(bytes.NewReader(b))
-		// A misspelled key in a mapping file would otherwise mean a column is
-		// silently never imported, and the absence is very hard to notice.
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&m); err != nil {
-			return fmt.Errorf("parse mapping: %w", err)
-		}
-	}
-	if mapPath != "" && m.HostColumn == "" {
-		return errors.New(`the mapping needs "host_column": nothing can be imported without knowing which column names the host`)
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	var tables []ingest.Table
-	if strings.EqualFold(filepath.Ext(path), ".csv") {
-		t, err := ingest.ParseCSV(f, "")
-		if err != nil {
-			return err
-		}
-		tables = []ingest.Table{t}
-	} else {
-		tables, err = ingest.ParseMarkdown(f)
-		if err != nil {
-			return err
-		}
-	}
-	if mapPath == "" {
-		guessed, notes, err := ingest.GuessMapping(tables)
-		if err != nil {
-			return err
-		}
-		m = guessed
-		fmt.Println("no --map given; read the columns as:")
-		for _, n := range notes {
-			fmt.Println("  " + n)
-		}
-	}
-
-	st, err := openStore(a.db)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	norm, err := normalize.Builtin()
-	if err != nil {
-		return err
-	}
-	im := &ingest.Importer{Store: st, Norm: norm, Name: name}
-	res, err := im.Import(ctx, tables, m)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%d rows: %d hosts created, %d matched, %d applications recorded, %d rows skipped\n",
-		res.Rows, res.Created, res.Matched, res.Asserted, res.Skipped)
-	for sec, n := range res.BySection {
-		// A document with no headings reports one unnamed group, which is
-		// just the row count again under a blank label.
-		if sec == "" {
-			continue
-		}
-		fmt.Printf("  %-40s %d\n", sec, n)
-	}
-	if len(res.Ignored) > 0 {
-		fmt.Printf("not imported: %s (an inventory supplies hosts, addresses, stacks, roles and applications; everything else is collected from the host)\n",
-			strings.Join(res.Ignored, ", "))
-	}
-	for _, p := range res.Problems {
-		fmt.Println("  problem:", p)
 	}
 	return nil
 }

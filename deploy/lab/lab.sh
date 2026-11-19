@@ -2,7 +2,7 @@
 # A small lab for trying kryostate against real Linux hosts, in Podman.
 #
 #   deploy/lab/lab.sh up      build the images and start everything
-#   deploy/lab/lab.sh seed    import the lab inventory and collect once
+#   deploy/lab/lab.sh seed    import the lab hosts (hosts.yaml) and collect once
 #   deploy/lab/lab.sh down    stop and remove the containers (keeps data)
 #   deploy/lab/lab.sh reset   down, and delete the data and the lab key
 #
@@ -86,15 +86,11 @@ start() {
 hs() { podman exec -i kryostate-lab kryostate "$@"; }
 
 seed() {
-	# The inventory supplies the hosts, their stacks and roles, and the
-	# application each runs.
-	podman cp "$here/inventory.md" kryostate-lab:/data/inventory.md
-	hs import --name inventory.md /data/inventory.md
-
-	# Each host gets a connection as the lab user, through the ssh-agent.
-	for h in "${hosts[@]}"; do
-		hs target add "${h%% *}" --user kryostate
-	done
+	# The import file supplies the hosts, their stacks and roles, the
+	# application each runs, and a connection as the lab user through the
+	# ssh-agent.
+	podman cp "$here/hosts.yaml" kryostate-lab:/data/hosts.yaml
+	hs import /data/hosts.yaml
 
 	# What to collect beyond the operating system.
 	hs collectors enable group.basics

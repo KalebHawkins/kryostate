@@ -251,9 +251,9 @@ deploy/lab/lab.sh seed    # import the inventory, connect the hosts, collect
 deploy/lab/lab.sh down    # stop (keeps data); reset also deletes it
 ```
 
-The seeded lab imports a short inventory (`deploy/lab/inventory.md`) that
-names the hosts, their stacks and roles, and the application each runs;
-everything else is collected. The screens in section 8 are of this lab.
+The seeded lab imports a short file (`deploy/lab/hosts.yaml`) that names the
+hosts, their stacks and roles, the application each runs and how to reach
+them; everything else is collected. The screens in section 8 are of this lab.
 
 ## 5. Operation
 
@@ -267,10 +267,12 @@ everything else is collected. The screens in section 8 are of this lab.
 #    the credential defaults to agent:.
 ./kryostate target add appnode1 --user svc-ro
 
-# 3. Or import a document you already have. Columns named Host, FQDN,
-#    Address, Stack, Role and Application are recognised; any other column is
-#    listed as not imported.
-./kryostate import inventory.md --name inventory.md
+# 3. Or create many hosts at once, with their targets and stacks, from a
+#    YAML or JSON file. --example prints one to start from; --dry-run shows
+#    what would change.
+./kryostate import --example > hosts.yaml
+./kryostate import hosts.yaml --dry-run
+./kryostate import hosts.yaml
 
 # 4. Define a health check.
 ./kryostate check add appnode1 https \
@@ -313,7 +315,7 @@ completion script.
 | `host rm` | Deletes hosts and everything recorded about them, after asking (`--yes` skips the question). The audit log is kept, with one more entry naming each deleted host |
 | `refresh` | Runs `collect`, then the checks |
 | `collectors` | `list` lists collectors, `catalog` the catalog; `enable` and `disable` switch catalog collectors on and off; `init` creates a file for your own; `show` prints any collector as it would be written in that file; `try` tests any collector without saving; `schedules` and `schedule` list and change schedules |
-| `import` | Reads hosts, addresses, stacks, roles and applications from a Markdown or CSV document. Common column names are recognised; `--map` names them otherwise. Other columns are reported as not imported |
+| `import` | Creates or updates hosts in bulk from a YAML or JSON file (`-` with `--format` for standard input): each host's fqdn, application, target and stack memberships, with shared `defaults`. The whole file is checked first and nothing is written if anything is wrong; `--dry-run` prints the plan; importing again changes nothing; nothing is ever removed. `--example` prints a commented file, `--from-db` the current hosts in the same format |
 | `target` | `list`, `add`, `update` and `rm` connection profiles; `list` shows whether each is used, switched off, or belongs to a disabled host. `forget-host-key` clears a pinned key after a host is rebuilt |
 | `stack` | `list` stacks; `add` creates a stack and adds members, singly or from a list with roles (`--file`, `--create`, `--user`); `update` changes its details; `rm` takes members out; `delete` deletes the stack |
 | `secret` | Manages credential references (`list`, `set`, `delete`, `test`) |

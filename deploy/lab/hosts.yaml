@@ -1,0 +1,24 @@
+# The lab's hosts, the stacks they belong to, the role each plays there and
+# the application it runs, and how kryostate reaches them: as the lab user,
+# through the lab's ssh-agent. Everything else about them, such as the
+# operating system and the nginx version, is collected from the hosts.
+#
+# deploy/lab/lab.sh seed imports it with: kryostate import hosts.yaml
+defaults:
+  transport: ssh
+  user: kryostate
+  credential: "agent:"
+
+hosts:
+  - name: web01
+    application: nginx
+    stacks: [web:web]
+  - name: web02
+    application: nginx
+    stacks: [web:web]
+  - name: db01
+    application: postgresql
+    stacks: [data:database]
+  - name: app01
+    application: orders-api
+    stacks: [app:app]
