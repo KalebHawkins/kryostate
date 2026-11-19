@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -451,5 +452,26 @@ func TestChartAndHostPageAgreeOnFreeText(t *testing.T) {
 	}
 	if unparsed != 2 {
 		t.Errorf("unparsed count is %d, want 2: %+v", unparsed, buckets)
+	}
+}
+
+// TestOpenSyncsNormally: a file database runs WAL with synchronous NORMAL,
+// so a commit does not wait for the disk on every write.
+func TestOpenSyncsNormally(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var mode string
+	var sync int
+	if err := s.db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow("PRAGMA synchronous").Scan(&sync); err != nil {
+		t.Fatal(err)
+	}
+	if mode != "wal" || sync != 1 {
+		t.Errorf("journal_mode %q, synchronous %d; want wal and 1 (NORMAL)", mode, sync)
 	}
 }

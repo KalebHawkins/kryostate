@@ -209,6 +209,10 @@ To copy the file:
 **CAUTION:** An export contains host names, addresses and credential
 references. It does not contain credentials. Keep it in a safe place.
 
+The database uses WAL mode with `synchronous=NORMAL`. A power failure cannot
+damage the file, but it can lose the last few changes. The next run collects
+these values again.
+
 The export does not contain `collectors.json`, `rules.json` or
 `externals.json`. Back up these files separately.
 

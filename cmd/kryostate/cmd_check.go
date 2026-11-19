@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -72,13 +73,18 @@ func (a *app) runChecks(ctx context.Context, only []string) error {
 		fmt.Println("no checks defined; add one with: kryostate check add <host> <name> --tcp host:port")
 		return nil
 	}
+	tw := newTable(os.Stdout)
+	fmt.Fprintln(tw, "HOST\tCHECK\tRESULT\tTOOK\tDETAIL")
 	for _, r := range results {
 		status := "ok"
 		if r.Outcome != model.OutcomeOK {
 			status = string(r.Outcome)
 		}
-		fmt.Printf("%-24s %-16s %-8s %6dms  %s\n",
-			r.Check.Label, r.Check.Name, status, r.Took.Milliseconds(), safeText(r.Detail, false))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%dms\t%s\n",
+			r.Check.Label, r.Check.Name, status, r.Took.Milliseconds(), dash(oneLine(r.Detail, 60)))
+	}
+	if err := tw.Flush(); err != nil {
+		return err
 	}
 	ok, failed := engine.CheckSummary(results)
 	fmt.Printf("%d ok, %d failed\n", ok, failed)
@@ -127,30 +133,82 @@ func (a *app) checkAddCmd() *cobra.Command {
 }
 
 func (a *app) checkListCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:     "list <host>",
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:     "list [host]",
 		Aliases: []string{"ls"},
-		Short:   "list the checks on a host",
-		Args:    cobra.ExactArgs(1),
+		Short:   "list checks with their host and last result: every host's, or one host's",
+		Example: "  kryostate check list\n  kryostate check list web01\n  kryostate check list --json",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: a.withStore(func(ctx context.Context, st *store.Store, args []string) error {
-			id, err := st.LookupCI(ctx, args[0])
+			id := ""
+			if len(args) == 1 {
+				var err error
+				if id, err = st.LookupCI(ctx, args[0]); err != nil {
+					return err
+				}
+			}
+			cs, err := st.ListChecks(ctx, id)
 			if err != nil {
 				return err
 			}
-			cs, err := st.Checks(ctx, id)
-			if err != nil {
-				return err
+			if asJSON {
+				type checkJSON struct {
+					Host        string     `json:"host"`
+					HostID      string     `json:"host_id"`
+					Name        string     `json:"name"`
+					Kind        string     `json:"kind"`
+					Target      string     `json:"target"`
+					Expect      string     `json:"expect,omitempty"`
+					Enabled     bool       `json:"enabled"`
+					HostEnabled bool       `json:"host_enabled"`
+					LastOutcome string     `json:"last_outcome,omitempty"`
+					LastDetail  string     `json:"last_detail,omitempty"`
+					LastAt      *time.Time `json:"last_at,omitempty"`
+				}
+				out := make([]checkJSON, 0, len(cs))
+				for _, c := range cs {
+					j := checkJSON{Host: c.Label, HostID: c.CIID, Name: c.Name, Kind: c.Kind, Target: c.Target,
+						Expect: c.Expect, Enabled: c.Enabled, HostEnabled: !c.HostDisabled,
+						LastOutcome: c.LastOutcome, LastDetail: c.LastDetail}
+					if !c.LastAt.IsZero() {
+						at := c.LastAt
+						j.LastAt = &at
+					}
+					out = append(out, j)
+				}
+				return writeJSON(out)
 			}
+			if len(cs) == 0 {
+				fmt.Println("no checks defined; add one with: kryostate check add <host> <name> --tcp host:port")
+				return nil
+			}
+			tw := newTable(os.Stdout)
+			fmt.Fprintln(tw, "HOST\tCHECK\tKIND\tTARGET\tEXPECT\tSTATUS\tLAST RESULT\tWHEN")
 			for _, c := range cs {
 				state := "enabled"
-				if !c.Enabled {
+				switch {
+				case c.HostDisabled:
+					state = "host disabled"
+				case !c.Enabled:
 					state = "disabled"
 				}
-				fmt.Printf("%-16s %-5s %-40s %s\n", c.Name, c.Kind, c.Target, state)
+				last, when := "never", "-"
+				if c.LastOutcome != "" {
+					last, when = c.LastOutcome, agoText(c.LastAt)
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", c.Label, c.Name, c.Kind,
+					safeText(c.Target, false), dash(c.Expect), state, last, when)
 			}
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+			fmt.Printf("%d check%s.\n", len(cs), pluralS(len(cs)))
 			return nil
 		}),
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print JSON")
+	return cmd
 }
 
 func (a *app) checkRmCmd() *cobra.Command {

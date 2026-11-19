@@ -262,19 +262,19 @@ application only when you add hosts to a stack (section 5).
 
 ### Step 6 (optional): add a health check
 
-A health check tells you if a service replies. It is independent of the
-login. You add health checks on the command line only:
+A health check tests if a service on the host replies. It does not log in.
+You add health checks on the command line only:
 
 ```sh
 kryostate check add web01 https --http https://web01.example.com/health --expect 2xx
 kryostate check add db01 postgres --tcp db01.example.com:5432
-kryostate check list web01
-kryostate check rm web01 https
+kryostate check list                 # all checks, with the host and last result
 kryostate check                      # run all enabled checks
 ```
 
 `kryostate refresh` also runs the checks. **Collect now** and the schedules
-do not run them.
+do not run them. Refer to [Health checks](#health-checks) for all of the
+options and the results.
 
 ## 5. Tutorial: build a stack
 
@@ -366,16 +366,175 @@ collector do not change.
 
 ### Importing hosts in bulk
 
-You can add many hosts, with their targets and stacks, from one YAML or JSON
-file:
+Use `kryostate import` to add or change many hosts in one step. One file
+gives the hosts, their targets, and their stacks with a role in each stack.
+The file must be YAML or JSON.
+
+**CAUTION:** KryoState does not import CSV or Markdown files. If your data is
+in a CSV file or a spreadsheet, convert it to JSON first. Refer to
+[Convert a CSV file to an import file](#convert-a-csv-file-to-an-import-file).
+
+| Task | Command |
+|---|---|
+| Add or change hosts, targets and stack memberships from a file | `kryostate import hosts.yaml` |
+| Write the current hosts, targets and stacks to an import file | `kryostate import --from-db > hosts.yaml` |
+| Add a list of hosts to a stack | `kryostate stack add payments-prod --file hosts.txt --create` |
+| Add all hosts that match a query to a stack | `kryostate stack add linux -q 'os.family == "Linux"' --role server` |
+| Give the same target to many hosts | `kryostate target add web01 web02 db01 --user ops` |
+| Change the credential of all targets of one user | `kryostate target set-credential --for-user ops --password` |
+| Copy all of the store to a different database | `kryostate export` and `kryostate restore` |
+
+#### Import procedure
+
+**WARNING:** Do not put a password in the file. A file is easy to copy, and
+the password can go to persons who must not have it. Give a credential
+reference in the file, and store the password in the OS credential store
+(step 7).
+
+1. Run `kryostate import --example > hosts.yaml`. The command writes an example file with comments.
+2. Edit `hosts.yaml`. Write one entry in `hosts` for each host. Refer to [Import file reference](#import-file-reference).
+3. Run `kryostate import hosts.yaml --dry-run`. The command shows the changes and writes nothing.
+4. If the command shows problems, correct the file. Then do step 3 again. Refer to [Import errors](#import-errors).
+5. Make sure that the changes are correct.
+6. Run `kryostate import hosts.yaml`.
+7. If the output shows `warning: credential keyring:kryostate/<user> is not in the OS credential store`, run `kryostate secret set kryostate/<user>`.
+8. Run `kryostate refresh` to collect from the hosts.
+
+The output of `--dry-run` gives each change, then one line with the totals:
+
+```text
+create host web01
+  fqdn web01.example.com
+  application ledger
+  target ssh: create svc-ro@192.0.2.10 using keyring:kryostate/ops via ops@jump.example.com:22/agent:
+  stack payments-prod: add as app
+  stack edge: add as proxy
+...
+create stack payments-prod
+create stack edge
+warning: credential keyring:kryostate/ops is not in the OS credential store; store it with: kryostate secret set kryostate/ops
+5 hosts created, 0 updated, 0 unchanged; 4 targets created, 0 updated; 4 stack memberships added, 0 roles changed; 2 stacks created, 0 updated; 1 warning
+dry run: nothing was written; nothing is removed: hosts, targets and stack memberships not in the file are left as they are
+```
+
+If you import the same file again, nothing changes. The output is
+`nothing to change: the store already matches the file (5 hosts)`.
+
+To read standard input, give `-` and `--format yaml` or `--format json`:
+
+```sh
+kryostate import - --format json < hosts.json             # sh, bash
+Get-Content hosts.json | kryostate import - --format json  # PowerShell
+```
+
+#### Import file reference
+
+The file has three top-level keys. YAML and JSON files have the same
+structure. KryoState gets the format from the file extension: `.yaml`,
+`.yml` or `.json`. For a different extension, a file that starts with `{` is
+JSON. All other files are YAML.
+
+| Key | Required | Content |
+|---|---|---|
+| `defaults` | No | Target fields for each host: `transport`, `port`, `user`, `credential` and `bastion`. You cannot put `address` or `disabled` here. |
+| `stacks` | No | A list of stack details: `name` (required), `description`, `owner` and `environment`. |
+| `hosts` | Yes | A list of hosts. The list must have one host or more. |
+
+Fields of a host:
+
+| Field | Required | Content |
+|---|---|---|
+| `name` | Yes | The name of the host. It cannot contain spaces or `/`. A name can occur only one time in the file. Upper and lower case are the same. |
+| `fqdn` | No | The fully qualified name, for example `web01.example.com`. It must contain a dot. An fqdn can occur only one time in the file. |
+| `application` | No | The application of the host. KryoState records it with the source "human". |
+| `stacks` | No | The stacks of the host, with the role in each stack. Refer to the table of stack entries. |
+| `target` | No | The target of the host: a mapping of target fields, `false` or `true`. Refer to the table of target rules. |
+| `disabled` | No | `true` disables the host. `false` enables the host. If you do not give it, the status of the host does not change. |
+
+Fields of a target, in the `target` of a host or in `defaults`:
+
+| Field | Default | Content |
+|---|---|---|
+| `transport` | `ssh` | `ssh` or `winrm`. |
+| `address` | Refer to the address order | The address or name to connect to. Only in the `target` of a host. |
+| `port` | 22 for `ssh`, 5986 for `winrm` | A number from 1 to 65535. |
+| `user` | None | The user to log in as. Each target must have a user, from `target` or from `defaults`. |
+| `credential` | `agent:` | A credential reference: `agent:`, `keyring:service/account`, `env:NAME`, `file:PATH` or `exec:COMMAND`. Never a password. |
+| `bastion` | None | A jump host, for `ssh` only: `user@host[:port]/credential-reference`. |
+| `disabled` | `false` | `true` records the target, but KryoState does not collect through it. Only in the `target` of a host. |
+
+Stack entries, in the `stacks` of a host:
+
+| Form | Example | Result |
+|---|---|---|
+| `stack` | `payments-prod` | The host is a member with no role. If the host is already a member, it keeps its role. |
+| `stack:role` | `payments-prod:app` | The host is a member with the role `app`. |
+| `{stack, role}` | `{stack: edge, role: proxy}` | The same as `stack:role`. Use this form if the stack name contains a colon. |
+
+Target rules:
+
+| In the file | Result |
+|---|---|
+| A `target` mapping and `defaults` | Each field in the `target` of the host replaces the same field in `defaults`. The other fields come from `defaults`. |
+| No `target` key, with `defaults` | The host gets a target from `defaults`. |
+| No `target` key, no `defaults` | The import does not add or change a target for the host. |
+| `target: true` | The host gets a target from `defaults` only. |
+| `target: false` | The host gets no target. Its existing targets do not change. |
+
+The import uses the first of these values as the address of a target:
+
+1. The `address` in the `target` of the host.
+2. The address of the existing target with the same transport.
+3. The `fqdn` of the host in the file.
+4. The fqdn or the hostname that KryoState has for the host.
+5. The `name` of the host.
+
+**CAUTION:** In YAML, `agent:` without quotes is not a value, because it ends
+in a colon. Write `credential: "agent:"`. Also put quotes around a `bastion`
+that ends in `agent:`.
+
+**CAUTION:** A `port` in `defaults` applies also to `winrm` targets. If you
+have `winrm` hosts, do not put `port` in `defaults`. Or give the `port` in
+the target of each `winrm` host.
+
+#### How the import changes recorded data
+
+- KryoState finds a recorded host by its `name` or its `fqdn`. If the name
+  and the fqdn find two different hosts, the import stops.
+- If a recorded host does not have the `fqdn` of the file, the import adds
+  it.
+- A host has a maximum of one target for each transport. The import changes
+  the target with the same transport, or adds a new target.
+- A stack that only a host names gets no details. For a stack in `stacks`,
+  the details that you give replace the recorded details. The other details
+  do not change.
+- If the host reports an application, the value from the host wins. The
+  import shows a warning and does not change the application.
+- The import does not change a pinned host key.
+- The import removes nothing. Hosts, targets, stack memberships and roles
+  that are not in the file do not change. To remove them, use
+  `kryostate host rm`, `kryostate target rm` or `kryostate stack rm`.
+- KryoState examines all of the file before it writes. If there is a
+  problem, it shows each problem with its line number and writes nothing.
+- KryoState records each change in the audit log.
+
+**CAUTION:** The file gives all of a target, except the address and the
+port. If a target field is not in the file, the import sets the default
+value. For example, if the file has no `bastion` for a host, the import
+removes the bastion of its target. If the file has no `disabled: true`, the
+import enables a disabled target. To start from the recorded targets, use
+`kryostate import --from-db`.
+
+#### Example files
+
+This YAML file adds five hosts, their targets and two stacks:
 
 ```yaml
-defaults:            # optional; the target fields of a host override these
+defaults:                    # optional; a target field of a host replaces these
   transport: ssh
   user: ops
   credential: keyring:kryostate/ops
-  port: 22
-stacks:              # optional stack details
+stacks:                      # optional stack details
   - name: payments-prod
     description: Payment services
     owner: team-payments
@@ -385,36 +544,246 @@ hosts:
     fqdn: web01.example.com
     application: ledger
     stacks: [payments-prod:app, {stack: edge, role: proxy}]
-    target: {user: svc-ro, address: 192.0.2.10, bastion: "ops@jump.example.com:22/agent:"}
+    target:
+      user: svc-ro
+      address: 192.0.2.10
+      bastion: "ops@jump.example.com:22/agent:"
+  - name: web02
+    fqdn: web02.example.com  # also the address of the target
+    stacks:
+      - payments-prod:app
   - name: db01
     stacks: [payments-prod:database]
+    target:
+      credential: "agent:"   # quotes are necessary
+  - name: win01
+    target:
+      transport: winrm
+      user: svc-ro
   - name: lab01
-    target: false    # in the inventory, with no target
+    target: false            # in the inventory, with no target
+    disabled: true
 ```
 
-**CAUTION:** In YAML, `agent:` without quotes is not a value. Write
-`credential: "agent:"`.
+This JSON file has the same content:
 
-1. Run `kryostate import --example > hosts.yaml` to get a file with comments.
-2. Edit the file.
-3. Run `kryostate import hosts.yaml --dry-run` to see the changes.
-4. Run `kryostate import hosts.yaml`.
+```json
+{
+  "defaults": {
+    "transport": "ssh",
+    "user": "ops",
+    "credential": "keyring:kryostate/ops"
+  },
+  "stacks": [
+    {
+      "name": "payments-prod",
+      "description": "Payment services",
+      "owner": "team-payments",
+      "environment": "prod"
+    }
+  ],
+  "hosts": [
+    {
+      "name": "web01",
+      "fqdn": "web01.example.com",
+      "application": "ledger",
+      "stacks": ["payments-prod:app", {"stack": "edge", "role": "proxy"}],
+      "target": {
+        "user": "svc-ro",
+        "address": "192.0.2.10",
+        "bastion": "ops@jump.example.com:22/agent:"
+      }
+    },
+    {
+      "name": "web02",
+      "fqdn": "web02.example.com",
+      "stacks": ["payments-prod:app"]
+    },
+    {
+      "name": "db01",
+      "stacks": ["payments-prod:database"],
+      "target": {"credential": "agent:"}
+    },
+    {
+      "name": "win01",
+      "target": {"transport": "winrm", "user": "svc-ro"}
+    },
+    {
+      "name": "lab01",
+      "target": false,
+      "disabled": true
+    }
+  ]
+}
+```
 
-`kryostate import - --format json < hosts.json` reads standard input.
-`kryostate import --from-db > hosts.yaml` writes the current hosts, targets
-and stacks in the same format.
+### Convert a CSV file to an import file
 
-- KryoState checks all of the file first. If there is a problem, for example
-  an unknown key, it shows the line and writes nothing.
-- KryoState finds a recorded host by its name or fqdn. If you import the same
-  file again, nothing changes. A pinned host key does not change.
-- KryoState removes nothing. Hosts, targets and stack members that are not in
-  the file do not change.
-- A credential is always a reference, never a password. If a `keyring:`
-  credential is not stored, a warning gives the `kryostate secret set`
-  command.
-- The application in the file has the source "human", so a value from the
-  host wins.
+KryoState does not import CSV. If your hosts are in a spreadsheet, save the
+sheet as a CSV file. Then convert the CSV file to a JSON import file. The
+examples below use a CSV file with these columns:
+
+```text
+name,fqdn,application,stacks,user,address
+web01,web01.example.com,ledger,payments-prod:app;edge:proxy,svc-ro,192.0.2.10
+web02,web02.example.com,ledger,payments-prod:app,,
+db01,,,payments-prod:database,,192.0.2.20
+lab01,,,,,
+```
+
+| Column | Content |
+|---|---|
+| `name` | The name of the host. Required. |
+| `fqdn`, `application` | The same as the host fields. Can be empty. |
+| `stacks` | Stack entries in the form `stack` or `stack:role`, separated by `;`. Can be empty. |
+| `user`, `address` | Target fields of the host. Can be empty. An empty `user` comes from `defaults`. An empty `address` follows the address order. |
+
+An import file can be UTF-8, UTF-8 with a byte order mark, or UTF-16.
+Thus a file from `>` or `Set-Content` in Windows PowerShell 5.1 is accepted.
+
+In PowerShell (Windows PowerShell 5.1 or PowerShell 7), run this in the
+folder of `hosts.csv`:
+
+```powershell
+$hosts = Import-Csv hosts.csv | ForEach-Object {
+    $h = [ordered]@{ name = $_.name }
+    if ($_.fqdn)        { $h.fqdn = $_.fqdn }
+    if ($_.application) { $h.application = $_.application }
+    if ($_.stacks)      { $h.stacks = @($_.stacks -split ';') }
+    $t = [ordered]@{}
+    if ($_.user)    { $t.user = $_.user }
+    if ($_.address) { $t.address = $_.address }
+    if ($t.Count)   { $h.target = $t }
+    $h
+}
+$file = [ordered]@{
+    defaults = [ordered]@{ user = 'ops'; credential = 'keyring:kryostate/ops' }
+    hosts    = @($hosts)
+}
+[IO.File]::WriteAllText("$PWD\hosts.json", ($file | ConvertTo-Json -Depth 5))
+```
+
+On Linux, `python3` does the same conversion. Save this as `csv2json.py`:
+
+```python
+import csv, json, sys
+hosts = []
+for r in csv.DictReader(open(sys.argv[1], newline="", encoding="utf-8-sig")):
+    h = {"name": r["name"]}
+    for k in ("fqdn", "application"):
+        if r.get(k):
+            h[k] = r[k]
+    if r.get("stacks"):
+        h["stacks"] = r["stacks"].split(";")
+    t = {k: r[k] for k in ("user", "address") if r.get(k)}
+    if t:
+        h["target"] = t
+    hosts.append(h)
+defaults = {"user": "ops", "credential": "keyring:kryostate/ops"}
+json.dump({"defaults": defaults, "hosts": hosts}, sys.stdout, indent=2)
+```
+
+Then run `python3 csv2json.py hosts.csv > hosts.json`.
+
+After the conversion, do the [Import procedure](#import-procedure) from
+step 3 with `hosts.json`. Change `defaults` in the script to your user and
+credential.
+
+### Export the inventory to an import file
+
+`kryostate import --from-db` writes the recorded hosts, targets and stacks as
+an import file. Use it to keep the inventory in a file, to make a large
+change in a text editor, or to copy the hosts to a different database.
+
+1. Run `kryostate import --from-db > hosts.yaml`.
+2. Edit `hosts.yaml`.
+3. Run `kryostate import hosts.yaml --dry-run`.
+4. Make sure that the changes are correct.
+5. Run `kryostate import hosts.yaml`.
+
+If you import the file with no changes, nothing changes. For JSON, add
+`--format json`. The file has:
+
+- The stacks that have details, and the hosts with their `fqdn`, stacks,
+  roles and `disabled` status.
+- The `application` only if a person gave it. A collected application is
+  not in the file.
+- One target for each host. If a host has more than one target, the file
+  has the `ssh` target. A note on standard error names the other targets.
+- In `defaults`, the target fields that are the same for all targets.
+
+The file does not have collected values, checks, collectors, rules, the
+audit log or pinned host keys. To copy these, use `export` and `restore`.
+
+### Other bulk commands
+
+| Command | What it does |
+|---|---|
+| `kryostate stack add payments-prod --file hosts.txt --create --user svc-ro` | Adds the hosts in a list to a stack. Refer to [Add a list of hosts](#add-a-list-of-hosts). |
+| `kryostate stack add payments-prod -q '<query>' --role app` | Adds all recorded hosts that match a query, one time. Hosts that match later are not added. |
+| `kryostate target add web01 web02 db01 --user ops` | Gives each host the same target. Each target connects to the fqdn or the name of its host. |
+| `kryostate target update web01 web02 --port 2222` | Changes the existing targets of the hosts. Only the flags that you give change. |
+| `kryostate target set-credential --for-user ops --password` | Asks for the password one time, stores it as `kryostate/ops`, and gives it to all targets that log in as `ops`. |
+| `kryostate target set-credential --for-user svc-ro -t winrm -c keyring:kryostate/svc-ro` | Sets a credential reference on all `winrm` targets that log in as `svc-ro`. |
+
+In the list for `stack add --file`, write one host on each line: the name,
+the role, and optionally the fqdn. Spaces, tabs, commas or semicolons can
+separate the words. KryoState ignores empty lines and lines that start with
+`#`. To read the list from standard input, give `--file -`.
+
+**CAUTION:** In a host list, a word that contains a dot is the fqdn. Do not
+put an IP address in the list. Give the address later with
+`kryostate target update <host> --address 192.0.2.10`.
+
+- Without `--create`, `stack add` does not add hosts that are not recorded.
+  It shows each unknown name.
+- `--user` gives an `ssh` target to each added host that has no `ssh`
+  target. `--credential` sets its credential. The default is `agent:`.
+- `target add` replaces a target with the same transport. A pinned host key
+  does not change. `--address` is permitted with one host only.
+
+### Import, export and restore
+
+`import` and `export` do different tasks. Do not use one in place of the
+other.
+
+| | `import` and `import --from-db` | `export` and `restore` |
+|---|---|---|
+| Format | YAML or JSON that a person can write and edit | A JSON copy of all tables of the store |
+| Content | Hosts, fqdn, application that a person gave, targets, stacks and roles | All of the store, also collected values, stored output, checks, rules, collectors, schedules, notifications, pinned host keys and the audit log |
+| Database | Any database. The import adds to the recorded data and changes it. | `restore` needs an empty database. |
+| Use | Load hosts in bulk. Edit and apply again. | Make a backup. Move KryoState to a different server. |
+
+Passwords are not in either file. They stay in the OS credential store. On a
+new server, store them again with `kryostate secret set kryostate/<user>`.
+
+An `export` file is not an import file. If you give it to
+`kryostate import`, the import shows `unknown key "format"` and writes nothing.
+
+### Import errors
+
+| Message | Cause | Action |
+|---|---|---|
+| `yaml: line 3: mapping values are not allowed in this context` | A value that ends in a colon, for example `agent:`, has no quotes. | Write `"agent:"`. |
+| `yaml: line 2: found character that cannot start any token` | The line has a tab. | Use spaces to indent YAML. |
+| `target: "password" is not accepted` | The file has a `password` key. | Remove the key. Give `credential: keyring:kryostate/<user>`. Run `kryostate secret set kryostate/<user>`. |
+| `credential is not a reference (no scheme)` | The `credential` is a password or a word with no scheme. | Give a reference, for example `keyring:kryostate/ops`. |
+| `host: unknown key "fqnd"` | A key is not correct. The message gives the permitted keys. | Correct the key on the line that the message gives. |
+| `defaults: unknown key "address"` | `address` or `disabled` is in `defaults`. | Put it in the `target` of the host. |
+| `target: no user; give user in the target or in defaults` | The target has no user. | Give `user` in the target or in `defaults`. |
+| `listed twice (also on line 2)` | Two hosts have the same name or fqdn. | Remove one host. |
+| `fqdn "web01" is not a fully qualified name` | The fqdn has no dot. | Give the full name, or remove `fqdn`. |
+| `transport "rdp" should be ssh or winrm` | The transport is not known. | Give `ssh` or `winrm`. |
+| `port should be a number from 1 to 65535` | The port is not correct. | Give a correct port. |
+| `target: a bastion is for ssh only` | A `winrm` target has a bastion. | Remove `bastion`. |
+| `stack payments-prod is named twice` | A host gives the same stack two times. | Remove one entry. |
+| `the name matches host ... and the fqdn matches host ...` | The name and the fqdn find two different recorded hosts. | Correct the name or the fqdn in the file. |
+| `matches the same recorded host as web01` | Two entries find the same recorded host. | Remove one entry. |
+| `not valid JSON: invalid character '}' looking for beginning of object key string` | The JSON has a comma before `}` or `]`. | Remove the comma. |
+| `give --format yaml or --format json when reading standard input` | The file is `-` with no format. | Add `--format yaml` or `--format json`. |
+| `the file is empty` or `no hosts: the file needs a hosts: list` | The file has no `hosts` list. | Add `hosts`. Run `kryostate import --example` to see one. |
+| `warning: credential keyring:kryostate/ops is not in the OS credential store` | The password is not stored. The import continues. | Run `kryostate secret set kryostate/ops`. |
+| `warning: web01: the host reports application ...` | The host reports a different application. The value from the host wins. | No action is necessary. To stop the warning, remove `application` from the file. |
 
 ## 6. Tutorial: choose what to collect
 
@@ -532,7 +901,10 @@ and file checks run every 6 hours. Scheduled runs have these limits, to keep
 the load on the hosts low:
 
 - A scheduled run connects only to the hosts of its collector.
-- A maximum of 4 sessions are open at the same time, and 1 on each host.
+- A maximum of 4 connections are open at the same time, and 1 on each host.
+  On one SSH connection, a maximum of 4 commands run at the same time. If the
+  host refuses more sessions, its commands run one at a time. On WinRM,
+  commands always run one at a time.
 - The hosts start at random times in a period of up to 2 minutes.
 - If a host cannot be reached, the schedule stops for 10 minutes for that
   host. After each failure the time doubles, to a maximum of 6 hours. A
@@ -588,6 +960,132 @@ kryostate changes --json
 ```
 
 `--since` takes hours (`24h`), days (`7d`) or a duration such as `90m`.
+
+### Health checks
+
+A health check tests if a service on a host replies. KryoState does not log
+in for a check. It opens a TCP connection to a port, or sends an HTTP GET
+request to a URL. A collection logs in and reads values. A check reads no
+values. Thus a host can pass its checks and fail its collection, or the
+opposite.
+
+**CAUTION:** A check connects from the computer that runs `kryostate`, not
+from the host. A firewall between the two can make a check fail while the
+service is available to its users. Make sure that the KryoState computer can
+reach the target.
+
+#### Kinds of check
+
+| | `tcp` | `http` |
+|---|---|---|
+| Flag | `--tcp host:port` | `--http URL` |
+| Target format | `host:port`, for example `db01.example.com:5432` or `[2001:db8::5]:22`. The host and the port must not be empty. | An `http://` or `https://` URL. |
+| Test | Opens a TCP connection, then closes it. Sends no data. | Sends one `GET` request with the user agent `kryostate`. Does not read the body. |
+| Result `ok` | The connection opens. | The status code agrees with `--expect`. |
+| `--expect` | Not used. | A status code of three characters, for example `200`, `204` or `403`. Use `x` (or `X`) for any digit after the first, for example `2xx`, `20x` or `3xx`. The default is `2xx`. |
+| Redirects | Not applicable. | KryoState does not follow a redirect. A `301` or `302` is the result. Use `--expect 3xx` if a redirect is correct. |
+| TLS | Not applicable. | KryoState verifies the certificate with the trusted root certificates of the computer. A certificate that is not trusted, or a different name, gives `error`. |
+| Timeout | `--timeout`, default `5s`. | `--timeout`, default `5s`. The maximum is `30s`. |
+
+Other flags of `check add`:
+
+| Flag | Content |
+|---|---|
+| `--timeout` | The time limit for one check, for example `2s` or `1m`. `0s` sets the default, `5s`. |
+| `--disable` | Records the check, but does not run it. To start it again, add it again without `--disable`. |
+
+KryoState does not try a failed check again. Each run records one result.
+
+#### Add, change and remove a check
+
+Each check has a name that is unique on its host. You add checks on the
+command line only. The web interface cannot add or change checks.
+
+```sh
+kryostate check add web01 site --http http://web01.example.com/ --expect 200
+kryostate check add web01 health --http https://web01.example.com/health --timeout 10s
+kryostate check add db01 postgres --tcp db01.example.com:5432
+kryostate check add web02 login --http https://web02.example.com/login --expect 3xx
+kryostate check rm web01 site
+```
+
+- If a check with the same name exists on the host, `check add` replaces
+  all of it. Give all the flags again. Flags that you do not give get their
+  default values. For example, a replaced check without `--disable` is
+  enabled.
+- `check rm` removes the check. It shows nothing if it is successful.
+- `kryostate host rm` removes all checks of the host.
+
+#### Run the checks
+
+| Command | What it runs |
+|---|---|
+| `kryostate check` or `kryostate check run` | All enabled checks of all enabled hosts. |
+| `kryostate check run --only web01,db01` | The enabled checks of the hosts that you give. |
+| `kryostate refresh` | A collection, then all enabled checks of the same hosts. |
+| `kryostate refresh --no-checks` | A collection only. |
+
+`kryostate serve`, the schedules and **Collect now** do not run checks. To
+run checks at regular times, run `kryostate check` from cron or the Windows
+Task Scheduler.
+
+KryoState does not run the checks of a disabled host, or a disabled check.
+`check list` shows them with the status `host disabled` or `disabled`.
+
+`check run` shows one line for each check, then the totals:
+
+```text
+HOST   CHECK     RESULT   TOOK    DETAIL
+db01   postgres  ok       8ms     -
+web01  health    ok       19ms    status 200
+web01  site      error    23ms    http error: 503, wanted 200
+2 ok, 1 failed
+```
+
+#### Results
+
+| Result | Meaning |
+|---|---|
+| `ok` | The TCP connection opened, or the HTTP status agrees with `--expect`. For `http`, the detail gives the status, for example `status 200`. |
+| `refused` | The host refused the connection. No service listens on the port, or a firewall refuses it. |
+| `timeout` | No reply in the time limit. A firewall can drop the packets, or the service is too slow. |
+| `nxdomain` | DNS does not know the name in the target. |
+| `auth_failed` | The HTTP status is `401`, and `--expect` does not agree with `401`. |
+| `error` | All other failures. For example, an HTTP status that does not agree with `--expect` (`http error: 503, wanted 200`), a redirect, a certificate that is not trusted, or a port that is not a number. The detail gives the cause. |
+
+#### See the results
+
+| Where | What it shows |
+|---|---|
+| `kryostate check list` | All checks of all hosts: `HOST`, `CHECK`, `KIND`, `TARGET`, `EXPECT`, `STATUS`, `LAST RESULT` and `WHEN`. A check that did not run shows `never`. |
+| `kryostate check list web01` | The checks of one host. |
+| `kryostate check list --json` | The same data as JSON, with the detail of the last result. |
+| `kryostate host show web01` and the **Reachability** card on the host page | The last result of each kind: `tcp` for TCP checks, `health` for HTTP checks. |
+| `GET /api/v1/hosts/{host}` | The same as **Reachability**, in `reachability`. |
+
+**CAUTION:** **Reachability** shows only the last result of each kind. If a
+host has two HTTP checks, it shows only the check that ran last. Use
+`kryostate check list web01` to see each check.
+
+Check results do not change the collection status of a host. The overview,
+the failed hosts and the notification digest use the collection only.
+
+#### Health check problems
+
+| Problem | Action |
+|---|---|
+| `"db01" is not host:port` | Give the port, for example `--tcp db01.example.com:5432`. |
+| `is not an http or https URL` | Start the URL with `http://` or `https://`. |
+| `expect "20" is not a status code or a pattern like 2xx` | Give three characters. The first character must be a digit. |
+| `at least one of the flags in the group [tcp http] is required` | Give `--tcp` or `--http`. Do not give both. |
+| `no check named "..." on ...` | Run `kryostate check list web01` to see the names. |
+| `refused` | Make sure that the service runs and listens on the port. Make sure that a firewall lets the KryoState computer connect. |
+| `timeout` | Make sure that a firewall does not drop the packets. If the service is slow, give a longer `--timeout`. |
+| `nxdomain` | Correct the name in the target, or use the address. |
+| `error` with `http error: 301, wanted 2xx` | KryoState does not follow redirects. Give the final URL, or `--expect 3xx`. |
+| `error` with `x509: certificate signed by unknown authority` | Add the root certificate to the trusted certificates of the KryoState computer. KryoState cannot skip the certificate check. |
+| `auth_failed` | The URL needs a login. Use a health URL that does not need a login, or give `--expect 401`. |
+| A check shows `never` | The check is disabled, the host is disabled, or no check ran after you added it. Run `kryostate check run --only web01`. |
 
 ### Notifications
 
@@ -814,7 +1312,10 @@ kryostate export --out backup.json
 kryostate restore --db new.db --in backup.json
 ```
 
-`restore` needs an empty database.
+`restore` needs an empty database. Passwords are not in the file. To keep
+only the hosts, targets and stacks as a file that you can edit, use
+`kryostate import --from-db`. Refer to
+[Import, export and restore](#import-export-and-restore).
 
 ## 8. The web interface
 
@@ -867,6 +1368,8 @@ kryostate serve --trusted-origin https://cmdb.example.com
 | A host is "skipped by the schedule until ..." | Repair the cause in the message. Then run `kryostate refresh --only <host>`. |
 | "not tried: … is on hold" | Refer to Lockout protection in section 4. |
 | A form shows "403 Forbidden" | Start the server with `--trusted-origin https://<the name in the address bar>`. |
+| `kryostate import` shows problems | Refer to [Import errors](#import-errors). |
+| A health check fails | Refer to [Health check problems](#health-check-problems). |
 | A path changes to "C:/Program Files/Git/..." | Git Bash changes arguments that start with `/`. Run `export MSYS_NO_PATHCONV=1`, or use PowerShell. |
 
 ### A changed host key

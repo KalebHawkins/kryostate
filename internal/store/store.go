@@ -111,7 +111,10 @@ func parseTS(s string) time.Time {
 func Open(path string) (*Store, error) {
 	dsn := path
 	if path != ":memory:" {
-		dsn = path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+		// synchronous(NORMAL) with WAL syncs at checkpoints, not on every
+		// commit. A power cut can lose the last few commits but cannot
+		// corrupt the file, and collected values are read again next run.
+		dsn = path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

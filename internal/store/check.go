@@ -172,3 +172,59 @@ func scanChecks(rows rowScanner, withLabel *string) ([]Check, error) {
 	}
 	return out, rows.Err()
 }
+
+// CheckStatus is a check with its host and the result of its last run.
+type CheckStatus struct {
+	Check
+	HostDisabled bool
+	// LastOutcome is empty when the check has never run.
+	LastOutcome string
+	LastDetail  string
+	LastAt      time.Time
+}
+
+// ListChecks lists checks, enabled or not, with their host and last result:
+// every host's when ciID is empty, else one host's. Disabled hosts are
+// included and marked, because their checks still exist.
+func (s *Store) ListChecks(ctx context.Context, ciID string) ([]CheckStatus, error) {
+	q := `SELECT k.id, k.ci_id, k.name, k.kind, k.target, k.expect, k.timeout_ms, k.enabled, c.label,
+	             c.disabled_at IS NOT NULL,
+	             COALESCE(p.outcome, ''), COALESCE(p.detail, ''), COALESCE(p.at, '')
+	      FROM check_def k
+	      JOIN ci c ON c.id=k.ci_id
+	      LEFT JOIN probe p ON p.id = (
+	          SELECT p2.id FROM probe p2
+	          WHERE p2.ci_id=k.ci_id
+	            AND p2.kind = CASE k.kind WHEN 'http' THEN 'health' ELSE 'tcp' END
+	            AND p2.target = k.name || ' ' || k.target
+	          ORDER BY p2.at DESC LIMIT 1)`
+	var args []any
+	if ciID != "" {
+		q += ` WHERE k.ci_id=?`
+		args = append(args, ciID)
+	}
+	q += ` ORDER BY c.label, k.name`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []CheckStatus
+	for rows.Next() {
+		var cs CheckStatus
+		var ms int64
+		var en, hd int
+		var at string
+		if err := rows.Scan(&cs.ID, &cs.CIID, &cs.Name, &cs.Kind, &cs.Target, &cs.Expect, &ms, &en, &cs.Label,
+			&hd, &cs.LastOutcome, &cs.LastDetail, &at); err != nil {
+			return nil, err
+		}
+		cs.Timeout = time.Duration(ms) * time.Millisecond
+		cs.Enabled, cs.HostDisabled = en == 1, hd == 1
+		if at != "" {
+			cs.LastAt = parseTS(at)
+		}
+		out = append(out, cs)
+	}
+	return out, rows.Err()
+}
