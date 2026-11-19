@@ -533,15 +533,15 @@ func (s *Server) collectorsFileProblem() string {
 
 // stackNames lists the stacks, with how many hosts are in each.
 func (s *Server) stackNames(ctx context.Context) ([]string, map[string]int, error) {
-	views, err := s.Store.Stacks(ctx)
+	counts, err := s.Store.StackCounts(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	names := make([]string, 0, len(views))
+	names := make([]string, 0, len(counts))
 	members := map[string]int{}
-	for _, v := range views {
-		names = append(names, v.Stack.Name)
-		members[v.Stack.Name] = v.Health.Members
+	for _, v := range counts {
+		names = append(names, v.Name)
+		members[v.Name] = v.Members
 	}
 	return names, members, nil
 }

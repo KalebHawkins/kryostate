@@ -313,11 +313,11 @@ func (s *Store) EvaluateRules(ctx context.Context) ([]RuleEval, error) {
 	if err != nil || len(rules) == 0 {
 		return nil, err
 	}
-	hosts, err := s.QueryHosts(ctx)
+	resolve := s.QueryResolver(ctx)
+	hosts, err := s.QueryHostsFor(ctx, ruleValueKeys(resolve, rules...))
 	if err != nil {
 		return nil, err
 	}
-	resolve := s.QueryResolver(ctx)
 	out := make([]RuleEval, 0, len(rules))
 	for _, r := range rules {
 		out = append(out, EvaluateRule(r, hosts, resolve))
@@ -325,13 +325,32 @@ func (s *Store) EvaluateRules(ctx context.Context) ([]RuleEval, error) {
 	return out, nil
 }
 
+// ruleValueKeys lists the values evaluating these rules reads, so that only
+// those are loaded. A query that does not parse reads nothing: EvaluateRule
+// reports it without looking at a host.
+func ruleValueKeys(resolve query.Resolver, rules ...Rule) []string {
+	var exprs []*query.Expr
+	for _, r := range rules {
+		for _, src := range []string{r.Scope, r.Expect} {
+			if strings.TrimSpace(src) == "" {
+				continue
+			}
+			if e, err := query.Compile(src, resolve); err == nil {
+				exprs = append(exprs, e)
+			}
+		}
+	}
+	return query.ValueKeys(exprs...)
+}
+
 // EvaluateRuleNow measures one rule against current values.
 func (s *Store) EvaluateRuleNow(ctx context.Context, r Rule) (RuleEval, error) {
-	hosts, err := s.QueryHosts(ctx)
+	resolve := s.QueryResolver(ctx)
+	hosts, err := s.QueryHostsFor(ctx, ruleValueKeys(resolve, r))
 	if err != nil {
 		return RuleEval{}, err
 	}
-	return EvaluateRule(r, hosts, s.QueryResolver(ctx)), nil
+	return EvaluateRule(r, hosts, resolve), nil
 }
 
 // RuleSnapshot is a rule's counts at one time.

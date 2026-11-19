@@ -1,6 +1,7 @@
 package query
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -72,5 +73,33 @@ func TestDecideTellsMissingFromNo(t *testing.T) {
 	e, _ := Parse(`nginx.version >= "1.24" && os.family == "Linux"`)
 	if got := e.Missing(old); !slices.Equal(got, []string{"os.family"}) {
 		t.Errorf("Missing = %v", got)
+	}
+}
+
+// TestValueKeysCoverRoles: a role test reads the role value as well as stack
+// roles, so a host loaded with only ValueKeys must still carry it.
+func TestValueKeysCoverRoles(t *testing.T) {
+	a, err := Compile(`role == "db" && os.family == "Linux"`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Compile(`has(hw.serial)`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ValueKeys(a, nil, b)
+	want := []string{"hw.serial", "os.family", "role"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("ValueKeys = %v, want %v", got, want)
+	}
+	h := Host{Values: map[string]string{"role": "db", "os.family": "Linux", "unrelated": "x"}}
+	trimmed := Host{Values: map[string]string{}}
+	for _, k := range got {
+		if v, ok := h.Values[k]; ok {
+			trimmed.Values[k] = v
+		}
+	}
+	if a.Match(h) != a.Match(trimmed) || !a.Match(trimmed) {
+		t.Error("a host trimmed to ValueKeys matches differently")
 	}
 }

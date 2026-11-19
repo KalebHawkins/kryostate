@@ -22,6 +22,33 @@ func (e *Expr) Attrs() []string {
 	return out
 }
 
+// ValueKeys lists every key of Host.Values that evaluating the query can
+// read: its attributes, and role when it asks about roles, which are also
+// read from a role value. A host loaded with only these values matches
+// exactly as it would with all of them.
+func ValueKeys(exprs ...*Expr) []string {
+	seen := map[string]bool{}
+	for _, e := range exprs {
+		if e == nil {
+			continue
+		}
+		walk(e.root, func(f field) {
+			switch {
+			case f.kind == fAttr && f.attr != "":
+				seen[f.attr] = true
+			case f.kind == fRole:
+				seen["role"] = true
+			}
+		})
+	}
+	out := make([]string, 0, len(seen))
+	for a := range seen {
+		out = append(out, a)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Missing lists the attributes the query reads that the host has no value
 // for, in the order Attrs gives them.
 func (e *Expr) Missing(h Host) []string {

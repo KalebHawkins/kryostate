@@ -91,7 +91,7 @@ func FromStore(ctx context.Context, st *store.Store) (*File, []string, error) {
 			f.Stacks = append(f.Stacks, Stack{Name: s.Name, Description: s.Description, Owner: s.Owner, Environment: s.Environment})
 		}
 	}
-	hosts, err := st.Hosts(ctx, store.HostFilter{})
+	hosts, err := st.HostList(ctx, store.HostFilter{})
 	if err != nil {
 		return nil, nil, err
 	}

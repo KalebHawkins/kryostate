@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS assertion (
 CREATE INDEX IF NOT EXISTS assertion_ci_attr_idx ON assertion(ci_id, attr, scope);
 CREATE INDEX IF NOT EXISTS assertion_attr_idx ON assertion(attr);
 CREATE INDEX IF NOT EXISTS assertion_run_idx ON assertion(run_id);
+-- Changes reads claims by when they were made, newest first, and finds each
+-- one's predecessor from the same source by walking its series backwards.
+CREATE INDEX IF NOT EXISTS assertion_observed_idx ON assertion(observed_at);
+CREATE INDEX IF NOT EXISTS assertion_series_idx ON assertion(ci_id, attr, scope, source_id, observed_at);
 
 -- The normalised projection of an assertion. Separate table so a bad rule can
 -- be corrected by re-running the normaliser over stored raw values, with no
@@ -102,7 +106,10 @@ CREATE TABLE IF NOT EXISTS probe (
     detail   TEXT NOT NULL DEFAULT '',
     at       TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS probe_ci_kind_idx ON probe(ci_id, kind, at DESC);
+-- Ascending, so that walking it backwards yields the newest probe first and,
+-- of two at the same moment, the one recorded last, with no sort.
+DROP INDEX IF EXISTS probe_ci_kind_idx;
+CREATE INDEX IF NOT EXISTS probe_latest_idx ON probe(ci_id, kind, at);
 
 -- A liveness check an operator defined. Separate from conn_profile because
 -- "can this answer on its service port" and "can this tool log in and read
@@ -196,6 +203,7 @@ CREATE TABLE IF NOT EXISTS stack_member (
     role     TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (stack_id, ci_id)
 );
+CREATE INDEX IF NOT EXISTS stack_member_ci_idx ON stack_member(ci_id);
 
 -- A collection run. Recorded whether or not it succeeded, so that a partial
 -- run cannot be mistaken for a complete enumeration.
@@ -210,6 +218,7 @@ CREATE TABLE IF NOT EXISTS run (
     failed      INTEGER NOT NULL DEFAULT 0,
     note        TEXT NOT NULL DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS run_started_idx ON run(started_at);
 
 -- Who did what. Written for credential use and for every change a person
 -- makes, and never for secret material or unbounded raw output.
@@ -310,6 +319,42 @@ SELECT assertion_id, ci_id, attr, scope, raw_value, value_type,
        observed_at, confirmed_at
 FROM ranked_assertion
 WHERE rn = 1;
+
+-- What current_fact says, kept as rows so that reading a current value does
+-- not rank every claim ever made. Triggers keep it (see factnow.go): no code
+-- writes to it, and every change to a table current_fact reads recomputes the
+-- keys that change can affect. current_fact stays as the definition it is
+-- checked against.
+CREATE TABLE IF NOT EXISTS fact_now (
+    ci_id              TEXT NOT NULL,
+    attr               TEXT NOT NULL,
+    scope              TEXT NOT NULL,
+    assertion_id       INTEGER NOT NULL,
+    raw_value          TEXT NOT NULL,
+    value_type         TEXT NOT NULL,
+    norm_value         TEXT NOT NULL,
+    family             TEXT NOT NULL,
+    normalizer_version INTEGER NOT NULL,
+    source_kind        TEXT NOT NULL,
+    source_name        TEXT NOT NULL,
+    observed_at        TEXT NOT NULL,
+    confirmed_at       TEXT NOT NULL,
+    -- Clustered by attribute: charts, attribute summaries and queries read
+    -- one attribute across every host, and a host's own values are few.
+    PRIMARY KEY (attr, ci_id, scope)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS fact_now_ci_idx ON fact_now(ci_id, attr, scope);
+CREATE INDEX IF NOT EXISTS fact_now_norm_idx ON fact_now(attr, norm_value);
+CREATE INDEX IF NOT EXISTS fact_now_assertion_idx ON fact_now(assertion_id);
+
+-- Bookkeeping for derived tables: the version of the rules that built each
+-- one, so a build with different rules rebuilds it, and a generation that
+-- moves whenever its contents do, so a cache of it can tell it is stale.
+CREATE TABLE IF NOT EXISTS projection (
+    name    TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    gen     INTEGER NOT NULL DEFAULT 0
+);
 
 -- A catalog collector a person switched on. The command itself is not stored:
 -- it is rendered from the catalog compiled into the binary, so a row here can

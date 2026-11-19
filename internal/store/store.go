@@ -10,10 +10,12 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -30,6 +32,13 @@ var schemaSQL string
 type Store struct {
 	db   *sql.DB
 	norm Normalizer
+
+	// attrCache holds attrCounts' answer for the fact_now generation
+	// attrCacheGen. Callers get the slice itself and must not change it.
+	cacheMu      sync.Mutex
+	attrCache    []AttrInfo
+	attrCacheGen int64
+	attrCacheOK  bool
 }
 
 // Timestamps are compared lexically in SQL, so the format has to be
@@ -100,6 +109,12 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	// Indexes on columns an older database only has once ensureColumn has
+	// added them, so they cannot be in the schema text.
+	if _, err := s.db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS evidence_assertion_idx ON evidence (assertion_id)`); err != nil {
+		return err
+	}
 	if err := s.migrateDisabled(ctx); err != nil {
 		return err
 	}
@@ -112,7 +127,10 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.migrateNotify(ctx); err != nil {
 		return err
 	}
-	return s.seedPolicy(ctx)
+	if err := s.seedPolicy(ctx); err != nil {
+		return err
+	}
+	return s.migrateFactNow(ctx)
 }
 
 func (s *Store) ensureColumn(ctx context.Context, table, col, decl string) error {
@@ -485,7 +503,7 @@ func (s *Store) Facts(ctx context.Context, ciID string) ([]model.Fact, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT assertion_id, ci_id, attr, scope, raw_value, value_type, norm_value,
 		        source_kind, source_name, observed_at, confirmed_at, normalizer_version
-		 FROM current_fact WHERE ci_id=? ORDER BY attr, scope`, ciID)
+		 FROM fact_now WHERE ci_id=? ORDER BY attr, scope`, ciID)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +560,7 @@ func (s *Store) Distribution(ctx context.Context, attr string) ([]Bucket, error)
 	// still what is known about them.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT f.ci_id, f.scope, f.norm_value, f.raw_value
-		 FROM current_fact f JOIN ci c ON c.id=f.ci_id
+		 FROM fact_now f JOIN ci c ON c.id=f.ci_id
 		 WHERE f.attr=? AND c.kind='host'`, attr)
 	if err != nil {
 		return nil, err
@@ -691,12 +709,10 @@ const freshness = `MAX(observed_at, COALESCE(NULLIF(confirmed_at, ''), observed_
 // The same predicate drives the chart bucket and the filter the bucket links
 // to. Keep them on this one constant: two copies can diverge, and a bar that
 // counts hosts the linked page does not list is worse than no bar.
-const lastCollectorRunFailed = `EXISTS (
-    SELECT 1 FROM probe p
-    WHERE p.ci_id = c.id AND p.kind = 'collector_run' AND p.outcome <> 'ok'
-      AND p.id = (SELECT q.id FROM probe q
-                  WHERE q.ci_id = c.id AND q.kind = 'collector_run'
-                  ORDER BY q.at DESC, q.id DESC LIMIT 1))`
+const lastCollectorRunFailed = `COALESCE((
+    SELECT q.outcome FROM probe q
+    WHERE q.ci_id = c.id AND q.kind = 'collector_run'
+    ORDER BY q.at DESC, q.id DESC LIMIT 1) <> 'ok', 0)`
 
 func (s *Store) unknownBreakdown(ctx context.Context, attr string, missing, unparsed int) []Bucket {
 	failed, never, disabled := 0, 0, 0
@@ -709,7 +725,7 @@ func (s *Store) unknownBreakdown(ctx context.Context, attr string, missing, unpa
 			        COALESCE(SUM(CASE WHEN c.disabled_at IS NOT NULL THEN 1 ELSE 0 END), 0)
 			 FROM ci c
 			 WHERE c.kind='host'
-			   AND NOT EXISTS (SELECT 1 FROM current_fact f WHERE f.ci_id=c.id AND f.attr=?)`,
+			   AND NOT EXISTS (SELECT 1 FROM fact_now f WHERE f.ci_id=c.id AND f.attr=?)`,
 			attr).Scan(&failed, &disabled)
 		if err != nil {
 			failed, disabled = 0, 0
@@ -806,6 +822,18 @@ type HostFilter struct {
 // Hosts returns the inventory rows matching a filter, with the listed
 // attributes resolved for each.
 func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
+	rows, err := s.HostList(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	return rows, s.FillHosts(ctx, rows)
+}
+
+// HostList returns the hosts matching a filter, in name order, with only
+// what the ci table holds: Values is empty and nothing about collection or
+// stacks is filled in. FillHosts adds those, so a caller that shows one page
+// of a long list fills in only that page.
+func (s *Store) HostList(ctx context.Context, f HostFilter) ([]HostRow, error) {
 	where := []string{"c.kind='host'"}
 	var args []any
 	if f.Disabled {
@@ -819,17 +847,17 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 	if f.Attr != "" && f.Value != "" {
 		// Free-text attributes have no normalised form, and a filter that
 		// only looked at norm_value would silently match nothing for them.
-		where = append(where, `EXISTS (SELECT 1 FROM current_fact f WHERE f.ci_id=c.id AND f.attr=?
+		where = append(where, `EXISTS (SELECT 1 FROM fact_now f WHERE f.ci_id=c.id AND f.attr=?
 			AND (CASE WHEN f.norm_value<>'' THEN f.norm_value ELSE f.raw_value END)=?)`)
 		args = append(args, f.Attr, f.Value)
 	}
 	if f.Unparsed != "" {
-		where = append(where, `EXISTS (SELECT 1 FROM current_fact f WHERE f.ci_id=c.id AND f.attr=?
+		where = append(where, `EXISTS (SELECT 1 FROM fact_now f WHERE f.ci_id=c.id AND f.attr=?
 			AND f.norm_value='')`)
 		args = append(args, f.Unparsed)
 	}
 	if f.Unknown != "" {
-		where = append(where, `NOT EXISTS (SELECT 1 FROM current_fact f WHERE f.ci_id=c.id AND f.attr=?)`)
+		where = append(where, `NOT EXISTS (SELECT 1 FROM fact_now f WHERE f.ci_id=c.id AND f.attr=?)`)
 		args = append(args, f.Unknown)
 		// The three causes have three different remediations, so the chart
 		// links to three different lists rather than one undifferentiated
@@ -888,56 +916,110 @@ func (s *Store) Hosts(ctx context.Context, f HostFilter) ([]HostRow, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	for i := range out {
-		facts, err := s.Facts(ctx, out[i].CI.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, fct := range facts {
-			if fct.Scope != "" {
-				continue
-			}
-			v := fct.Norm
-			if v == "" {
-				v = fct.Raw
-			}
-			out[i].Values[fct.Attr] = v
-		}
-		if err := s.fillCollection(ctx, &out[i]); err != nil {
-			return nil, err
-		}
-	}
 	return out, nil
 }
 
-func (s *Store) fillCollection(ctx context.Context, r *HostRow) error {
-	var outcome, at string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT outcome, at FROM probe WHERE ci_id=? AND kind=? ORDER BY at DESC LIMIT 1`,
-		r.CI.ID, string(model.ProbeCollectorRun)).Scan(&outcome, &at)
-	if err == nil {
-		r.HasCollected = true
-		r.CollectOK = model.Outcome(outcome) == model.OutcomeOK
-		r.LastCollect = parseTS(at)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return err
+// FillHosts fills in each row's host-wide values, latest collection and
+// stacks, in three statements however many rows there are. The rows must be
+// distinct hosts.
+func (s *Store) FillHosts(ctx context.Context, rows []HostRow) error {
+	if len(rows) == 0 {
+		return nil
 	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT s.name FROM stack s JOIN stack_member m ON m.stack_id=s.id WHERE m.ci_id=? ORDER BY s.name`,
-		r.CI.ID)
+	at := make(map[string]int, len(rows))
+	ids := make([]string, len(rows))
+	for i := range rows {
+		at[rows[i].CI.ID] = i
+		ids[i] = rows[i].CI.ID
+		if rows[i].Values == nil {
+			rows[i].Values = map[string]string{}
+		}
+	}
+	idJSON, err := json.Marshal(ids)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
+
+	// For most of the estate, reading every host-wide value in table order
+	// and dropping the hosts not asked for is cheaper than looking up each
+	// asked-for host's values one by one.
+	var hosts int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ci WHERE kind='host'`).Scan(&hosts); err != nil {
+		return err
+	}
+	const value = `CASE WHEN f.norm_value<>'' THEN f.norm_value ELSE f.raw_value END`
+	var vals *sql.Rows
+	if len(rows)*4 >= hosts {
+		vals, err = s.db.QueryContext(ctx, `SELECT f.ci_id, f.attr, `+value+` FROM fact_now f WHERE f.scope='' `+inTableOrder)
+	} else {
+		vals, err = s.db.QueryContext(ctx,
+			`SELECT f.ci_id, f.attr, `+value+`
+			 FROM json_each(?) j JOIN fact_now f ON f.ci_id=j.value AND f.scope=''`, string(idJSON))
+	}
+	if err != nil {
+		return err
+	}
+	for vals.Next() {
+		var id, attr, v string
+		if err := vals.Scan(&id, &attr, &v); err != nil {
+			vals.Close()
 			return err
 		}
-		r.Stacks = append(r.Stacks, n)
+		if i, ok := at[id]; ok {
+			rows[i].Values[attr] = v
+		}
 	}
-	return rows.Err()
+	vals.Close()
+	if err := vals.Err(); err != nil {
+		return err
+	}
+
+	// The latest collector run of each host, by the same rule as
+	// lastCollectorRunFailed: the newest, and of two at the same moment the
+	// one recorded last.
+	probes, err := s.db.QueryContext(ctx,
+		`SELECT j.value, p.outcome, p.at FROM json_each(?) j
+		 JOIN probe p ON p.id = (SELECT q.id FROM probe q WHERE q.ci_id=j.value AND q.kind=?
+		                         ORDER BY q.at DESC, q.id DESC LIMIT 1)`,
+		string(idJSON), string(model.ProbeCollectorRun))
+	if err != nil {
+		return err
+	}
+	for probes.Next() {
+		var id, outcome, when string
+		if err := probes.Scan(&id, &outcome, &when); err != nil {
+			probes.Close()
+			return err
+		}
+		if i, ok := at[id]; ok {
+			rows[i].HasCollected = true
+			rows[i].CollectOK = model.Outcome(outcome) == model.OutcomeOK
+			rows[i].LastCollect = parseTS(when)
+		}
+	}
+	probes.Close()
+	if err := probes.Err(); err != nil {
+		return err
+	}
+
+	stacks, err := s.db.QueryContext(ctx,
+		`SELECT m.ci_id, s.name FROM json_each(?) j
+		 JOIN stack_member m ON m.ci_id=j.value JOIN stack s ON s.id=m.stack_id
+		 ORDER BY s.name`, string(idJSON))
+	if err != nil {
+		return err
+	}
+	defer stacks.Close()
+	for stacks.Next() {
+		var id, name string
+		if err := stacks.Scan(&id, &name); err != nil {
+			return err
+		}
+		if i, ok := at[id]; ok {
+			rows[i].Stacks = append(rows[i].Stacks, name)
+		}
+	}
+	return stacks.Err()
 }
 
 // CI returns one configuration item. For a disabled host it also says who
@@ -997,11 +1079,21 @@ func (s *Store) Identities(ctx context.Context, ciID string) ([]model.Identity, 
 // attribute shows the roles grouped correctly. Both read freeTextAttr's
 // predicate; this one answers for every attribute in one query.
 func (s *Store) FreeTextAttrs(ctx context.Context) (map[string]bool, error) {
+	// Each attribute is visited once by seeking to the next one in the
+	// index, rather than by reading every current value: the two tests
+	// below each stop at the first row that settles them.
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT f.attr FROM current_fact f JOIN ci c ON c.id=f.ci_id
-		 WHERE c.kind='host'
-		 GROUP BY f.attr
-		 HAVING SUM(CASE WHEN f.norm_value<>'' THEN 1 ELSE 0 END)=0`)
+		`WITH RECURSIVE attrs(attr) AS (
+		   SELECT MIN(attr) FROM fact_now
+		   UNION ALL
+		   SELECT (SELECT MIN(f.attr) FROM fact_now f WHERE f.attr > attrs.attr)
+		   FROM attrs WHERE attrs.attr IS NOT NULL
+		 )
+		 SELECT attr FROM attrs
+		 WHERE attr IS NOT NULL
+		   AND EXISTS (SELECT 1 FROM fact_now f JOIN ci c ON c.id=f.ci_id
+		               WHERE f.attr=attrs.attr AND c.kind='host')
+		   AND NOT `+normalisedHostValue)
 	if err != nil {
 		return nil, err
 	}
@@ -1017,21 +1109,26 @@ func (s *Store) FreeTextAttrs(ctx context.Context) (map[string]bool, error) {
 	return out, rows.Err()
 }
 
+// normalisedHostValue is true when some host's current value of attrs.attr
+// normalised. It is the one predicate FreeTextAttrs and freeTextAttr share.
+// norm_value > ” is norm_value <> ” for text, written so that it reads a
+// range of the index.
+const normalisedHostValue = `EXISTS (SELECT 1 FROM fact_now f JOIN ci c ON c.id=f.ci_id
+	WHERE f.attr=attrs.attr AND f.norm_value > '' AND c.kind='host')`
+
 // freeTextAttr answers FreeTextAttrs' question for one attribute.
 //
 // The predicate is the same: over live hosts, no value of this attribute
 // normalised. Distribution needs the single-attribute form, and the two must
 // not drift apart.
 func (s *Store) freeTextAttr(ctx context.Context, attr string) (bool, error) {
-	var normalised int
+	var normalised bool
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(CASE WHEN f.norm_value<>'' THEN 1 ELSE 0 END),0)
-		 FROM current_fact f JOIN ci c ON c.id=f.ci_id
-		 WHERE f.attr=? AND c.kind='host'`, attr).Scan(&normalised)
+		`SELECT `+normalisedHostValue+` FROM (SELECT ? AS attr) attrs`, attr).Scan(&normalised)
 	if err != nil {
 		return false, err
 	}
-	return normalised == 0, nil
+	return !normalised, nil
 }
 
 // Attrs lists every attribute present, with the counts used to decide whether
@@ -1054,13 +1151,81 @@ func (s *Store) Attrs(ctx context.Context) ([]AttrInfo, error) {
 		`SELECT COUNT(*) FROM ci WHERE kind='host'`).Scan(&total); err != nil {
 		return nil, err
 	}
+	counts, err := s.attrCounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]AttrInfo, len(counts))
+	for i, a := range counts {
+		a.Chartable = chartable(a.Distinct, a.CICount, total)
+		out[i] = a
+	}
+
+	type meta struct {
+		override sql.NullBool
+		label    sql.NullString
+	}
+	metas := map[string]meta{}
+	mrows, err := s.db.QueryContext(ctx, `SELECT attr, chartable, label FROM fact_meta`)
+	if err != nil {
+		return nil, err
+	}
+	defer mrows.Close()
+	for mrows.Next() {
+		var attr string
+		var m meta
+		if err := mrows.Scan(&attr, &m.override, &m.label); err != nil {
+			return nil, err
+		}
+		metas[attr] = m
+	}
+	if err := mrows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		m, ok := metas[out[i].Attr]
+		if !ok {
+			continue
+		}
+		if m.override.Valid {
+			out[i].Chartable = m.override.Bool
+		}
+		if m.label.Valid {
+			out[i].Label = m.label.String
+		}
+	}
+	return out, nil
+}
+
+// inTableOrder makes a read of every current value walk the table itself.
+// Left to choose, SQLite walks the narrowest index and looks each row up in
+// the table from there, which is several times slower.
+const inTableOrder = `ORDER BY f.attr, f.ci_id, f.scope`
+
+// attrCounts is each attribute with how many distinct values and how many
+// hosts hold it. Counting means reading every current value, so the answer
+// is kept until a current value changes, in this process or another.
+func (s *Store) attrCounts(ctx context.Context) ([]AttrInfo, error) {
+	gen, genErr := s.factGen(ctx)
+	if genErr == nil {
+		s.cacheMu.Lock()
+		cached, ok := s.attrCache, s.attrCacheOK && s.attrCacheGen == gen
+		s.cacheMu.Unlock()
+		if ok {
+			return cached, nil
+		}
+	}
+	// MATERIALIZED keeps the read in table order; flattened, SQLite counts
+	// through an index and looks every value up from there.
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT f.attr,
-		        COUNT(DISTINCT CASE WHEN f.norm_value<>'' THEN f.norm_value ELSE f.raw_value END),
-		        COUNT(DISTINCT f.ci_id)
-		 FROM current_fact f JOIN ci c ON c.id=f.ci_id
-		 WHERE c.kind='host'
-		 GROUP BY f.attr ORDER BY f.attr`)
+		`WITH v AS MATERIALIZED (
+		   SELECT f.attr, f.ci_id,
+		          CASE WHEN f.norm_value<>'' THEN f.norm_value ELSE f.raw_value END AS value
+		   FROM fact_now f JOIN ci c ON c.id=f.ci_id
+		   WHERE c.kind='host' `+inTableOrder+`
+		 )
+		 SELECT attr, COUNT(DISTINCT value), COUNT(DISTINCT ci_id)
+		 FROM v GROUP BY attr ORDER BY attr`)
 	if err != nil {
 		return nil, err
 	}
@@ -1071,25 +1236,17 @@ func (s *Store) Attrs(ctx context.Context) ([]AttrInfo, error) {
 		if err := rows.Scan(&a.Attr, &a.Distinct, &a.CICount); err != nil {
 			return nil, err
 		}
-		a.Chartable = chartable(a.Distinct, a.CICount, total)
 		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	for i := range out {
-		var override sql.NullBool
-		var label sql.NullString
-		err := s.db.QueryRowContext(ctx, `SELECT chartable, label FROM fact_meta WHERE attr=?`, out[i].Attr).
-			Scan(&override, &label)
-		if err == nil {
-			if override.Valid {
-				out[i].Chartable = override.Bool
-			}
-			if label.Valid {
-				out[i].Label = label.String
-			}
-		}
+	// Stored under the generation read before counting: a write in between
+	// makes the next call count again rather than trust these.
+	if genErr == nil {
+		s.cacheMu.Lock()
+		s.attrCache, s.attrCacheGen, s.attrCacheOK = out, gen, true
+		s.cacheMu.Unlock()
 	}
 	return out, nil
 }

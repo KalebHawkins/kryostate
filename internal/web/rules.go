@@ -467,14 +467,15 @@ func (s *Server) handleRulePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Attrs = e.Attrs()
+	var scopeExpr *query.Expr
 	if scope != "" {
-		if _, err := query.Compile(scope, resolve); err != nil {
+		if scopeExpr, err = query.Compile(scope, resolve); err != nil {
 			d.ScopeErr = true
 			s.fragment(w, "rule-preview", d)
 			return
 		}
 	}
-	hosts, err := s.Store.QueryHosts(ctx)
+	hosts, err := s.Store.QueryHostsFor(ctx, query.ValueKeys(e, scopeExpr))
 	if err != nil {
 		s.fail(w, err)
 		return

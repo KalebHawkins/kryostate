@@ -53,7 +53,7 @@ func (e *Engine) Resolve(ctx context.Context, opt ResolveOptions) (ResolveSummar
 		opt.Suffixes = []string{""}
 	}
 
-	hosts, err := e.Store.Hosts(ctx, store.HostFilter{})
+	hosts, err := e.Store.HostList(ctx, store.HostFilter{})
 	if err != nil {
 		return ResolveSummary{}, err
 	}

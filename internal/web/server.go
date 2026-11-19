@@ -395,9 +395,9 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	if views, err := s.Store.Stacks(ctx); err == nil {
-		for _, v := range views {
-			d.AllStacks = append(d.AllStacks, v.Stack.Name)
+	if counts, err := s.Store.StackCounts(ctx); err == nil {
+		for _, v := range counts {
+			d.AllStacks = append(d.AllStacks, v.Name)
 		}
 	}
 

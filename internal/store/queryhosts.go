@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/KalebHawkins/kryostate/internal/collect"
@@ -14,8 +15,39 @@ import (
 // collectors run, and counting the hosts a target matches, are built on.
 // Disabled hosts are included; what contacts hosts leaves them out itself.
 func (s *Store) QueryHosts(ctx context.Context) ([]query.Host, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, label, disabled_at IS NOT NULL FROM ci WHERE kind='host' ORDER BY label`)
+	return s.queryHosts(ctx, nil, "")
+}
+
+// QueryHost is one host as QueryHosts would list it, with every value, or
+// nothing when there is no such host. It is for deciding what runs on one
+// host without loading the estate.
+func (s *Store) QueryHost(ctx context.Context, id string) ([]query.Host, error) {
+	if id == "" {
+		return nil, nil
+	}
+	return s.queryHosts(ctx, nil, id)
+}
+
+// QueryHostsFor is QueryHosts with only the values of the given attributes
+// loaded, for evaluating queries that read nothing else: see
+// query.Expr.ValueKeys. Every host is still listed, with its name, stacks,
+// roles and whether it is disabled.
+func (s *Store) QueryHostsFor(ctx context.Context, attrs []string) ([]query.Host, error) {
+	if attrs == nil {
+		attrs = []string{}
+	}
+	return s.queryHosts(ctx, attrs, "")
+}
+
+// queryHosts loads the hosts with the values of attrs, or of every
+// attribute when attrs is nil: every host, or only the one with id.
+func (s *Store) queryHosts(ctx context.Context, attrs []string, id string) ([]query.Host, error) {
+	hostQ, args := `SELECT id, label, disabled_at IS NOT NULL FROM ci WHERE kind='host'`, []any{}
+	if id != "" {
+		hostQ += ` AND id=?`
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, hostQ+` ORDER BY label`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -36,9 +68,27 @@ func (s *Store) QueryHosts(ctx context.Context) ([]query.Host, error) {
 		return nil, err
 	}
 
-	rows, err = s.db.QueryContext(ctx,
-		`SELECT ci_id, attr, CASE WHEN norm_value<>'' THEN norm_value ELSE raw_value END
-		 FROM current_fact WHERE scope=''`)
+	q := `SELECT f.ci_id, f.attr, CASE WHEN f.norm_value<>'' THEN f.norm_value ELSE f.raw_value END
+		 FROM fact_now f WHERE f.scope=''`
+	args = nil
+	if id != "" {
+		// One host's values come off its own index; the table-order read
+		// below is for all of them.
+		q += ` AND f.ci_id=?`
+		args = append(args, id)
+	}
+	if attrs != nil {
+		list, err := json.Marshal(attrs)
+		if err != nil {
+			return nil, err
+		}
+		q += ` AND f.attr IN (SELECT value FROM json_each(?))`
+		args = append(args, string(list))
+	}
+	if id == "" {
+		q += " " + inTableOrder
+	}
+	rows, err = s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

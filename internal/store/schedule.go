@@ -212,7 +212,7 @@ func (s *Store) FinishRunNote(ctx context.Context, id, status string, ok, failed
 // that never reported one is missing from the map.
 func (s *Store) HostFamilies(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT ci_id, raw_value FROM current_fact WHERE attr='os.family' AND scope=''`)
+		`SELECT ci_id, raw_value FROM fact_now WHERE attr='os.family' AND scope=''`)
 	if err != nil {
 		return nil, err
 	}
@@ -256,10 +256,9 @@ func (s *Store) FailingHosts(ctx context.Context, limit int) ([]FailingHost, err
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT c.id, c.label, p.outcome, p.detail, p.at
-		 FROM ci c JOIN probe p ON p.ci_id=c.id
-		 WHERE c.disabled_at IS NULL AND c.kind='host' AND p.kind='collector_run'
-		   AND p.id = (SELECT q.id FROM probe q WHERE q.ci_id=c.id AND q.kind='collector_run'
-		               ORDER BY q.at DESC, q.id DESC LIMIT 1)
+		 FROM ci c JOIN probe p ON p.id = (SELECT q.id FROM probe q WHERE q.ci_id=c.id AND q.kind='collector_run'
+		                                   ORDER BY q.at DESC, q.id DESC LIMIT 1)
+		 WHERE c.disabled_at IS NULL AND c.kind='host'
 		   AND p.outcome NOT IN ('ok','partial')
 		 ORDER BY p.at DESC LIMIT ?`, limit)
 	if err != nil {
@@ -302,27 +301,31 @@ type Health struct {
 func (s *Store) EstateHealth(ctx context.Context, staleAfter time.Duration) (Health, error) {
 	var h Health
 	cutoff := ts(time.Now().Add(-staleAfter))
+	// One pass over the live hosts. Each host's latest collection and last
+	// good one are each a seek into the probe index, not a scan of history.
+	var ok, failing, never, noConn, stale sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-	WITH live AS (SELECT id FROM ci WHERE disabled_at IS NULL AND kind='host'),
-	latest AS (
-	  SELECT p.ci_id, p.outcome FROM probe p JOIN live l ON l.id=p.ci_id
-	  WHERE p.kind='collector_run'
-	    AND p.id=(SELECT q.id FROM probe q WHERE q.ci_id=p.ci_id AND q.kind='collector_run'
-	              ORDER BY q.at DESC, q.id DESC LIMIT 1)
-	),
-	lastok AS (
-	  SELECT p.ci_id, MAX(p.at) AS at FROM probe p JOIN live l ON l.id=p.ci_id
-	  WHERE p.kind='collector_run' AND p.outcome IN ('ok','partial') GROUP BY p.ci_id
+	WITH live AS (
+	  SELECT c.id,
+	    (SELECT q.outcome FROM probe q WHERE q.ci_id=c.id AND q.kind='collector_run'
+	     ORDER BY q.at DESC, q.id DESC LIMIT 1) AS latest,
+	    (SELECT q.at FROM probe q WHERE q.ci_id=c.id AND q.kind='collector_run'
+	       AND q.outcome IN ('ok','partial') ORDER BY q.at DESC LIMIT 1) AS lastok,
+	    EXISTS (SELECT 1 FROM conn_profile cp WHERE cp.ci_id=c.id AND cp.enabled=1) AS conn
+	  FROM ci c WHERE c.disabled_at IS NULL AND c.kind='host'
 	)
 	SELECT
 	  (SELECT COUNT(*) FROM live),
-	  (SELECT COUNT(*) FROM latest WHERE outcome IN ('ok','partial')),
-	  (SELECT COUNT(*) FROM latest WHERE outcome NOT IN ('ok','partial')),
-	  (SELECT COUNT(*) FROM live WHERE id NOT IN (SELECT ci_id FROM latest)),
-	  (SELECT COUNT(*) FROM live WHERE id NOT IN (SELECT ci_id FROM conn_profile WHERE enabled=1)),
-	  (SELECT COUNT(*) FROM lastok WHERE at < ?),
-	  (SELECT COUNT(*) FROM ci WHERE disabled_at IS NOT NULL AND kind='host')`, cutoff).
-		Scan(&h.Hosts, &h.OK, &h.Failing, &h.Never, &h.NoConnection, &h.Stale, &h.Disabled)
+	  SUM(latest IN ('ok','partial')),
+	  SUM(latest NOT IN ('ok','partial')),
+	  SUM(latest IS NULL),
+	  SUM(NOT conn),
+	  SUM(lastok < ?),
+	  (SELECT COUNT(*) FROM ci WHERE disabled_at IS NOT NULL AND kind='host')
+	FROM live`, cutoff).
+		Scan(&h.Hosts, &ok, &failing, &never, &noConn, &stale, &h.Disabled)
+	h.OK, h.Failing, h.Never = int(ok.Int64), int(failing.Int64), int(never.Int64)
+	h.NoConnection, h.Stale = int(noConn.Int64), int(stale.Int64)
 	if err != nil {
 		return h, fmt.Errorf("estate health: %w", err)
 	}

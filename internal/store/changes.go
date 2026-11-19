@@ -64,35 +64,29 @@ func (s *Store) Changes(ctx context.Context, f ChangeFilter) ([]Change, error) {
 	if len(extra) > 0 {
 		cond = " AND " + strings.Join(extra, " AND ")
 	}
-	// The window runs only over the series that have something new in the
-	// period, so the cost follows what changed lately rather than the
-	// length of the whole history.
+	// Newest first, read off the observed_at index and stopped at the limit.
+	// Each claim's predecessor is the one before it in its own series, from
+	// the same source and not retracted, found by walking that series'
+	// index backwards from it: the claim LAG would give over the series
+	// ordered by observed_at and then id, without ranking any series whole.
 	q := `
-	WITH touched AS (
-	  SELECT DISTINCT a.ci_id, a.attr, a.scope, a.source_id
-	  FROM assertion a JOIN source s ON s.id=a.source_id
-	  WHERE s.kind='collector' AND a.retracted_at IS NULL AND a.observed_at >= ?` + cond + `
-	),
-	seq AS (
-	  SELECT a.id, a.ci_id, a.attr, a.scope, a.raw_value, a.observed_at, a.spec_id, a.run_id,
-	         a.source_id,
-	         LAG(a.raw_value)   OVER w AS prev_raw,
-	         LAG(a.observed_at) OVER w AS prev_at
-	  FROM assertion a
-	  JOIN touched t ON t.ci_id=a.ci_id AND t.attr=a.attr AND t.scope=a.scope AND t.source_id=a.source_id
-	  WHERE a.retracted_at IS NULL
-	  WINDOW w AS (PARTITION BY a.ci_id, a.attr, a.scope, a.source_id ORDER BY a.observed_at, a.id)
-	)
-	SELECT q.id, q.ci_id, c.label, q.attr, q.scope, q.prev_raw, q.raw_value, q.prev_at, q.observed_at,
-	       q.spec_id, s.name, q.run_id, COALESCE(r.trigger, '')
-	FROM seq q
-	JOIN ci c ON c.id=q.ci_id
-	JOIN source s ON s.id=q.source_id
-	LEFT JOIN run r ON r.id=q.run_id
-	WHERE q.prev_raw IS NOT NULL AND q.prev_raw <> q.raw_value AND q.observed_at >= ?
-	ORDER BY q.observed_at DESC, q.id DESC
+	SELECT a.id, a.ci_id, c.label, a.attr, a.scope, p.raw_value, a.raw_value, p.observed_at, a.observed_at,
+	       a.spec_id, s.name, a.run_id, COALESCE(r.trigger, '')
+	FROM assertion a
+	JOIN source s ON s.id=a.source_id
+	JOIN assertion p ON p.id = (
+	  SELECT q.id FROM assertion q
+	  WHERE q.ci_id=a.ci_id AND q.attr=a.attr AND q.scope=a.scope AND q.source_id=a.source_id
+	    AND q.retracted_at IS NULL
+	    AND (q.observed_at < a.observed_at OR (q.observed_at = a.observed_at AND q.id < a.id))
+	  ORDER BY q.observed_at DESC, q.id DESC LIMIT 1)
+	JOIN ci c ON c.id=a.ci_id
+	LEFT JOIN run r ON r.id=a.run_id
+	WHERE s.kind='collector' AND a.retracted_at IS NULL AND a.observed_at >= ?` + cond + `
+	  AND p.raw_value <> a.raw_value
+	ORDER BY a.observed_at DESC, a.id DESC
 	LIMIT ?`
-	args = append(args, since, f.Limit)
+	args = append(args, f.Limit)
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err

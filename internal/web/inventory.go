@@ -133,6 +133,17 @@ func QueryResolver(ctx context.Context, st *store.Store) query.Resolver {
 // host's stack memberships, which the query and the JSON export both need.
 // A query that does not parse is returned as a *query.Error.
 func FilterHosts(ctx context.Context, st *store.Store, f store.HostFilter, expr string) ([]store.HostRow, map[string][]store.Membership, error) {
+	rows, members, err := filterHostList(ctx, st, f, expr)
+	if err != nil {
+		return nil, nil, err
+	}
+	return rows, members, st.FillHosts(ctx, rows)
+}
+
+// filterHostList is FilterHosts without filling in the rows, so that a
+// caller showing one page fills in only that page. A query is evaluated over
+// only the values it reads, loaded for every host at once.
+func filterHostList(ctx context.Context, st *store.Store, f store.HostFilter, expr string) ([]store.HostRow, map[string][]store.Membership, error) {
 	var e *query.Expr
 	if expr = strings.TrimSpace(expr); expr != "" && query.LooksLikeQuery(expr) {
 		var err error
@@ -142,7 +153,7 @@ func FilterHosts(ctx context.Context, st *store.Store, f store.HostFilter, expr 
 	} else if expr != "" && f.Search == "" {
 		f.Search = expr
 	}
-	rows, err := st.Hosts(ctx, f)
+	rows, err := st.HostList(ctx, f)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -153,9 +164,19 @@ func FilterHosts(ctx context.Context, st *store.Store, f store.HostFilter, expr 
 	if e == nil {
 		return rows, members, nil
 	}
+	hosts, err := st.QueryHostsFor(ctx, query.ValueKeys(e))
+	if err != nil {
+		return nil, nil, err
+	}
+	values := make(map[string]map[string]string, len(hosts))
+	for _, h := range hosts {
+		values[h.ID] = h.Values
+	}
 	kept := rows[:0]
 	for _, r := range rows {
-		if e.Match(queryHost(r, members[r.CI.ID])) {
+		qr := r
+		qr.Values = values[r.CI.ID]
+		if e.Match(queryHost(qr, members[r.CI.ID])) {
 			kept = append(kept, r)
 		}
 	}

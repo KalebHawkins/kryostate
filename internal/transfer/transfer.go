@@ -164,7 +164,7 @@ func Restore(ctx context.Context, st *store.Store, d *Dump) error {
 			return fmt.Errorf("dump holds unknown table %q", t)
 		}
 	}
-	for _, t := range tables {
+	for _, t := range restoreOrder() {
 		allowed, err := columnSet(ctx, tx, t)
 		if err != nil {
 			return err
@@ -200,7 +200,27 @@ func Restore(ctx context.Context, st *store.Store, d *Dump) error {
 			}
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// Triggers kept the current values as the claims went in; rebuilding
+	// them once from what was restored makes that independent of the order
+	// the rows arrived in.
+	return st.RebuildFacts(ctx)
+}
+
+// restoreOrder is the order Restore writes tables in: tables, with the
+// precedence policy first. It has no foreign keys, and every precedence row
+// written after the claims would recompute the current value of every claim
+// it covers.
+func restoreOrder() []string {
+	out := []string{"precedence"}
+	for _, t := range tables {
+		if t != "precedence" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func known(table string) bool {

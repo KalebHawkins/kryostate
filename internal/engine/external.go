@@ -160,7 +160,7 @@ type externalTarget struct {
 }
 
 func (e *Engine) externalTargets(ctx context.Context, opt Options) ([]externalTarget, error) {
-	rows, err := e.Store.Hosts(ctx, store.HostFilter{})
+	rows, err := e.Store.HostList(ctx, store.HostFilter{})
 	if err != nil {
 		return nil, err
 	}

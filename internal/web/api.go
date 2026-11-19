@@ -271,7 +271,7 @@ func (s *Server) apiHosts(w http.ResponseWriter, r *http.Request) {
 	if v := q.Get("disabled"); v == "true" {
 		q.Set("disabled", "1")
 	}
-	rows, members, err := FilterHosts(ctx, s.Store, s.hostFilter(ctx, q), q.Get("q"))
+	rows, members, err := filterHostList(ctx, s.Store, s.hostFilter(ctx, q), q.Get("q"))
 	if err != nil {
 		s.apiFail(w, err)
 		return
@@ -285,12 +285,18 @@ func (s *Server) apiHosts(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	list, err := page(r, HostsJSON(rows, members, cols))
+	// Only the page asked for is filled in and converted.
+	rowPage, err := page(r, rows)
 	if err != nil {
 		s.apiFail(w, err)
 		return
 	}
-	apiOK(w, list)
+	if err := s.Store.FillHosts(ctx, rowPage.Items); err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	apiOK(w, apiList[HostJSON]{Items: HostsJSON(rowPage.Items, members, cols), Total: rowPage.Total,
+		Limit: rowPage.Limit, Offset: rowPage.Offset, Next: rowPage.Next})
 }
 
 type apiFact struct {

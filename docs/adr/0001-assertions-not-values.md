@@ -33,6 +33,11 @@ attribute:
 kryostate keeps the assertions that lose, and you can query them.
 `current_fact` is a view, not a table, so no code can write to it.
 
+Reads use `fact_now`, a table that holds what `current_fact` says. SQLite
+triggers keep it: each write to a table that `current_fact` reads recomputes
+the rows that the write can change. No Go code writes to `fact_now`, and a
+test compares it with `current_fact` row for row.
+
 ## Consequences
 
 - Each value on the screen can show its source and its time.
@@ -42,9 +47,9 @@ kryostate keeps the assertions that lose, and you can query them.
 - The store grows with each observation. For a few hundred hosts collected
   each night, this is a few million rows each year. SQLite can hold this, and
   you can delete old rows by age.
-- Each read of a current value uses a window function. For a few hundred
-  hosts, the cost is too small to measure. If the cost increases, use a
-  materialised view, not a mutable column.
+- Ranking every assertion on each read was too slow for a few thousand
+  hosts. `fact_now` is the materialised view, kept by triggers. Each write
+  re-ranks only the assertions of the keys that it changes.
 - `Assert` does not add a row if the same source sends the same value again.
   It records a confirmation on the existing row. Thus, `observed_at` stays at
   the time when the value was first seen.

@@ -147,6 +147,52 @@ func TestRoundTripIsByteIdentical(t *testing.T) {
 	}
 }
 
+// TestRestoreRebuildsCurrentValues: the current values a restored store
+// reads are the ones the source store read, and the ones its claims resolve
+// to.
+func TestRestoreRebuildsCurrentValues(t *testing.T) {
+	ctx := context.Background()
+	src := open(t, "source.db")
+	populate(t, src)
+	d, err := Read(bytes.NewReader(export(t, src)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := open(t, "restored.db")
+	if err := Restore(ctx, dst, d); err != nil {
+		t.Fatal(err)
+	}
+	const q = `SELECT assertion_id, ci_id, attr, scope, raw_value, norm_value, source_kind, confirmed_at
+		FROM %s ORDER BY ci_id, attr, scope`
+	dump := func(s *store.Store, from string) string {
+		rows, err := s.DB().QueryContext(ctx, strings.Replace(q, "%s", from, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var b strings.Builder
+		for rows.Next() {
+			var id int64
+			var ci, attr, scope, raw, norm, kind, conf string
+			if err := rows.Scan(&id, &ci, &attr, &scope, &raw, &norm, &kind, &conf); err != nil {
+				t.Fatal(err)
+			}
+			b.WriteString(strings.Join([]string{itoa(int(id)), ci, attr, scope, raw, norm, kind, conf}, "|") + "\n")
+		}
+		return b.String()
+	}
+	want := dump(src, "fact_now")
+	if want == "" {
+		t.Fatal("the fixture has no current values")
+	}
+	if got := dump(dst, "fact_now"); got != want {
+		t.Errorf("restored current values differ:\n%s", firstDiff(want, got))
+	}
+	if got := dump(dst, "current_fact"); got != want {
+		t.Errorf("restored claims resolve differently:\n%s", firstDiff(want, got))
+	}
+}
+
 // TestRoundTripKeepsLosingAssertions guards the point of the schema. The value
 // that lost is the audit trail, and an export that only carried resolved
 // values would quietly discard it.

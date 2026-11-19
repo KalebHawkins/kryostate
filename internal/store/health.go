@@ -10,17 +10,15 @@ import (
 // They count exactly what EstateHealth counts, so a number on the overview and
 // the inventory it links to always agree.
 const (
-	hostFailingSQL = `EXISTS (
-	  SELECT 1 FROM probe p
-	  WHERE p.ci_id = c.id AND p.kind = 'collector_run' AND p.outcome NOT IN ('ok','partial')
-	    AND p.id = (SELECT q.id FROM probe q WHERE q.ci_id = c.id AND q.kind = 'collector_run'
-	                ORDER BY q.at DESC, q.id DESC LIMIT 1))`
+	hostFailingSQL = `COALESCE((
+	  SELECT q.outcome FROM probe q WHERE q.ci_id = c.id AND q.kind = 'collector_run'
+	  ORDER BY q.at DESC, q.id DESC LIMIT 1) NOT IN ('ok','partial'), 0)`
 	hostNeverSQL  = `NOT EXISTS (SELECT 1 FROM probe p WHERE p.ci_id = c.id AND p.kind = 'collector_run')`
 	hostNoConnSQL = `NOT EXISTS (SELECT 1 FROM conn_profile cp WHERE cp.ci_id = c.id AND cp.enabled = 1)`
 	// hostStaleSQL takes the cutoff as its one argument. A host never
 	// collected successfully has no last good collection and is not stale.
-	hostStaleSQL = `(SELECT MAX(p.at) FROM probe p WHERE p.ci_id = c.id AND p.kind = 'collector_run'
-	    AND p.outcome IN ('ok','partial')) < ?`
+	hostStaleSQL = `(SELECT p.at FROM probe p WHERE p.ci_id = c.id AND p.kind = 'collector_run'
+	    AND p.outcome IN ('ok','partial') ORDER BY p.at DESC LIMIT 1) < ?`
 )
 
 // The values HostFilter.Health takes.

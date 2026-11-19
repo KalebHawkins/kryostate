@@ -224,6 +224,27 @@ func (s *Store) ConnProfiles(ctx context.Context, ciID string) ([]ConnProfile, e
 	return scanProfiles(rows)
 }
 
+// AllConnProfiles returns every connection profile, by CI, each CI's in
+// transport order, in one statement.
+func (s *Store) AllConnProfiles(ctx context.Context) (map[string][]ConnProfile, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ci_id, transport, address, port, username, credential_ref, bastion_ref, host_key, bastion_host_key, host_key_policy, enabled
+		 FROM conn_profile ORDER BY ci_id, transport`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	all, err := scanProfiles(rows)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]ConnProfile{}
+	for _, p := range all {
+		out[p.CIID] = append(out[p.CIID], p)
+	}
+	return out, nil
+}
+
 // CollectTargets returns every enabled profile across the estate, which is the
 // set a collection run may touch. A CI with no profile is listed in the
 // inventory and is not scheduled: an unreachable entry must not become a hot
@@ -444,24 +465,51 @@ func (s *Store) Stacks(ctx context.Context) ([]StackView, error) {
 	return out, nil
 }
 
+// StackCount is a stack's name and how many CIs are in it.
+type StackCount struct {
+	Name    string
+	Members int
+}
+
+// StackCounts lists every stack by name with its member count, which is
+// what Stacks says as Health.Members, without working out each member's
+// health.
+func (s *Store) StackCounts(ctx context.Context) ([]StackCount, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT s.name, (SELECT COUNT(*) FROM stack_member m JOIN ci c ON c.id=m.ci_id WHERE m.stack_id=s.id)
+		 FROM stack s ORDER BY s.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []StackCount
+	for rows.Next() {
+		var sc StackCount
+		if err := rows.Scan(&sc.Name, &sc.Members); err != nil {
+			return nil, err
+		}
+		out = append(out, sc)
+	}
+	return out, rows.Err()
+}
 func (s *Store) stackHealth(ctx context.Context, stackID int64) (model.StackHealth, error) {
 	var h model.StackHealth
+	// Each member's latest collection is one seek into its own probes.
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 		  COUNT(*),
-		  COALESCE(SUM(CASE WHEN c.disabled_at IS NULL AND last.outcome='ok' THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN c.disabled_at IS NULL AND last.outcome IS NOT NULL AND last.outcome<>'ok' THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN c.disabled_at IS NULL AND last.outcome IS NULL THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN c.disabled_at IS NOT NULL THEN 1 ELSE 0 END), 0)
-		FROM stack_member m
-		JOIN ci c ON c.id=m.ci_id
-		LEFT JOIN (
-		  SELECT p.ci_id, p.outcome FROM probe p
-		  WHERE p.kind='collector_run'
-		    AND p.id=(SELECT q.id FROM probe q WHERE q.ci_id=p.ci_id AND q.kind='collector_run'
-		              ORDER BY q.at DESC, q.id DESC LIMIT 1)
-		) last ON last.ci_id=m.ci_id
-		WHERE m.stack_id=?`, stackID).
+		  COALESCE(SUM(CASE WHEN disabled_at IS NULL AND outcome='ok' THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN disabled_at IS NULL AND outcome IS NOT NULL AND outcome<>'ok' THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN disabled_at IS NULL AND outcome IS NULL THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN disabled_at IS NOT NULL THEN 1 ELSE 0 END), 0)
+		FROM (
+		  SELECT c.disabled_at,
+		    (SELECT q.outcome FROM probe q WHERE q.ci_id=m.ci_id AND q.kind='collector_run'
+		     ORDER BY q.at DESC, q.id DESC LIMIT 1) AS outcome
+		  FROM stack_member m
+		  JOIN ci c ON c.id=m.ci_id
+		  WHERE m.stack_id=?
+		)`, stackID).
 		Scan(&h.Members, &h.Collected, &h.Failed, &h.NeverSeen, &h.Disabled)
 	return h, err
 }

@@ -64,8 +64,8 @@ type OnHost struct {
 // ForHost decides, for every planned collector, whether it runs on one host
 // and why, by the same rule a scheduled run uses. The host's system is the one
 // it last reported, or Windows for a host reached over WinRM that has not
-// reported one yet; hosts are loaded once, and only when some collector is
-// limited to some hosts.
+// reported one yet; the host is loaded as a target sees it only when some
+// collector is limited to some hosts, and no other host is.
 func (e *Engine) ForHost(ctx context.Context, ciID string, plan []Planned) (family string, out []OnHost, err error) {
 	families, err := e.Store.HostFamilies(ctx)
 	if err != nil {
@@ -81,12 +81,15 @@ func (e *Engine) ForHost(ctx context.Context, ciID string, plan []Planned) (fami
 			}
 		}
 	}
+	// Targets are matched against this host alone, so only it is loaded.
 	var tg *Targets
 	for _, p := range plan {
 		if anyTarget(p.Specs) {
-			if tg, err = e.LoadTargets(ctx); err != nil {
+			hosts, err := e.Store.QueryHost(ctx, ciID)
+			if err != nil {
 				return family, nil, err
 			}
+			tg = NewTargets(hosts, e.Store.QueryResolver(ctx))
 			break
 		}
 	}

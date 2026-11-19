@@ -381,7 +381,11 @@ func (a *app) targetSetCredentialCmd() *cobra.Command {
 // collection uses it: a connection switched off, or one whose host is
 // disabled, is listed but not used.
 func listTargets(ctx context.Context, st *store.Store) error {
-	hosts, err := st.Hosts(ctx, store.HostFilter{})
+	hosts, err := st.HostList(ctx, store.HostFilter{})
+	if err != nil {
+		return err
+	}
+	profiles, err := st.AllConnProfiles(ctx)
 	if err != nil {
 		return err
 	}
@@ -392,11 +396,7 @@ func listTargets(ctx context.Context, st *store.Store) error {
 	var all []target
 	n := 0
 	for _, h := range hosts {
-		ps, err := st.ConnProfiles(ctx, h.CI.ID)
-		if err != nil {
-			return err
-		}
-		if len(ps) > 0 {
+		if ps := profiles[h.CI.ID]; len(ps) > 0 {
 			all = append(all, target{h, ps})
 			n += len(ps)
 		}
