@@ -638,10 +638,8 @@ lab01,,,,,
 | `stacks` | Stack entries in the form `stack` or `stack:role`, separated by `;`. Can be empty. |
 | `user`, `address` | Target fields of the host. Can be empty. An empty `user` comes from `defaults`. An empty `address` follows the address order. |
 
-**CAUTION:** A JSON import file must be UTF-8 with no byte order mark. In
-Windows PowerShell 5.1, `>` writes UTF-16, and `Set-Content -Encoding utf8`
-adds a byte order mark. Then the import shows `not valid JSON: invalid
-character`. Use `[IO.File]::WriteAllText`, as in the example below.
+An import file can be UTF-8, UTF-8 with a byte order mark, or UTF-16.
+Thus a file from `>` or `Set-Content` in Windows PowerShell 5.1 is accepted.
 
 In PowerShell (Windows PowerShell 5.1 or PowerShell 7), run this in the
 folder of `hosts.csv`:
@@ -781,7 +779,6 @@ An `export` file is not an import file. If you give it to
 | `stack payments-prod is named twice` | A host gives the same stack two times. | Remove one entry. |
 | `the name matches host ... and the fqdn matches host ...` | The name and the fqdn find two different recorded hosts. | Correct the name or the fqdn in the file. |
 | `matches the same recorded host as web01` | Two entries find the same recorded host. | Remove one entry. |
-| `not valid JSON: invalid character '\xff'` or `'\ufeff'` | The JSON file is UTF-16 or has a byte order mark. | Write the file as UTF-8 with no byte order mark. Refer to [Convert a CSV file to an import file](#convert-a-csv-file-to-an-import-file). |
 | `not valid JSON: invalid character '}' looking for beginning of object key string` | The JSON has a comma before `}` or `]`. | Remove the comma. |
 | `give --format yaml or --format json when reading standard input` | The file is `-` with no format. | Add `--format yaml` or `--format json`. |
 | `the file is empty` or `no hosts: the file needs a hosts: list` | The file has no `hosts` list. | Add `hosts`. Run `kryostate import --example` to see one. |

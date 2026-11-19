@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"go.yaml.in/yaml/v3"
 
@@ -130,15 +131,48 @@ func DetectFormat(path string, data []byte) string {
 	case ".yaml", ".yml":
 		return FormatYAML
 	}
+	if u, err := toUTF8(data); err == nil {
+		data = u
+	}
 	if t := bytes.TrimSpace(data); len(t) > 0 && t[0] == '{' {
 		return FormatJSON
 	}
 	return FormatYAML
 }
 
+// toUTF8 removes a UTF-8 byte order mark and converts UTF-16 with a byte
+// order mark to UTF-8. Windows PowerShell 5.1 writes files that way: ">"
+// writes UTF-16, and Set-Content -Encoding utf8 adds the mark.
+func toUTF8(data []byte) ([]byte, error) {
+	switch {
+	case bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}):
+		return data[3:], nil
+	case bytes.HasPrefix(data, []byte{0xFF, 0xFE}), bytes.HasPrefix(data, []byte{0xFE, 0xFF}):
+		big := data[0] == 0xFE
+		body := data[2:]
+		if len(body)%2 != 0 {
+			return nil, errors.New("the file is UTF-16 with an odd number of bytes; save it again as UTF-8")
+		}
+		u := make([]uint16, len(body)/2)
+		for i := range u {
+			if big {
+				u[i] = uint16(body[2*i])<<8 | uint16(body[2*i+1])
+			} else {
+				u[i] = uint16(body[2*i+1])<<8 | uint16(body[2*i])
+			}
+		}
+		return []byte(string(utf16.Decode(u))), nil
+	}
+	return data, nil
+}
+
 // Load reads and checks a whole file. Every problem is reported together,
 // each with its line, so one pass fixes them all.
 func Load(data []byte, format string) (*File, error) {
+	data, err := toUTF8(data)
+	if err != nil {
+		return nil, Problems{{Msg: err.Error()}}
+	}
 	switch format {
 	case FormatJSON:
 		if !json.Valid(data) {

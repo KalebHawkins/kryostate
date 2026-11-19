@@ -47,7 +47,7 @@ hosts:
       - {stack: edge, role: proxy}
     target:                   # optional; merged over defaults
       user: svc-ro
-      address: 10.0.0.5
+      address: 192.0.2.10
       bastion: "ops@jump.example.com:22/agent:"   # quoted: it ends in a colon
   - name: db01
     stacks: [payments-prod:database]

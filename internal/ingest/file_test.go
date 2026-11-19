@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/KalebHawkins/kryostate/internal/model"
 	"github.com/KalebHawkins/kryostate/internal/store"
@@ -40,7 +41,7 @@ hosts:
       - {stack: edge, role: proxy}
     target:
       user: svc-ro
-      address: 10.0.0.5
+      address: 192.0.2.10
       bastion: "ops@jump.example.com:22/agent:"
   - name: db01
     stacks: [payments-prod:database]
@@ -54,7 +55,7 @@ const sampleJSON = `{
 	"hosts": [
 		{"name": "web01", "fqdn": "web01.example.com", "application": "ledger",
 		 "stacks": ["payments-prod:app", {"stack": "edge", "role": "proxy"}],
-		 "target": {"user": "svc-ro", "address": "10.0.0.5", "bastion": "ops@jump.example.com:22/agent:"}},
+		 "target": {"user": "svc-ro", "address": "192.0.2.10", "bastion": "ops@jump.example.com:22/agent:"}},
 		{"name": "db01", "stacks": ["payments-prod:database"]},
 		{"name": "lab01", "target": false}
 	]
@@ -96,7 +97,7 @@ func TestYAMLAndJSONReadTheSame(t *testing.T) {
 func TestDefaultsMergeUnderEachHost(t *testing.T) {
 	f := mustLoad(t, sampleYAML, FormatYAML)
 	web, ok := f.Effective(f.Hosts[0])
-	want := Target{Transport: "ssh", Address: "10.0.0.5", Port: 22, User: "svc-ro",
+	want := Target{Transport: "ssh", Address: "192.0.2.10", Port: 22, User: "svc-ro",
 		Credential: "keyring:kryostate/ops", Bastion: "ops@jump.example.com:22/agent:"}
 	if !ok || web != want {
 		t.Fatalf("web01 target %+v, want %+v", web, want)
@@ -222,7 +223,7 @@ func TestApplyThenApplyAgainChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	profiles, _ := st.ConnProfiles(ctx, web)
-	if len(profiles) != 1 || profiles[0].Username != "svc-ro" || profiles[0].Address != "10.0.0.5" ||
+	if len(profiles) != 1 || profiles[0].Username != "svc-ro" || profiles[0].Address != "192.0.2.10" ||
 		profiles[0].CredentialRef != "keyring:kryostate/ops" || profiles[0].BastionRef != "ops@jump.example.com:22/agent:" {
 		t.Fatalf("web01 profiles %+v", profiles)
 	}
@@ -416,6 +417,47 @@ func TestWinRMDefaultPortIs5986(t *testing.T) {
 			var b strings.Builder
 			again.Write(&b)
 			t.Fatalf("%q then %q changes:\n%s", ports[0], ports[1], b.String())
+		}
+	}
+}
+
+// TestLoadAcceptsWindowsEncodings: a JSON or YAML file saved by Windows
+// PowerShell 5.1, as UTF-16 or as UTF-8 with a byte order mark, loads the
+// same as plain UTF-8.
+func TestLoadAcceptsWindowsEncodings(t *testing.T) {
+	doc := `{"hosts": [{"name": "web01", "fqdn": "web01.example.com"}]}`
+	utf16le := func(s string) []byte {
+		b := []byte{0xFF, 0xFE}
+		for _, r := range utf16.Encode([]rune(s)) {
+			b = append(b, byte(r), byte(r>>8))
+		}
+		return b
+	}
+	utf16be := func(s string) []byte {
+		b := []byte{0xFE, 0xFF}
+		for _, r := range utf16.Encode([]rune(s)) {
+			b = append(b, byte(r>>8), byte(r))
+		}
+		return b
+	}
+	for name, data := range map[string][]byte{
+		"utf-8":          []byte(doc),
+		"utf-8 with bom": append([]byte{0xEF, 0xBB, 0xBF}, doc...),
+		"utf-16le":       utf16le(doc),
+		"utf-16be":       utf16be(doc),
+	} {
+		if f := DetectFormat("-", data); f != FormatJSON {
+			t.Errorf("%s: detected %s", name, f)
+		}
+		for _, format := range []string{FormatJSON, FormatYAML} {
+			f, err := Load(data, format)
+			if err != nil {
+				t.Errorf("%s as %s: %v", name, format, err)
+				continue
+			}
+			if len(f.Hosts) != 1 || f.Hosts[0].Name != "web01" {
+				t.Errorf("%s as %s: hosts %+v", name, format, f.Hosts)
+			}
 		}
 	}
 }
