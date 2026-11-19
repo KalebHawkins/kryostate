@@ -421,10 +421,12 @@ func (a *app) restoreCmd() *cobra.Command {
 			if err := transfer.Restore(cmd.Context(), st, d); err != nil {
 				return err
 			}
+			tw := newTable(os.Stdout)
+			fmt.Fprintln(tw, "TABLE\tROWS")
 			for _, t := range d.Order {
-				fmt.Printf("%-18s %d\n", t, d.Counts[t])
+				fmt.Fprintf(tw, "%s\t%d\n", t, d.Counts[t])
 			}
-			return nil
+			return tw.Flush()
 		},
 	}
 	cmd.Flags().StringVarP(&in, "in", "i", "", "file to read (required)")

@@ -228,6 +228,8 @@ func paramFlag(p string) string {
 // stacks gains these.
 func enableGroup(ctx context.Context, st *store.Store, g collect.Group, target string) error {
 	fmt.Printf("%s, for %s:\n", g.Title, runsOn(target))
+	tw := newTable(os.Stdout)
+	fmt.Fprintln(tw, "COLLECTOR\tSTATE\tRUNS ON")
 	for _, id := range g.Entries {
 		c, changed, err := st.EnableChoice(ctx, collect.Choice{Template: id, Target: target}, actor())
 		if err != nil {
@@ -237,7 +239,10 @@ func enableGroup(ctx context.Context, st *store.Store, g collect.Group, target s
 		if !changed {
 			state = "already on"
 		}
-		fmt.Printf("  %-40s %-11s runs on %s\n", c.Label(), state, runsOn(c.Target))
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", c.Label(), state, runsOn(c.Target))
+	}
+	if err := tw.Flush(); err != nil {
+		return err
 	}
 	fmt.Println("collect:     kryostate refresh")
 	return nil

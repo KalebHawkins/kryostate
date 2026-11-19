@@ -213,7 +213,8 @@ matches more than one host, the command stops and shows each match.
 | `stack rm <stack> <host>...` | Removes hosts from a stack |
 | `stack delete <stack>` | Deletes a stack. The hosts and their values stay |
 | `check add <host> <name>` | Adds a check: `--tcp host:port` or `--http URL` with `--expect 2xx` |
-| `check list <host>`, `check rm <host> <name>` | Shows or removes the checks of a host |
+| `check list [host]` | Shows all checks, or the checks of one host, with the host, target, status and last result. `--json` |
+| `check rm <host> <name>` | Removes a check from a host |
 | `check` or `check run` | Runs all enabled checks. `--only` limits the hosts |
 | `rules add <name> --expect <query>` | Makes a rule that tracks a rollout. `--scope` selects the hosts |
 | `rules list`, `rules show <rule>`, `rules rm <rule>` | Shows the rules, shows the hosts that a rule waits for, or deletes a rule |

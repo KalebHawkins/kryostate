@@ -268,6 +268,7 @@ login. You add health checks on the command line only:
 ```sh
 kryostate check add web01 https --http https://web01.example.com/health --expect 2xx
 kryostate check add db01 postgres --tcp db01.example.com:5432
+kryostate check list                 # all checks, with the host and last result
 kryostate check list web01
 kryostate check rm web01 https
 kryostate check                      # run all enabled checks

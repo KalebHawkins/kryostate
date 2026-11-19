@@ -349,3 +349,50 @@ func TestHostAddressChoice(t *testing.T) {
 		t.Errorf("listing: %v", err)
 	}
 }
+
+// TestCheckListShowsEveryHost: without a host, check list covers every
+// host's checks, disabled ones and those of disabled hosts included, with
+// the result of the last run.
+func TestCheckListShowsEveryHost(t *testing.T) {
+	ctx := context.Background()
+	db := filepath.Join(t.TempDir(), "k.db")
+	for _, args := range [][]string{
+		{"host", "add", "web01"}, {"host", "add", "db01"}, {"host", "disable", "db01"},
+		{"check", "add", "web01", "https", "--http", "https://web01.example.com/health"},
+		{"check", "add", "db01", "postgres", "--tcp", "db01:5432"},
+		{"check", "add", "web01", "ssh", "--tcp", "web01:22", "--disable"},
+	} {
+		if err := execute(t, append(args, "--db", db)...); err != nil {
+			t.Fatal(args, err)
+		}
+	}
+	st, err := openStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	all, err := st.ListChecks(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, c := range all {
+		got[c.Label+"/"+c.Name] = true
+		if c.Label == "db01" && !c.HostDisabled {
+			t.Error("db01's check is not marked as on a disabled host")
+		}
+	}
+	for _, want := range []string{"web01/https", "web01/ssh", "db01/postgres"} {
+		if !got[want] {
+			t.Errorf("check list is missing %s: %v", want, got)
+		}
+	}
+	id, _ := st.LookupCI(ctx, "web01")
+	one, _ := st.ListChecks(ctx, id)
+	if len(one) != 2 {
+		t.Errorf("one host's list has %d checks, want 2", len(one))
+	}
+	if err := execute(t, "check", "list", "--db", db); err != nil {
+		t.Errorf("check list: %v", err)
+	}
+}
