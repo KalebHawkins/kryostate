@@ -1,37 +1,38 @@
 # Queries
 
-A query picks hosts by what is known about them. It is one line, such as
+This page is the reference for the query language. It is for all users who
+select hosts in KryoState. The [user guide](user-guide.md#queries) has a
+short introduction.
+
+A query selects hosts by their values. It is one line, such as:
 
 ```text
 os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"
 ```
 
-which reads: the host runs Linux, and the SSH hardening drop-in is not there.
-The style is that of a Prometheus label matcher: a name, an operator and a
-value, joined with `&&` and `||`.
-
-This page is the full reference. The short version is in the
-[user guide](user-guide.md#queries).
+This query selects the Linux hosts that do not have the SSH hardening file.
+A query has the format of a Prometheus label matcher: a name, an operator and
+a value. `&&` and `||` join the conditions.
 
 ## Where queries are used
 
-The same language, with the same meaning, works everywhere a set of hosts is
-chosen:
+The language is the same in all these places:
 
 | Where | How |
 |---|---|
-| **Inventory** page | Type it into the box at the top. The query goes into the address (`/hosts?q=...`), so a filtered view can be bookmarked or sent to someone. |
-| CSV and JSON downloads | The **CSV** and **JSON** links next to the box download what the box shows. `/hosts.csv?q=...` and `/hosts.json?q=...` take the query directly. |
-| **Charts** | Clicking a slice or a bar opens the inventory filtered to those hosts, with the query written out so you can change it. |
-| Where a collector runs | On a collector's page, **Change where it runs** takes a query. A live preview under the box counts the hosts it matches and names the first few. |
-| Your own collectors | `"where"` in `collectors.json` (see the [collector guide](collectors.md)). |
-| **Rules** | A rule's scope chooses the hosts a rollout covers, and its expect query says what each should report once done, such as `nginx.version >= "1.24"`. A host whose answer needs a value it has not reported counts as unknown rather than not done. See [Rules: tracking a rollout](user-guide.md#rules-tracking-a-rollout). |
-| Command line | `kryostate host list -q '...'`, `kryostate host list -q '...' --json`, `kryostate collectors enable <id> --where '...'` and `kryostate rules add <name> --scope '...' --expect '...'`. |
+| **Inventory** page | Type the query in the box at the top. The address contains the query (`/hosts?q=...`), so you can bookmark the filtered list or send it. |
+| CSV and JSON downloads | The **CSV** and **JSON** links next to the box download the hosts that the box shows. `/hosts.csv?q=...` and `/hosts.json?q=...` take the query directly. |
+| **Charts** | Select a slice or a bar to open the inventory with a query for these hosts. You can then change the query. |
+| Where a collector runs | On the collector page, **Change where it runs** takes a query. The preview under the box counts the hosts that match and shows the first names. |
+| Your own collectors | The `where` field of a collector (see the [collector guide](collectors.md)) |
+| Stacks | **Hosts matching** on a stack page adds the hosts that match the query now. The stack does not follow the query after that. |
+| **Rules** | The scope of a rule selects the hosts of a rollout. The expect query tells what each host must report when it is done, such as `nginx.version >= "1.24"`. If a host does not report a value that the expect query needs, the host is unknown, not "not done". See [Rules: tracking a rollout](user-guide.md#rules-tracking-a-rollout). |
+| Command line | `kryostate host list -q '...'`, `kryostate collectors enable <id> --where '...'` and `kryostate rules add <name> --scope '...' --expect '...'` |
 
-So a query that lists the right hosts on the Inventory page is exactly the one
-to give a collector.
+A query that selects the correct hosts on the **Inventory** page selects the
+same hosts for a collector.
 
-## A first few
+## Examples
 
 ```text
 os.version == "AlmaLinux 9.8"            one exact version
@@ -40,63 +41,83 @@ name =~ "^web"                           names that start with web
 name in ("web01", "db01")                two hosts, by name
 hw.cpu.cores >= 8                        eight cores or more
 nginx.version < "1.24"                   older nginx, compared as versions
-!has(os.version)                         hosts with no OS version yet
-web                                      plain text: names containing "web"
+!has(os.version)                         hosts with no OS version
+web                                      plain text: names that contain "web"
 ```
 
-## Shape
+## Grammar
 
-Every query is built from **comparisons**. A comparison is a **name**, an
-**operator** and a **value**. Comparisons are joined with `&&` (and) and `||`
-(or), turned around with `!` (not), and grouped with parentheses.
+A query is made of **conditions**. A condition is usually a **name**, an
+**operator** and a **value**. `&&` (and) and `||` (or) join conditions. `!`
+(not) gives the opposite. Parentheses make groups.
 
 ```text
-query       = condition { ("&&" | "||") condition }
-condition   = [ "!" ] ( name [ operator value ] | name "in" list | "has(" name ")" | "(" query ")" )
-name        = os.version, stack, file.exists["/etc/hosts"], ...
-operator    = ==  !=  =~  !~  <  <=  >  >=
-value       = "text", 'text', `text`, a number, true or false
-list        = "(" value { "," value } ")", or the same in [ ]
+query      = or
+or         = and { "||" and }
+and        = unary { "&&" unary }
+unary      = "!" unary | primary
+primary    = "(" or ")"
+           | "has" "(" field ")"
+           | field "in" list
+           | field [ comparison literal ]
+field      = name [ "[" string "]" ]
+list       = "(" literal { "," literal } [ "," ] ")"
+           | "[" literal { "," literal } [ "," ] "]"
+comparison = "==" | "!=" | "=~" | "!~" | "<" | "<=" | ">" | ">="
+literal    = string | number | "true" | "false"
+name       = letter { letter | digit | "_" | "." | "-" }
+string     = '"' chars '"' | "'" chars "'" | "`" raw chars "`"
+number     = [ "-" ] digit { digit } [ "." digit { digit } ]
 ```
 
-`&&` binds tighter than `||`, so `a || b && c` means `a || (b && c)`. Use
-parentheses when in doubt. `!` applies to the whole comparison after it:
-`!os.family == "Linux"` means "not Linux".
+- `&&` binds more tightly than `||`. Thus `a || b && c` means
+  `a || (b && c)`. If you are not sure, use parentheses.
+- `!` binds less tightly than a comparison. Thus `!os.family == "Linux"`
+  means "not Linux".
+- Spaces between the parts are not important.
 
-Spaces between parts do not matter. Text with none of the query symbols in it,
-such as `web` or `db01`, is not a query: it searches host names, as the box did
-before there was a language.
+### Plain text
+
+If the text has none of the characters `=`, `!`, `<`, `>`, `~`, `&`, `|`,
+`(`, `)`, `[`, `]`, `"`, `'` and `` ` ``, it is not a query. KryoState then finds the hosts whose name or identity (such
+as the fqdn or an address) contains the text. Upper and lower case are not
+important. For example, `web` and `db01` are plain text.
+
+**CAUTION:** A name alone, such as `disabled` or `myapp.installed`, is plain
+text in the **Inventory** box and in `kryostate host list -q`. To test a
+yes-or-no value there, write `disabled == true` or `(disabled)`.
 
 ## Names
 
-A name is either one of the host's own fields or an attribute.
+A name is a field of the host or an attribute.
 
-| Name | Is |
+| Name | Value |
 |---|---|
-| `name` | the host's name |
-| `id` | its internal id |
-| `stack` | every stack it is a member of |
-| `role` | its role in each of those stacks |
-| `application` (or `app`) | the application recorded for it |
-| `disabled` | true for a disabled host, which is listed but never contacted: `disabled == true` lists them, `!disabled` leaves them out |
-| anything else | an attribute, such as `os.version`, `hw.cpu.cores` or `nginx.version` |
+| `name` | The host name |
+| `id` | The internal ID of the host |
+| `stack` | Each stack that the host is a member of |
+| `role` | The role of the host in each of its stacks, and its `role` attribute if it has one |
+| `application` or `app` | The application attribute of the host |
+| `disabled` | `true` for a disabled host. KryoState lists a disabled host but does not connect to it. `disabled == true` selects these hosts, and `!disabled` selects the other hosts. |
+| All other names | An attribute, such as `os.version`, `hw.cpu.cores` or `nginx.version` |
 
-To find an attribute's name:
+To find the name of an attribute:
 
-- On a host's page, hover over a label in the Facts table. **OS Version** is
-  `os.version`.
-- The **Columns** list on the Inventory page names every attribute any host
-  has.
-- `kryostate host show <host>` prints every attribute by name.
-- A collector's page says what it records, under **What it records**.
+- On the page of a host, put the pointer on a label in the **Facts** table.
+  For example, **OS Version** is `os.version`.
+- On the **Inventory** page, the **Columns** list shows all attributes that
+  hosts have.
+- Run `kryostate host show <host>`. It shows each attribute by name.
+- On a collector page, **What it records** shows the attribute.
 
 ### Collectors that take a path or a name
 
-A collector that takes a value, such as **File exists** or **Package
-version**, records one attribute per value, named after it. **File exists**
-for `/etc/ssh/sshd_config.d/hardening.conf` records
-`file.hardening_conf.exists`. You can use that name, or name the collector
-with its value in brackets, which saves looking the name up:
+The catalog collectors `file.exists`, `file.contents`, `config.value`,
+`env.var` and `package.version` take a value. They record one attribute for
+each value. For example, **File exists** for
+`/etc/ssh/sshd_config.d/hardening.conf` records `file.hardening_conf.exists`.
+You can use the attribute name, or the catalog name with the value in
+brackets. These three queries are the same:
 
 ```text
 file.hardening_conf.exists == true
@@ -104,103 +125,109 @@ file.exists["/etc/ssh/sshd_config.d/hardening.conf"] == true
 file.exists == "/etc/ssh/sshd_config.d/hardening.conf"
 ```
 
-All three mean the same. The last is a shorthand: comparing a collector of
-this kind to a string means "the collector has this value switched on and the
-host reported it". For a collector that records `true` or `false` it means
-`true`, and for one that records something else, such as
-`package.version == "openssl"`, it means the host has a value for it.
+The third query is a short form. `<catalog name> == "<value>"` means:
 
-If you gave the collector a custom name when you switched it on, the bracket
-form finds that name for you.
+- for a collector that records `true` or `false`, such as `file.exists`: the
+  value is `true`.
+- for other collectors, such as `package.version == "openssl"`: the host has
+  a value.
+
+The short form also works with `!=` and with `in`, such as
+`file.exists in ("/etc/a.conf", "/etc/b.conf")`. For `config.value`, the
+value is `path#key` or `path#[section]key`.
+
+If you gave the collector a different attribute name when you switched it on,
+the bracket form finds that name.
 
 ## Operators
 
-| Write | Means |
+| Operator | Meaning |
 |---|---|
-| `==` `!=` | Equal and not equal. Text is compared exactly and is case sensitive. |
-| `=~` `!~` | Matches and does not match a [Go regular expression](https://pkg.go.dev/regexp/syntax). Patterns are **not anchored**: `"web"` matches anywhere in the value, `"^web"` only at the start and `"web$"` only at the end. Start a pattern with `(?i)` to ignore case. |
-| `<` `<=` `>` `>=` | Order. Numbers compare as numbers (`8 < 16`). Versions compare in version order (`"7.9" < "7.10"`, `"1.0.2" < "1.0.2k"`). A value that is neither does not match. |
-| `in` | The value is any one of a list: `stack in ("web", "edge")`. Same rules as `==`. Round or square brackets. |
+| `==` `!=` | Equal and not equal. Text must match exactly, with upper and lower case. |
+| `=~` `!~` | Matches and does not match a [Go regular expression](https://pkg.go.dev/regexp/syntax). The pattern can match at any position: `"web"` matches in all positions, `"^web"` only at the start and `"web$"` only at the end. To ignore upper and lower case, start the pattern with `(?i)`. |
+| `<` `<=` `>` `>=` | Order. Numbers compare as numbers (`8 < 16`). Versions compare in version order (`"7.9" < "7.10"`, `"1.0.2" < "1.0.2k"`). A value that is not a number or a version does not match. |
+| `in` | The value is one of a list: `stack in ("web", "edge")`. The rules are the same as for `==`. Use round or square brackets. |
 | `has(x)` | The host has a value for `x`. |
 | `x` alone | The same as `x == true`. `!x` is the same as `x != true`. |
-| `&&` `\|\|` `!` `( )` | And, or, not, grouping. |
+| `&&` `\|\|` `!` `( )` | And, or, not, and groups |
 
 ## Values
 
-| Write | Is |
+| Value | Meaning |
 |---|---|
-| `"text"` or `'text'` | A string. `\"`, `\\`, `\n` and `\t` are escapes. |
-| `` `text` `` | A raw string with no escapes, which is easier for patterns full of backslashes: ``name =~ `^web\d+$` ``. |
-| `8`, `-1.5` | A number. |
-| `true`, `false` | Match attributes that record `true` or `false`, such as **File exists**. Older values recorded as `yes` and `no` match too. |
+| `"text"` or `'text'` | A string. The escapes are `\"`, `\'`, `` \` ``, `\\`, `\n`, `\t` and `\r`. |
+| `` `text` `` | A raw string without escapes. Use it for patterns with backslashes: ``name =~ `^web\d+$` ``. |
+| `8`, `-1.5` | A number. Put a version in quotes: `"1.2.3"`, not `1.2.3`. |
+| `true`, `false` | Match attributes that record `true` or `false`, such as **File exists**. Old values `yes` and `no` also match. |
 
 ### Which value is compared
 
-A query compares the **Value** column of a host's page, not the **Raw** one.
-Where KryoState tidies a value up, for instance `Debian GNU/Linux 12
-(bookworm)` into `Debian 12`, or a full package version into its first two
-numbers, the query sees the tidy form. To match the full text, use a pattern:
-`os.version =~ "bookworm"`.
+A query compares the **Value** column of the host page, not the **Raw**
+column. KryoState sometimes makes a value shorter. For example,
+`Debian GNU/Linux 12 (bookworm)` becomes `Debian 12`, and a full package
+version becomes its first two numbers. The query sees the short form. To
+match the full text, use a pattern: `os.version =~ "bookworm"`.
 
 ## How the edge cases work
 
-- **A missing value counts as empty text.** `os.version == ""` finds hosts
-  without one, and `os.version != ""` and `has(os.version)` find hosts with
-  one. A missing value never matches `<`, `>` or a pattern other than one that
-  matches empty text.
-- **Names with several values match when any value does.** A host in the
+- **A missing value is empty text.** `os.version == ""` finds the hosts
+  without a value. `os.version != ""` and `has(os.version)` find the hosts
+  with a value. A missing value does not match `<`, `<=`, `>` or `>=`. It
+  matches a pattern only if the pattern matches empty text.
+- **A name with many values matches if one value matches.** A host in the
   stacks `web` and `edge` matches `stack == "web"` and `stack == "edge"`.
-- **`!=` and `!~` are the exact opposite of `==` and `=~`.** So
-  `stack != "web"` means "not in the web stack", even for a host that is also
-  in another stack.
-- **Ordering needs like with like.** `hw.cpu.cores > 8` compares numbers.
-  `os.kernel < "5"` compares versions. `os.family < "M"` is refused when
-  you write it, because "M" is neither a number nor a version, and a host whose
-  value is not a number or a version never matches an ordering.
-- **Unknown names are not errors.** A name no host has simply has no value, so
-  `nginx.version != ""` is a quick way to find the hosts that have nginx at all.
+- **`!=` and `!~` are the opposite of `==` and `=~`.** Thus `stack != "web"`
+  means "not in the web stack", also for a host that is in a different stack
+  too.
+- **Order needs numbers or versions.** `hw.cpu.cores > 8` compares numbers.
+  `os.kernel < "5"` compares versions. KryoState refuses `os.family < "M"`,
+  because `"M"` is not a number or a version. A host value that is not a
+  number or a version does not match an order operator.
+- **Unknown names are not errors.** A name that no host has has no value.
+  Thus `nginx.version != ""` finds the hosts that have nginx.
 
 ## Mistakes
 
-A query that does not parse is not run. The Inventory page shows the problem
-with its column, and a collector's **Change where it runs** box shows a caret
-under it. Common ones:
+KryoState does not run a query that does not parse. The **Inventory** page
+shows the problem and its column. The **Change where it runs** box of a
+collector shows a `^` under the problem.
 
-| Wrote | Problem | Write |
+| Query | Problem | Correct query |
 |---|---|---|
-| `os.family = "Linux"` | `=` is not an operator | `os.family == "Linux"` |
-| `os.family == Linux` | Text needs quotes | `os.family == "Linux"` |
-| `name in ("web01" "web02")` | Missing comma | `name in ("web01", "web02")` |
-| `file.exists == true` | Which file? | `file.exists["/etc/hosts"] == true` |
-| `(stack == "web"` | Unclosed bracket | `(stack == "web")` |
-| `os.family < "M"` | Order needs a number or a version | `os.family =~ "^[A-L]"` |
-| `name =~ "web\d"` | `\d` is not an escape in double quotes | ``name =~ `web\d` `` |
+| `os.family = "Linux"` | `=` is not an operator. | `os.family == "Linux"` |
+| `os.family == Linux` | Text must be in quotes. | `os.family == "Linux"` |
+| `name in ("web01" "web02")` | A comma is missing. | `name in ("web01", "web02")` |
+| `file.exists == true` | The file is missing. | `file.exists["/etc/hosts"] == true` |
+| `(stack == "web"` | The `)` is missing. | `(stack == "web")` |
+| `os.family < "M"` | Order needs a number or a version. | `os.family =~ "^[A-L]"` |
+| `name =~ "web\d"` | `\d` is not an escape in double quotes. | ``name =~ `web\d` `` |
+| `os.version == 1.2.3` | A version must be in quotes. | `os.version == "1.2.3"` |
 
-A collector whose query does not parse runs on **no** hosts, never on all of
-them. Its page says why.
+**CAUTION:** If the query of a collector does not parse, the collector runs
+on no host. It does not run on all hosts. The collector page tells you why.
 
 ## Recipes
 
 ```text
-# Hosts that have never reported an OS version
+# Hosts that have no OS version
 !has(os.version)
 
-# Linux hosts missing a file every Linux host should have
+# Linux hosts without a file that each Linux host must have
 os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"
 
-# Everything in two stacks, except the databases
+# All hosts in two stacks, but not the databases
 stack in ("web", "app") && role != "database"
 
 # Old OpenSSL
 pkg.openssl.version < "3.0"
 
-# Big machines running a given application
+# Large hosts that run a given application
 application == "postgresql" && hw.memory.total_mb >= 16000
 
-# Names that follow a pattern, ignoring case
+# Names that follow a pattern, with upper and lower case ignored
 name =~ `(?i)^(web|edge)\d+`
 
-# One collector on a handful of named hosts only
+# Some hosts, by name
 name in ("web01", "web02", "app01")
 ```
 
@@ -213,11 +240,11 @@ kryostate host list -q 'stack == "data"' --json > data.json
 kryostate collectors enable nginx.version --where 'stack == "web"'
 ```
 
-Put the query in single quotes so the shell leaves the double quotes and the
-`!` inside it alone. On Windows PowerShell, single quotes work the same way.
+Put the query in single quotes, so that the shell does not change the double
+quotes or the `!`. Single quotes work the same way in Windows PowerShell.
 
 ## Limits
 
-Queries run inside KryoState over the values it has loaded; nothing in them is
-passed to the database, so no query can change data. They read only current
-values. To see how a value changed over time, use the **Changes** page.
+KryoState runs queries on the values that it has loaded. It does not send a
+query to the database, so a query cannot change data. A query reads only the
+current values. To see how a value changed, use the **Changes** page.

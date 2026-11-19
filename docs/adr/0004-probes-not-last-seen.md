@@ -4,73 +4,62 @@ Status: accepted
 
 ## Context
 
-Every inventory has one. A single timestamp, sometimes a green dot, meaning
-"we heard from this recently".
+Most inventories have one "Last Seen" time for each host. It combines
+different facts: ICMP answered, TCP 22 accepted, SSH or WinRM authentication
+succeeded, a collection returned usable output, or a health endpoint was
+healthy. A load balancer can answer ICMP while all nodes behind it are down,
+and one value hides this. ICMP is also the signal that proves the least.
 
-It answers a question nobody has. These are all different facts:
+One value also loses the cause of a failure:
 
-- ICMP answered.
-- TCP 22 accepted a connection.
-- SSH authentication succeeded.
-- WinRM authentication succeeded.
-- A collection ran and returned usable output.
-- An application health endpoint reported itself healthy.
-
-A load balancer answering ICMP while every node behind it is down is the exact
-situation an inventory should surface, and a single "Last Seen" field averages
-it away into a green dot. Worse: the most reassuring signal — ping — is the one
-that proves the least.
-
-The failure modes are also diagnostic and get lost. "The port is open but
-authentication failed" means a credential expired. "Authentication succeeded
-but the collector failed" means a command is missing or a shell is restricted.
-"Nothing answers" means a network or a decommissioned host. One field cannot
-hold any of this, so it holds none of it.
+| Symptom | Possible cause |
+|---|---|
+| Port open, authentication failed | An expired credential |
+| Authentication succeeded, collector failed | A missing command or a restricted shell |
+| Nothing answers | A network problem or a decommissioned host |
 
 ## Decision
 
-There is no `last_seen` column anywhere in the schema.
+No host has a `last_seen` column. (The `identity` table records when kryostate
+last saw each identifier. That is identity evidence, not reachability.)
 
 Probes are discrete, append-only events:
 
     (ci, kind, outcome, detail, latency_ms, at)
 
-`Kind` is one of the six above. `Outcome` is `ok`, `refused`, `timeout`,
-`auth_failed`, `nxdomain`, `error`. `Reachability()` returns the latest probe
-*of each kind*, and the interface shows them as separate chips.
+| Field | Values |
+|---|---|
+| `kind` | `icmp`, `tcp`, `ssh_auth`, `winrm_auth`, `collector_run`, `resolve`, `health` |
+| `outcome` | `ok`, `refused`, `timeout`, `auth_failed`, `nxdomain`, `no_answer`, `partial`, `error` |
 
-A heartbeat defined by an operator — a status endpoint, an application check —
-is a probe kind like any other. It does not get its own special field, and it
-does not overwrite anyone else's.
+`Reachability()` returns the latest probe of each kind, and the interface
+shows each kind as a separate chip. A heartbeat that an operator defines is a
+`health` probe. It has no special field and overwrites no other probe.
 
-The same reasoning drives how unknowns are counted. A chart's buckets must add
-up to the number of hosts, and a host with no value appears in one of three
-buckets with distinguishable causes:
+The buckets of a chart must add up to the number of hosts. A host with no
+value goes into one of three buckets:
 
-- **never collected** — nobody has tried
-- **collection failed** — somebody tried and it did not work
-- **not understood** — the host answered and no rule parsed the answer
+| Bucket | Meaning |
+|---|---|
+| never collected | No collection was tried. |
+| collection failed | A collection was tried and did not work. |
+| not understood | The host answered, and no rule parsed the answer. |
 
-These are disjoint by construction and each is clickable through to the hosts
-in it. A chart that quietly drops the hosts it has no data for reports better
-coverage than it has.
+The buckets do not overlap. You can click each bucket to see its hosts.
 
 ## Consequences
 
-- "Is this host up?" has no single answer, and the interface declines to invent
-  one. Somebody who wants one answer will not get it.
-- Probe history is the raw material for questions nobody has asked yet: which
-  hosts fail authentication intermittently, which site degraded last Tuesday.
-- Row counts grow with probes rather than with hosts. Pruning by age is a
-  `DELETE`; nothing in the resolution path depends on old probes.
-- The hosts table has to show several freshness signals instead of one column,
-  which costs horizontal space and is worth it.
+- "Is this host up?" has no single answer, and the interface does not make
+  one.
+- Probe history can answer new questions, for example which hosts fail
+  authentication intermittently.
+- Rows grow with each probe. A `DELETE` by age removes old probes, because
+  resolution does not use them.
+- The hosts table shows more than one freshness signal, in more space.
 
 ## Alternatives considered
 
-**One `last_seen` plus a separate probe log.** The column gets read and the log
-does not. Within a year the column is the de facto answer and is wrong.
-
-**A computed "status" field.** Every rule for computing it encodes an
-assumption about which probe matters, and that assumption differs by host role.
-A load balancer and a database have different answers to "is this healthy".
+| Alternative | Reason for rejection |
+|---|---|
+| One `last_seen` column and a separate probe log | Code reads the column and ignores the log. The column becomes the answer, and it is incorrect. |
+| A computed "status" field | Each rule assumes which probe is important. This is different for each host role. |

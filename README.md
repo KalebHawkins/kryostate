@@ -1,164 +1,46 @@
 # KryoState
 
-New to the tool? Start with the [user guide](docs/user-guide.md). It has
-tutorials for adding a host, building a stack and adding a collector, and the
-web interface serves it at `/guide`.
+This file is the entry point for KryoState. It is for persons who install
+the tool and use the command line. For tutorials, read the
+[user guide](docs/user-guide.md). The web interface also shows the user guide
+at `/guide`.
 
-KryoState is a configuration management database for servers. You, or an
-inventory document, say which hosts exist, which stacks they belong to, the
-role each plays there and the application it runs. KryoState connects to each
-host over SSH or WinRM and records everything else from what the host
-reports. What a host reports is the truth for that attribute.
+KryoState is an inventory of hosts. You give the list of hosts, their stacks,
+the role of each host in a stack, and the application of each host. KryoState
+connects to each host over SSH or WinRM and records all other values from what
+the host reports. A value that the host reports always wins over a value from
+a person or a document. KryoState keeps each value with its source and its
+time, so the history of each value stays in the database.
 
-Every value is kept with its source and time, so the history of what changed
-stays in the database.
+## Limits
 
-## 1. Limitations
+**WARNING:** The web interface and the JSON API have no login. A person who
+can open the web interface can change the inventory. Keep the listen address
+on `127.0.0.1`, or put a proxy that asks for a login in front of it. Refer to
+[docs/threat-model.md](docs/threat-model.md).
 
-Read this section before you install the tool.
+- KryoState does not find hosts. You must give the list of hosts.
+- KryoState does not change hosts. The supplied commands only read values.
+  KryoState does not examine the commands that you add.
+- KryoState does not send alerts. It records the results of checks.
+- KryoState does not find dependencies. A host is in a stack only if you put
+  it in that stack.
 
-- The tool does not discover hosts. You supply the list. The tool does not
-  scan the network.
-- The tool has no authentication and no authorisation. Bind it to localhost,
-  or put an authenticating proxy in front of it. Refer to
-  [docs/threat-model.md](docs/threat-model.md).
-- The tool does not change your hosts. The supplied commands are read-only.
-  The tool does not check commands that you add.
-- The tool does not replace monitoring. It records probe results. It does not
-  send alerts.
-- The tool does not map dependencies. Hosts belong to a stack because you put
-  them in it.
-- The web interface can add and change hosts, connections, stacks,
-  applications and checks, switch catalog collectors on and off, change
-  schedules, and start a collection. It refuses form submissions from other
-  web sites, but it has no login: anyone who can reach it can change the
-  inventory. It never takes a command, and it can only create connections
-  that use ssh-agent.
+## Install
 
-## 2. Description
-
-### 2.1 Assertions
-
-The database holds no current value. Each value is an assertion with five
-parts: the item, the attribute, the value, the source, and the time of
-observation. Assertions are append-only.
-
-A value that changes produces a second assertion. Neither one overwrites the
-other. A SQL view ranks the assertions and selects the value to show. The
-other assertions stay in the database and stay queryable.
-
-### 2.2 Precedence
-
-What a host reports always wins. A collected value outranks every other kind
-of source on every attribute, whatever the `precedence` table says. Among the
-other sources the default ranks are:
-
-| Source kind | Rank |
-|---|---|
-| human | 20 |
-| dns | 30 |
-| document | 40 |
-| derived | 90 |
-
-A lower rank wins. A derived source is barred from `env` and `site`.
-
-A person or a document may state only a host's application, and its stacks
-with its role in each. Use `kryostate host update <host> application=ledger`,
-the form on the host page, or an imported inventory. Every other
-attribute comes from the host.
-
-When two sources of equal rank give different values, the source that
-confirmed its value most recently wins.
-
-### 2.3 Collectors
-
-A collector runs one command and returns bytes. A collector does not
-interpret the bytes. Two separate steps interpret them, and you can repeat
-either step against the database:
-
-- **Parsing** takes a substring out of the command output. The tool stores the
-  command output, so the `reparse` command corrects a rule that read the wrong
-  line.
-- **Normalisation** converts the substring into a comparable value. Rules are
-  data. The `renormalize` command applies corrected rules to values already
-  collected.
-
-Neither command connects to a host. You can therefore correct a value for a
-host that no longer exists.
-
-### 2.4 Identity
-
-The identifier of an item is opaque. The tool treats a hostname as evidence of
-identity, and does not use it as the key. Hostnames repeat between sites, and
-they are reused. When a name matches more than one item, the tool reports an
-ambiguous identity instead of selecting one.
-
-### 2.5 Probes
-
-The database has no "last seen" column. Each probe is a separate event with
-its own result. The probe kinds are `tcp`, `ssh_auth`, `winrm_auth`,
-`collector_run`, `resolve` and `health`.
-
-The tool does not send ICMP. A raw socket needs elevated privilege, which this
-tool does not request. The schema reserves the `icmp` probe kind for results
-from another system, but no command accepts one at present.
-
-### 2.6 Unknown values
-
-A host with no value for an attribute falls into one of four buckets:
-
-| Bucket | Cause | Action |
-|---|---|---|
-| never collected | No collection has asked this host for this attribute | Add a connection profile |
-| collection failed | The last collector run on this host failed | Repair the access |
-| not understood | The host answered and no rule read the answer | Report a bug against this tool |
-| host disabled | The host is disabled, so nothing asks it | None, or enable the host |
-
-Charts show these buckets, so each chart accounts for every host.
-
-Refer to [docs/adr/](docs/adr/) for the reasoning behind each decision above.
-
-## 3. Attributes
-
-Attributes are names, not columns. To add an attribute, you do not change the
-schema and you do not change the code.
-
-The supplied collectors produce these attributes:
-
-| Attribute | Platforms |
-|---|---|
-| `os.family` | AIX, Linux |
-| `os.version` | AIX, Linux, Windows |
-| `os.kernel` | Linux |
-| `os.build`, `os.arch` | Windows |
-| `os.bos_level`, `host.wpar` | AIX |
-| `host.machine_id` | Linux, Windows |
-| `hw.model` | AIX, Linux |
-| `hw.serial` | AIX, Windows |
-
-All other attributes come from catalog collectors you switch on (section
-5.3), your own collector specifications, or your own external programs. You
-choose the names. Application version and middleware version are attributes
-of this kind. People and documents supply only a host's application, and its
-stacks and roles.
-
-## 4. Installation
-
-KryoState is one binary. The HTML templates, the CSS and the JavaScript are
-compiled into it, the SQLite driver is pure Go, and it needs no network access
-to serve its own interface. Pick whichever way of getting it suits the
-machine. To run it as a service, with backups and upgrades, see
+KryoState is one binary. The binary contains the web interface and a pure Go
+SQLite driver. Release builds are available for Linux (amd64, arm64), macOS
+(amd64, arm64) and Windows (amd64). There is no AIX build, but KryoState can
+collect from AIX hosts. To run KryoState as a service, refer to
 [docs/operations.md](docs/operations.md).
 
-Release builds exist for Linux (amd64, arm64), macOS (amd64, arm64) and
-Windows (amd64). There is no AIX build: the pure Go SQLite library has no AIX
-port. KryoState still collects from AIX hosts; it cannot run on one.
+### Release archive
 
-**Release archive.** Download `kryostate_<version>_<os>_<arch>.tar.gz` (or
-`.zip` for Windows) from the
-[releases page](https://github.com/KalebHawkins/kryostate/releases), check it
-against `checksums.txt`, and put `kryostate` on your `PATH`. The archive also
-holds this README, the licence, the docs and the systemd unit.
+1. Download `kryostate_<version>_<os>_<arch>.tar.gz` (`.zip` for Windows) and
+   `checksums.txt` from the
+   [releases page](https://github.com/KalebHawkins/kryostate/releases).
+2. Make sure that the checksum is correct.
+3. Put `kryostate` in a directory on your `PATH`.
 
 ```sh
 sha256sum -c --ignore-missing checksums.txt
@@ -167,10 +49,14 @@ sudo install kryostate /usr/local/bin/
 kryostate version
 ```
 
-**.deb or .rpm package.** These install the binary, a hardened systemd service
-running as a dedicated `kryostate` user, `/etc/kryostate/kryostate.env` for
-settings and `/var/lib/kryostate` for the database. The service is not started
-until you start it; it listens on `127.0.0.1:8099`.
+The archive also contains this file, the licence, the docs and the systemd
+units.
+
+### Packages
+
+The `.deb` and `.rpm` packages install the binary and a systemd service. The
+service runs as the `kryostate` user and listens on `127.0.0.1:8099`. The
+package does not start the service.
 
 ```sh
 sudo apt install ./kryostate_<version>_amd64.deb        # Debian, Ubuntu
@@ -178,315 +64,217 @@ sudo dnf install ./kryostate-<version>-1.x86_64.rpm     # RHEL, Alma, Fedora
 sudo systemctl enable --now kryostate
 ```
 
-**Container image.** Multi-arch (amd64, arm64) images are on GitHub's
-registry; see 4.1.
+### Container
+
+The images are for amd64 and arm64. The database is in the `/data` volume.
 
 ```sh
 podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data \
   ghcr.io/kalebhawkins/kryostate:latest
 ```
 
-**go install.** With Go 1.27.1 or later (see below):
+Refer to [docs/operations.md](docs/operations.md#container) for the SSH agent
+and the backups of a container.
+
+### Go
+
+You must have Go 1.27.1 or later. Use Go 1.27.2 or later if possible,
+because earlier 1.27 releases do not have the `html/template` escaping fixes.
 
 ```sh
 CGO_ENABLED=0 go install github.com/KalebHawkins/kryostate/cmd/kryostate@latest
 ```
 
-**From source.**
+To build from the source:
 
 ```sh
 git clone https://github.com/KalebHawkins/kryostate && cd kryostate
 CGO_ENABLED=0 go build ./cmd/kryostate
 ```
 
-Building needs Go 1.27.1 or later. Use Go 1.27.2 or later if you can: earlier
-1.27.x releases are missing `html/template` escaping fixes. See
-`docs/threat-model.md` for the findings and how to check them yourself. A
-plain build reports its version from the commit it was built from
-(`kryostate version`); release builds are stamped by GoReleaser
-(`.goreleaser.yaml`), and `goreleaser release --snapshot --clean` builds every
-archive, package and image locally without publishing anything.
+## Quick start
 
-Every push to `main` that passes CI is released automatically: the
-**release** workflow bumps the patch number of the newest `v*` tag (starting at
-`v0.1.0`), tags the commit, and publishes the GitHub release and the image. For
-a minor or major bump, push the tag yourself (`git tag v1.0.0 && git push
-origin v1.0.0`); later automatic releases count up from it.
+To try KryoState on test hosts first, refer to the lab in the
+[user guide](docs/user-guide.md).
 
-### 4.1 Podman or Docker
+1. Add a host:
 
-The image has no shell and runs as an unprivileged user (uid 65532). The
-database, and any `collectors.json`, `rules.json` or `externals.json` placed
-beside it, live in the `/data` volume. Released images are
-`ghcr.io/kalebhawkins/kryostate:<version>` and `:latest`; to build one from
-source instead, use `deploy/Containerfile`:
+   ```sh
+   kryostate host add web01 --fqdn web01.example.com
+   ```
 
-```sh
-podman build -t kryostate -f deploy/Containerfile .
-podman run -d --name kryostate -p 127.0.0.1:8099:8099 -v kryostate-data:/data kryostate
-podman exec kryostate kryostate host list    # the command line, inside the container
-podman run --rm kryostate version            # which build this is
-```
+2. Add a target for the host. KryoState connects to the fqdn of the host, or
+   to its name if it has no fqdn:
 
-The page has no login, so publish the port to `127.0.0.1` or put it behind a
-proxy that asks people to sign in.
+   ```sh
+   kryostate target add web01 --user svc-ro
+   ```
 
-To collect, the container needs an ssh-agent to sign with. ssh-agent answers
-only the user it runs as, and the image runs as uid 65532, so an agent on the
-host is not usable as it stands. The lab below shows one arrangement that
-works: an agent in its own container, running as uid 65532, sharing only its
-socket through a volume (`deploy/lab/agent.Containerfile`).
+   If you do not give `-c`, KryoState uses the credential of your other
+   targets for that user. If there is none, it uses a stored password for
+   the user, then `agent:` (ssh-agent).
 
-### 4.2 A lab to try it on
+   If the host accepts only a password, add `--password`. KryoState asks for
+   the password and keeps it in the operating system credential store:
 
-`deploy/lab/lab.sh` starts KryoState with four real Linux hosts to collect from:
-two nginx web servers (Debian and AlmaLinux), a database host and an app host
-in stacks `web`, `data` and `app`, plus an ssh-agent holding a key made for the
-lab. nginx is really installed; the database and the app are only the config
-files the collectors read.
+   ```sh
+   kryostate target add web01 web02 --user svc-ro --password
+   ```
 
-```sh
-deploy/lab/lab.sh up      # build and start; kryostate is on http://localhost:8099
-deploy/lab/lab.sh seed    # import the inventory, connect the hosts, collect
-deploy/lab/lab.sh down    # stop (keeps data); reset also deletes it
-```
+3. Collect the values and run the checks:
 
-The seeded lab imports a short file (`deploy/lab/hosts.yaml`) that names the
-hosts, their stacks and roles, the application each runs and how to reach
-them; everything else is collected. The screens in section 8 are of this lab.
+   ```sh
+   kryostate refresh
+   ```
 
-## 5. Operation
+4. Read the result:
 
-### 5.1 Quick start
+   ```sh
+   kryostate host list
+   kryostate host show web01
+   ```
+
+5. Start the web interface. While it runs, each collector runs on its
+   schedule:
+
+   ```sh
+   kryostate serve --addr 127.0.0.1:8099
+   ```
+
+6. Open `http://127.0.0.1:8099` in a browser.
+
+To add many hosts at one time, use a YAML or JSON file:
 
 ```sh
-# 1. Record a host.
-./kryostate host add appnode1 --fqdn appnode1.example.invalid
-
-# 2. Tell the tool how to reach it. The address defaults to the fqdn, and
-#    the credential defaults to agent:.
-./kryostate target add appnode1 --user svc-ro
-
-# 3. Or create many hosts at once, with their targets and stacks, from a
-#    YAML or JSON file. --example prints one to start from; --dry-run shows
-#    what would change.
-./kryostate import --example > hosts.yaml
-./kryostate import hosts.yaml --dry-run
-./kryostate import hosts.yaml
-
-# 4. Define a health check.
-./kryostate check add appnode1 https \
-    --http https://appnode1.example.invalid/health
-
-# 5. Collect and run the checks, in one command.
-./kryostate refresh
-
-# 6. Read the results.
-./kryostate host list
-./kryostate host list -q 'os.family == "Linux" && stack == "web"'
-./kryostate host show appnode1
-
-# 7. Run the web interface. While it runs, collectors also run on their
-#    own schedules.
-./kryostate serve --addr 127.0.0.1:8099
+kryostate import --example > hosts.yaml
+kryostate import hosts.yaml --dry-run
+kryostate import hosts.yaml
 ```
 
-Every command that takes a host accepts its name, its fqdn, any other
-identity value, its id, or the first six or more characters of its id. A name
-that matches more than one host is an error that lists each match. The tool
-does not choose one.
+## Commands
 
-### 5.2 Commands
+Each command is a noun and a verb, for example `kryostate host add`. Flags
+have two dashes (`--db`). Run `kryostate <command> --help` to see all flags
+of a command.
 
-Commands are a noun and a verb, such as `kryostate host add`, and flags take
-two dashes (`--db`), with one-letter short forms for the common ones (`-q`,
-`-u`, `-o`). Run `kryostate --help` for the full list, and
-`kryostate <command> --help` (or `kryostate help <command>`) for the flags of
-one command. `kryostate completion bash|zsh|fish|powershell` prints a shell
-completion script.
+A command that takes a host accepts the name, the fqdn, another identity
+value, the id, or the first six or more characters of the id. If a name
+matches more than one host, the command stops and shows each match.
+
+### Everyday
 
 | Command | Function |
 |---|---|
-| `host list` | Lists hosts (alias `host ls`), with chosen attributes as columns (`--cols`) and a STATUS column (enabled or disabled). `-q` filters with a query (`-q 'disabled == true'` for the disabled ones), `--stack` by stack; `--json` prints the shape `/hosts.json` uses |
-| `host show` | Shows the facts, probes and connections for one host (also `kryostate show`). `--at 2026-03-01` (or `2026-03-01T15:04`) shows each value as it was then |
-| `host add` | Adds a host, with `--fqdn` if known |
-| `host update` | Records a host's application, or its stack and role, with an optional `--reason` note for the audit log (also `kryostate set`). Nothing else can be set by hand |
-| `host disable`, `host enable` | `host disable` stops all contact with hosts (collection, external collectors, checks, DNS) while keeping them listed, charted and queryable with their history and connections; `--reason` is recorded. `host enable` brings them back as they were |
-| `host rm` | Deletes hosts and everything recorded about them, after asking (`--yes` skips the question). The audit log is kept, with one more entry naming each deleted host |
-| `refresh` | Runs `collect`, then the checks |
-| `collectors` | `list` lists collectors, `catalog` the catalog; `enable` and `disable` switch catalog collectors on and off; `add <file.json>` stores your own in the database (`--dry-run` checks only, `--example` prints a starter) and `rm <id>` removes them; `init` creates a file for your own instead; `show` prints any collector as it would be written in that file; `try` tests any collector without saving; `schedules` and `schedule` list and change schedules |
-| `import` | Creates or updates hosts in bulk from a YAML or JSON file (`-` with `--format` for standard input): each host's fqdn, application, target and stack memberships, with shared `defaults`. The whole file is checked first and nothing is written if anything is wrong; `--dry-run` prints the plan; importing again changes nothing; nothing is ever removed. `--example` prints a commented file, `--from-db` the current hosts in the same format |
-| `target` | `list`, `add`, `update` and `rm` connection profiles; `list` shows whether each is used, switched off, or belongs to a disabled host. `forget-host-key` clears a pinned key after a host is rebuilt |
-| `stack` | `list` stacks; `add` creates a stack and adds members, singly or from a list with roles (`--file`, `--create`, `--user`); `update` changes its details; `rm` takes members out; `delete` deletes the stack |
-| `secret` | Manages credential references (`list`, `set`, `delete`, `test`) |
-| `rules` | Lists, adds, shows and removes rollout rules |
-| `notify` | Manages the daily digest and its destinations |
-| `collect` | Connects to each enabled target and records what it reports |
-| `check` | Defines (`add`, `list`, `rm`) and runs (`check` or `check run`) liveness checks |
-| `resolve` | Records the DNS answer for each host |
-| `reparse` | Applies current parse rules to stored command output |
-| `renormalize` | Applies current normaliser rules to collected values |
-| `evidence` | Lists (`list`) or deletes (`rm`) stored command output |
-| `serve` | Runs the web interface, and the collection schedules unless `--no-schedule` is given |
-| `export`, `restore` | Writes and reads the whole database as JSON |
-| `version` | Prints the version, commit, build date and Go version (also `--version`) |
+| `refresh` | Runs `collect`, then the checks. `--resolve` does a DNS lookup of each host first. `--no-checks` does not run the checks |
+| `serve` | Starts the web interface and the collection schedules. `--no-schedule` stops the schedules |
+| `show` | The same as `host show` |
+| `set` | The same as `host update` |
 
-### 5.3 Choosing what to collect
+### Hosts
 
-A catalog of ready-made collectors is compiled in: CPU cores, memory size,
-time zone, DNS servers, SELinux mode, Java, Python, OpenSSL, nginx, httpd and
-Docker versions, and templates for a file's existence, a file's contents, one
-setting in a config file, an environment variable, and an installed package's
-version. Groups switch several on together: host basics, language runtimes,
-web servers. Switch them on in the web interface on the Collectors page, or:
+| Command | Function |
+|---|---|
+| `host list` (`host ls`) | Shows the hosts. `-q` filters with a query, `--stack` with a stack, `--cols` sets the attribute columns, `--json` shows JSON in the format of `/hosts.json` |
+| `host show <host>` | Shows the values, reachability and targets of one host. `--at 2026-03-01` shows the values at the end of that day |
+| `host add <name>` | Adds a host. `--fqdn` gives its fully qualified name |
+| `host update <host> application=NAME stack=NAME role=ROLE` | Records the application, stack or role of a host. You cannot set other values. `--reason` adds a note to the audit log |
+| `host disable <host>...` | Stops all contact with the hosts: no collection, external collectors, checks or DNS lookups. The hosts and their targets stay in the inventory. `--reason` is recorded |
+| `host enable <host>...` | Starts contact with disabled hosts again, through the same targets |
+| `host rm <host>...` | Deletes the hosts and all their values permanently. The audit log is kept. `--yes` does not ask for confirmation |
+| `import <file>` | Adds or updates hosts, targets and stack memberships from a YAML or JSON file. Refer to [Import](#import) |
 
-```sh
-./kryostate collectors catalog
-./kryostate collectors enable memory.total
-./kryostate collectors enable group.web --stacks web
-./kryostate collectors enable file.exists --param /etc/ssh/sshd_config.d/hardening.conf
-./kryostate collectors enable config.value --param /var/lib/pgsql/data/postgresql.conf \
-    --key max_connections
-```
+### Targets and credentials
 
-A choice can be limited to some stacks. A group only widens where its
-collectors run; it never takes one away from hosts it already covers. Choices
-are stored in the database and take effect at the next collection. The web
-interface offers the templates that reveal content (file contents, config
-settings, environment variables) only when `serve` is started with
-`--allow-content-collectors`. A template's values are checked against narrow
-patterns and single-quoted in the command.
+| Command | Function |
+|---|---|
+| `target add <host>...` | Adds a target: transport (`-t ssh` or `-t winrm`), address (`-a`), port (`-p`), user (`-u`) and credential (`-c`). `--password` asks for a password and stores it |
+| `target update <host>...` | Changes the targets of the hosts. Only the flags that you give change |
+| `target list` (`target ls`) | Shows the targets. It shows if each target is in use, disabled, or for a disabled host |
+| `target rm <host>...` | Removes the targets of the hosts. The collected values stay |
+| `target set-credential --for-user <user>` | Changes the credential of each target that logs in as `<user>`. Give `-c <ref>` or `--password` |
+| `target forget-host-key <host>` | Removes the pinned host key. Use it only after a host was rebuilt |
+| `secret list` | Shows the credential reference types that this build accepts |
+| `secret set <service/account>` | Stores a secret in the operating system credential store. It also releases a hold on `keyring:service/account` |
+| `secret delete <service/account>` | Removes a secret from the operating system credential store |
+| `secret test <ref>` | Resolves a credential reference and shows only if it worked |
+| `secret holds` | Shows the password credentials that failed to log in, and the credentials that are on hold |
+| `secret release <ref>` | Releases the hold on a credential reference, so that KryoState tries it again |
 
-Every catalog collector has been run against the lab in section 4.2 on Debian
-12 and AlmaLinux 9. The AIX and Windows variants are checked against recorded
-output only.
+### Stacks, checks and rules
 
-### 5.4 Custom collectors
+| Command | Function |
+|---|---|
+| `stack list` | Shows the stacks and the status of their members |
+| `stack add <stack> [host[:role]...]` | Makes a stack, or adds hosts to a stack. `--file` reads a list of hosts, `-q` adds the hosts that match a query, `--create` adds unknown hosts |
+| `stack update <stack>` | Changes the description, owner or environment of a stack |
+| `stack rm <stack> <host>...` | Removes hosts from a stack |
+| `stack delete <stack>` | Deletes a stack. The hosts and their values stay |
+| `check add <host> <name>` | Adds a check: `--tcp host:port` or `--http URL` with `--expect 2xx` |
+| `check list <host>`, `check rm <host> <name>` | Shows or removes the checks of a host |
+| `check` or `check run` | Runs all enabled checks. `--only` limits the hosts |
+| `rules add <name> --expect <query>` | Makes a rule that tracks a rollout. `--scope` selects the hosts |
+| `rules list`, `rules show <rule>`, `rules rm <rule>` | Shows the rules, shows the hosts that a rule waits for, or deletes a rule |
+| `notify` | Sets the daily digest and its destinations: `list`, `add-webhook`, `add-email`, `rm`, `test`, `preview`, `set` |
 
-When the catalog has nothing suitable, a collector specification is a
-command, a parse rule and an attribute name. The [collector
-guide](docs/collectors.md) explains how to write one, step by step, and the
-[query guide](docs/queries.md) covers the query language.
+### Collectors
 
-```sh
-./kryostate collectors add --example > mine.json   # a starting point
-./kryostate collectors add mine.json               # checks it and stores it in the database
-./kryostate collectors rm mine.kernel              # removes one added that way
-./kryostate collectors init                        # or: creates collectors.json next to the database
-./kryostate collectors try <id> --host appnode1    # runs it once and saves nothing
-```
+| Command | Function |
+|---|---|
+| `collectors list` | Shows the collectors that run |
+| `collectors catalog` | Shows the catalog collectors that you can enable |
+| `collectors enable <name>` | Enables a catalog collector or a group. `--param`, `--key`, `--stacks` and `--where` set where and what it reads |
+| `collectors disable <name>` | Disables a catalog collector |
+| `collectors add <file.json>` | Stores your collectors in the database. `--dry-run` only examines the file. `--example` shows an example |
+| `collectors rm <id>...` | Removes collectors that `collectors add` stored. The values stay |
+| `collectors init` | Makes a `collectors.json` file next to the database |
+| `collectors show <id>` | Shows a collector in the format of `collectors.json` |
+| `collectors try <name>` | Tests a collector on `--host` or on `--sample` output. It records nothing |
+| `collectors schedules` | Shows when each collector runs |
+| `collectors schedule <id>` | Changes a schedule: `--every 6h`, `--at 02:00`, `--manual` or `--default` |
 
-Every command reads `collectors.json`, `rules.json` and `externals.json` from
-the folder that holds the database. The `--collectors`, `--rules` and
-`--externals` flags name a different file.
+### Collection and maintenance
 
-An external program (or external collector) is for facts that a host cannot
-report about itself, such as its hypervisor cluster, its cloud tags or its
-owner in a CMDB. It is a program that you write. It runs on the machine that
-runs KryoState, not on the host, once for each host, looks the host up
-wherever those facts live, and prints them. List it in `externals.json` next to
-the database, or name another file:
+| Command | Function |
+|---|---|
+| `collect` | Connects to each enabled target and records the values. `--only` limits the hosts, `--transport` limits the transport |
+| `resolve` | Does a DNS lookup of each host and records the result |
+| `reparse` | Applies the current parse rules to the stored command output. It does not connect to hosts |
+| `renormalize` | Applies the current normaliser rules to the collected values. It does not connect to hosts |
+| `evidence list`, `evidence rm` | Shows or deletes the stored command output. `--show` shows the output |
+| `export` | Writes the full database to a JSON file (`-o`) |
+| `restore` | Loads a JSON file (`-i`) into an empty database |
+| `version` | Shows the version, commit and build date (also `--version`) |
+| `completion bash\|zsh\|fish\|powershell` | Shows a shell completion script |
 
-```sh
-./kryostate collect --externals ./my-externals.json
-```
+### Import
 
-The program receives `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
-`KRYOSTATE_SCHEMA`, `PATH`, and the variables that its own definition lists. It
-receives nothing else, and it receives no credential. On Windows the Go
-runtime also supplies `SystemRoot`, because a process without that variable
-cannot load a DLL.
+`kryostate import` reads a YAML or JSON file. The file gives each host, its
+fqdn, its application, its target and its stacks with a role. The `defaults`
+section applies to the target of each host.
 
-The program writes one JSON envelope to standard output:
+- KryoState examines the full file first. If there is an error, it writes
+  nothing and shows each error with its line.
+- `--dry-run` shows the changes and writes nothing.
+- If you import the same file again, nothing changes.
+- KryoState never removes hosts, targets or stack memberships that are not in
+  the file.
+- `--example` shows a file with comments. `--from-db` shows the current hosts
+  in the same format.
+- To read standard input, give `-` and `--format yaml` or `--format json`.
 
-```json
-{
-  "schema": "kryostate.facts/v1",
-  "collector": "example",
-  "status": "ok",
-  "facts": [
-    {"key": "product.home", "value": "/opt/product", "type": "path"},
-    {"key": "product.version", "value": "4.2.1", "type": "version", "scope": "instance-a"}
-  ]
-}
-```
+## Configuration
 
-The tool validates the envelope and accepts or rejects all of it. It does not
-accept the valid facts from an invalid envelope. A rejected envelope makes the
-defect visible.
+KryoState reads each setting from the first of these sources that has it:
 
-Every collector, including the built-in ones, has a page in the web interface
-(`/collectors/<id>`) with a **View definition** panel: the collector written
-out as it would be in `collectors.json`. `kryostate collectors show <id>`
-prints the same. Copy the nearest one to start your own.
+1. The flag on the command line, for example `--concurrency 16`.
+2. A `KRYOSTATE_` environment variable, for example `KRYOSTATE_DB` or
+   `KRYOSTATE_HOST_TIMEOUT`.
+3. The config file.
+4. The default value.
 
-### 5.5 Schedules
-
-While `kryostate serve` runs, each collector runs on its own schedule. The
-built-in operating system, hardware and identity collectors, versions and
-other catalog collectors default to once a day; file and config checks to
-every 6 hours. Change one on the Schedules page, on the collector's page, or:
-
-```sh
-./kryostate collectors schedules                               # list them
-./kryostate collectors schedule builtin.os --every 1d --at 02:00
-./kryostate collectors schedule cpu.cores --every 6h
-./kryostate collectors schedule cpu.cores --manual             # or --default
-```
-
-Scheduled runs are throttled: at most 4 sessions at once and 1 per host,
-hosts spread over up to 2 minutes, an unreachable host left alone for 10
-minutes and then twice as long each time up to 6 hours, and no interval
-shorter than 5 minutes. A scheduled run logs in only to the hosts its
-collector applies to. `serve --no-schedule` turns schedules off.
-
-One collection runs against a database at a time, across processes: a
-`kryostate refresh` in another shell waits for a scheduled run to finish
-(`--wait 10m` by default, `--no-wait` to fail at once), and the schedule skips
-its turn while a `refresh` runs. Which hosts the schedule is leaving alone is
-kept in the database, so a restart does not retry them all at once.
-
-A collected value that differs from what the same collector read before is a
-**change**. The Changes page lists them by time window, and the Overview
-shows the last day's.
-
-### 5.6 Finding hosts and exporting
-
-The inventory takes a query, in the style of a Prometheus label matcher:
-
-```sh
-./kryostate host list -q 'os.family == "Linux" && !file.exists == "/etc/ssh/sshd_config.d/hardening.conf"'
-./kryostate host list -q 'stack == "data" && role == "database"' --json
-```
-
-In the web interface the same query goes in the Inventory page's box, and
-`/hosts?q=...` can be bookmarked. `/hosts.json` and `/hosts.csv` export the
-same view. The [user guide](docs/user-guide.md#queries) lists the operators
-and the JSON shape.
-
-### 5.7 API
-
-Everything the pages show is also served as read-only JSON under `/api/v1`:
-hosts and their values, one host in full, stacks, attribute distributions,
-changes, rule progress, collectors, runs, and an estate health summary for
-monitoring. `/api/v1/openapi.json` describes it in OpenAPI 3.1, so a client
-can be generated from it. The [API guide](docs/api.md) has the conventions
-and recipes for curl, Python and PowerShell.
-
-```sh
-curl -s http://localhost:8099/api/v1/status
-curl -s -G http://localhost:8099/api/v1/hosts --data-urlencode 'q=stack == "web"' --data-urlencode 'fields=nginx.version'
-```
-
-### 5.8 Configuration
-
-Every command takes `--db` (the database file) and `--config` (a YAML
-settings file, by default `kryostate/config.yaml` in the user configuration
-directory, such as `~/.config/kryostate/config.yaml`). A setting comes from,
-in order: the command-line flag, a `KRYOSTATE_` environment variable (the
-flag name in capitals with `-` as `_`, such as `KRYOSTATE_DB` or
-`KRYOSTATE_HOST_TIMEOUT`), the config file, then the built-in default. Keys
-in the file are flag names, at the top level or under a command name:
+The config file is `kryostate/config.yaml` in the user configuration
+directory, for example `~/.config/kryostate/config.yaml`. `--config` or
+`KRYOSTATE_CONFIG` gives a different file. The keys are flag names:
 
 ```yaml
 db: /var/lib/kryostate/kryostate.db
@@ -496,202 +284,100 @@ serve:
   trusted-origin: https://cmdb.example.com
 ```
 
-[docs/operations.md](docs/operations.md#configuration) lists the settings
-that can be given this way.
+[docs/operations.md](docs/operations.md#configuration) shows all the settings.
 
-At a terminal, tables are drawn with borders and states are coloured (green
-for ok and enabled, yellow for disabled or never, red for failures and
-credentials on hold). Piped or redirected output is plain tab-aligned text,
-unchanged for scripts. `NO_COLOR=1` turns styling off; `CLICOLOR_FORCE=1`
-turns it on for a pager such as `less -R`.
+At a terminal, KryoState shows tables with borders and colours. If you send
+the output to a pipe or a file, the output is plain text in columns. Set
+`NO_COLOR=1` to stop the borders and colours. Set `CLICOLOR_FORCE=1` to show
+them in a pager, for example `less -R`.
 
-## 6. Credentials
+## Credentials
 
-Each host can use a different credential. The database stores a reference. It
-never stores key material.
+The database keeps a reference to each credential. It never keeps a key or a
+password.
 
-| Reference | Resolved through |
+| Reference | Source of the secret |
 |---|---|
-| `agent:` | ssh-agent. No key enters this process |
-| `keyring:service/account` | The operating system credential store |
-| `file:/path/key` or `file:/path/key.age` | A file, decrypted with age if it is encrypted |
+| `agent:` | ssh-agent (`SSH_AUTH_SOCK`, or the OpenSSH agent pipe on Windows). No key goes into KryoState |
+| `agent:/path/to/socket` | A different ssh-agent |
+| `keyring:service/account` | The operating system credential store. `--password` uses `keyring:kryostate/<user>` |
+| `file:/path/key` | A key file. If the name ends in `.age`, KryoState decrypts it with the identity in `KRYOSTATE_AGE_IDENTITY` |
 | `exec:/path/helper arg` | A program that prints the secret |
-| `env:VAR_NAME` | An environment variable. This is the weakest option |
+| `env:VAR_NAME` | An environment variable. This is the least safe type |
 
-Prefer `agent:`. A stolen database file discloses the inventory. It does not
-contain credentials.
+Use `agent:` if possible. WinRM uses HTTPS only. For the full procedure,
+password logins and holds, read the [user guide](docs/user-guide.md). For the
+risks, read [docs/threat-model.md](docs/threat-model.md).
 
-An `agent:` reference with no address uses `SSH_AUTH_SOCK`. On Windows it uses
-the named pipe of the OpenSSH agent, because Windows sets no such variable. To
-use a different agent, give its address: `agent:/path/to/socket`.
+## Web interface
 
-To open an age file, set `KRYOSTATE_AGE_IDENTITY` to the path of the identity.
-Keep that identity in a different place from the file it opens.
-
-`kryostate secret set service/account` reads the secret from standard input. It
-has no flag that accepts a secret, so the secret stays out of the shell history
-and out of the process list.
-
-WinRM connects over HTTPS only. There is no flag to downgrade it.
-
-## 7. Stored command output
-
-The tool stores up to 8 KB of the output of each command. It keeps the latest
-copy for each combination of host, collector specification and scope. This
-stored output is what lets `reparse` correct a parse rule without a connection
-to a host.
-
-The tool stores the output only when the command ran and exited zero. It also
-stores the output when the command ran and no parse rule read it, because that
-is the case that `reparse` exists to repair. It discards the output of a
-command that failed.
-
-The supplied commands read release files and version strings. They run on your
-hosts, so confirm what their output contains:
-
-- `kryostate evidence list --show` prints the stored output.
-- `kryostate evidence rm` deletes it.
-- `collect --no-evidence` does not store it. A later parse rule correction then
-  needs a second pass over the estate.
-
-## 8. Interface
-
-The interface is server-rendered HTML with HTMX. The charts are SVG drawn in
-Go. Each value in a chart links to the hosts that it counts.
-
-The URL holds the filter state. Two people who open the same URL see the same
-view.
-
-The screens below are of the lab in section 4.2, after `lab.sh seed`.
-
-The overview opens with one line saying whether every host collected, such
-as "All 4 hosts collected successfully · last run 38m ago" or "3 of 120 hosts
-failing". Below it, **Needs attention** lists only the problems that exist:
-hosts failing (with the error), with no connection, out of date, or never
-collected. Each links to the inventory filtered to those hosts
-(`/hosts?health=failing`, `noconn`, `stale` or `never`). Then come the last
-day's changes, the next runs by clock time, and the estate at a glance: hosts
-by operating system, stack and application. Collections are started from the
-Runs page, not here.
+The screens below are of the lab in the user guide. The
+[user guide](docs/user-guide.md) tells how to use each page.
 
 ![Overview](docs/images/overview.png)
 
-The inventory shows one row for each host. Type a query or part of a name in
-the box (`?q=...`), and choose the attribute columns
-(`?col=os.version,application`). The CSV and JSON links download the same
-view. A value that no source claims is marked unknown, not left blank. In the
-CSV, a value that starts with `=`, `+`, `-` or `@` gets a leading apostrophe,
-so that a spreadsheet does not run it as a formula.
-
 ![Inventory](docs/images/inventory.png)
-
-The host page shows the value that currently wins for each attribute, with the
-raw string, the source, and the time of observation. What the host reports
-wins over anything a person or a document said. A value that changed in the
-last week is marked. Reachability, identity evidence and addresses are
-separate cards. Below them, the host's connection, its stacks, its
-application and its checks can be changed, and any collector can be tested on
-it without saving.
 
 ![Host](docs/images/host.png)
 
-The stacks page is a table with one row for each stack: its members, collection coverage, roles and how many collectors run there, with a filter by name, environment or owner. Each stack has a page of its own with its members,
-their roles, and what is collected there. A host that serves two
-stacks appears in both. A new stack takes a pasted list of hosts and roles; a stack's page adds hosts by name, by a pasted list or by query, and
-switches a collector or a group on for that stack.
-
 ![Stacks](docs/images/stacks.png)
-
-The charts page shows one chart for each attribute that has more than one
-value: a donut for a few values, ranked bars for many, and a histogram for
-numbers. Hosts with no value are counted too, divided by cause: never
-collected, collection failed, or collected and not understood. Attributes
-that identify a host, with close to one value per host, are listed instead of
-charted.
 
 ![Charts](docs/images/charts.png)
 
-Opening a chart shows it larger, with a table of its values.
-
 ![Chart overlay](docs/images/chart-overlay.png)
-
-The changes page lists collected values that differ from what the same
-collector read before, for the last 24 hours, 7 days or 30 days.
 
 ![Changes](docs/images/changes.png)
 
-**Notifications**, linked from the Changes page, sends a daily digest of
-those changes, hosts that started failing or recovered, and rule progress to
-Slack, Teams, a webhook or email. Destinations are added from the command line.
-
 ![Notifications](docs/images/notifications.png)
-
-A rule tracks a rollout: the hosts it covers, what each should report, and
-how many are done, not yet, or unknown, with a trend over time.
 
 ![Rules](docs/images/rules.png)
 
 ![A rule](docs/images/rule.png)
 
-The schedules page lists every collector with its schedule, last run and next
-due time, and the limits that keep scheduled runs gentle. The runs page lists
-every collection, manual and scheduled, and has **Collect now**.
-
 ![Schedules](docs/images/schedules.png)
-
-The collectors page lists every collector, built-in, catalog, your own and
-external programs, with a search box and filters by category, source and
-status. Groups are switched on from the buttons above the list.
 
 ![Collectors](docs/images/collectors.png)
 
-Each collector has its own page: what it records, where it runs, its
-commands, its schedule, and **View definition**, the collector as it would be
-written in `collectors.json`. Catalog collectors are switched on and off here.
-Collectors written by hand, in `collectors.json` or added with `kryostate
-collectors add` (marked **added**, with who added them), are listed and can
-be tested here, but not written, changed or removed here: the page has no login, and a collector is a command
-that runs on every host.
-
 ![Collector](docs/images/collector.png)
-
-The user guide and the collector guide are served at `/guide` and
-`/guide/collectors`.
 
 ![Guide](docs/images/guide.png)
 
-## 9. Verification
+## Releases
+
+The **release** workflow makes the releases.
+
+- Each push to `main` that passes CI makes a patch release. The workflow
+  adds one to the patch number of the newest `v*` tag. If there is no tag,
+  the first release is `v0.1.0`.
+- For a minor or a major release, push the tag yourself. Later automatic
+  releases count up from that tag.
+
+```sh
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+GoReleaser makes the archives, packages and images (`.goreleaser.yaml`). To
+make all of them locally without a release, run
+`goreleaser release --snapshot --clean`.
+
+To run the tests:
 
 ```sh
 go test ./... -race
 ```
 
-The tests check these properties:
+## Documents
 
-- The parsers run against the fixture files in `testdata/fixtures`, which hold
-  command output for AIX, Linux and Windows. The hostnames and the serial
-  numbers in them are not real.
-- The importer reproduces the totals that a document states about itself.
-- Export, restore into an empty database, then export again produces an
-  identical file.
-- The parsers are fuzzed. Malformed input must not panic.
-- The handlers return the expected HTML and the `Vary: HX-Request` header.
-- An external collector runs as a subprocess and cannot read the environment
-  of the parent process.
-- An incorrect parse rule is corrected, and the value is derived again, with no
-  host reachable in the test.
-- A failed DNS lookup is not recorded as a missing DNS record.
-- A collected value outranks what a document says.
-- Of two sources of equal rank, the source that confirmed its value most
-  recently wins.
-- The query language parses and evaluates the documented examples, and a
-  query that does not parse reports the column of the problem.
+| Document | Contents |
+|---|---|
+| [docs/user-guide.md](docs/user-guide.md) | Concepts, tutorials, everyday tasks and troubleshooting |
+| [docs/collectors.md](docs/collectors.md) | The catalog, and how to write your own collectors and external programs |
+| [docs/queries.md](docs/queries.md) | The query language |
+| [docs/api.md](docs/api.md) | The read-only JSON API |
+| [docs/operations.md](docs/operations.md) | The service, backups, upgrades and settings |
+| [docs/threat-model.md](docs/threat-model.md) | Security: credentials, transport and the web interface |
+| [docs/adr/](docs/adr/) | The reasons for the design decisions |
 
-## 10. Status
-
-Early. `export` and `restore` round-trip, and a schema change will include a
-migration. Known gaps are in this file and in the threat model.
-
-## 11. Licence
+## Licence
 
 MIT. Refer to [LICENSE](LICENSE).

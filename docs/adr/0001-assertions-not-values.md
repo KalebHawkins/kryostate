@@ -2,73 +2,58 @@
 
 Status: accepted, partly superseded
 
-> Since November 2026 what a host reports always wins, and the disagreements,
-> findings and decisions this record describes were removed. Read the
-> README for the current behaviour; the reasoning below is kept as history.
+> Since November 2026, the value from a host always wins, and kryostate has no
+> disagreements, findings or decisions. Read the [user guide](../user-guide.md) for the current behaviour.
 
 ## Context
 
-The common shape for an inventory is a table: one row per host, one column per
-attribute, each cell holding the current value. Such a table records neither
-where a value came from nor when it was last true.
+A usual inventory is a table with one row for each host and one cell for each
+value. The table does not record the source of a value or when it was true.
+If a cell is incorrect, you cannot find the cause: a person, a generator or a
+change on the host. The only repair is to overwrite the cell, and this deletes
+the evidence.
 
-That shape has a specific failure. When a cell is wrong there is no way to tell
-whether a person typed it wrong, a generator misread something, or the host
-changed. The only repair is to overwrite the cell, which destroys the evidence
-that would have explained the error.
-
-A table of current values also cannot represent the state this tool exists to
-find, which is *two sources disagree*. It has one cell, so one of the two
-values must be discarded at write time, by whoever writes last.
+A table of current values also cannot show that two sources disagree. It has
+one cell, so the last writer deletes the other value.
 
 ## Decision
 
-Nothing stores a current value. Every attribute is an append-only assertion:
+kryostate stores no current value. Each value is an append-only assertion:
 
     (ci, attr, scope, raw_value, source, observed_at)
 
-A source has a kind — `document`, `collector`, `human`, `dns`, `derived` — and
-these are different kinds of evidence, not different spellings of the same
-thing. "The spreadsheet says RHEL 7" and "the machine answered RHEL 8" are both
-true statements about different things.
+A source has a kind: `document`, `collector`, `human`, `dns` or `derived`.
+Each kind is a different type of evidence.
 
-The current value is a view, computed by ranking assertions per attribute:
+The current value is a view. kryostate ranks the assertions for each
+attribute:
 
     ranked_assertion → current_fact
 
-Losing assertions are kept and remain queryable. `current_fact` is a view, not
-a table, so no code path can write to it.
+kryostate keeps the assertions that lose, and you can query them.
+`current_fact` is a view, not a table, so no code can write to it.
 
 ## Consequences
 
-- Every value on screen can say who said so and when.
-- Disagreement is representable. It is also detectable, which is the feature
-  the whole tool is built around.
-- Fixing a bad normaliser rule means re-running it over stored raw values. No
-  host is contacted and nothing is lost.
-- The store grows with observations rather than with hosts. An append-only
-  table of a few hundred hosts collected nightly is a few million rows a year,
-  which SQLite is comfortable with and which is cheap to prune by age if it
-  ever stops being.
-- Every read of a current value goes through a window function. This costs more
-  than reading a column. For a few hundred hosts the cost is not measurable;
-  if it ever is, the answer is a materialised view, not a mutable column.
-- `Assert` does not insert a new row for a repeat of the same value from the
-  same source, so nightly collection of an unchanged value does not bury real
-  history. The repeat is recorded as a confirmation on the existing row, which
-  keeps `observed_at` pointing at when the value was first seen.
-- Because of that, two sources of equal rank are separated by whichever last
-  stood behind its value, not by whichever first said it. Ranking on
-  `observed_at` alone let a source that confirmed its value this morning lose
-  to one that said something else a week ago.
+- Each value on the screen can show its source and its time.
+- kryostate can show and find a disagreement between sources.
+- To correct a bad normaliser rule, kryostate runs the rule again on the
+  stored raw values. It does not connect to a host, and no data is lost.
+- The store grows with each observation. For a few hundred hosts collected
+  each night, this is a few million rows each year. SQLite can hold this, and
+  you can delete old rows by age.
+- Each read of a current value uses a window function. For a few hundred
+  hosts, the cost is too small to measure. If the cost increases, use a
+  materialised view, not a mutable column.
+- `Assert` does not add a row if the same source sends the same value again.
+  It records a confirmation on the existing row. Thus, `observed_at` stays at
+  the time when the value was first seen.
+- For this reason, if two sources have the same rank, the source that
+  confirmed its value last wins.
 
 ## Alternatives considered
 
-**Current-value columns with a separate history table.** The usual shape.
-Rejected because the two can drift, and because the history table becomes
-optional: code reads the column, nothing reads the history, and within a year
-the history is wrong and nobody notices.
-
-**Event sourcing with a rebuilt projection.** The same idea with more
-machinery. A SQL view over an append-only table gets the same guarantees
-without a rebuild step that can be skipped.
+| Alternative | Reason for rejection |
+|---|---|
+| Current-value columns and a separate history table | The two can drift apart. Code reads only the column, and the history becomes incorrect. |
+| Event sourcing with a rebuilt projection | A SQL view on an append-only table gives the same result without a rebuild step that someone can skip. |

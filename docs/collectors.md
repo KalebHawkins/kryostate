@@ -1,48 +1,64 @@
 # Collecting what you care about
 
-KryoState always reads the operating system, its version, the kernel, the
-hardware model and the serial number of every host. A **collector** makes it
-read something else: the memory size, the version of nginx or OpenSSL,
-whether a file exists, the value of `JAVA_HOME`, and so on.
+This guide is for operators who want KryoState to read more values from
+their hosts. It tells you how to switch on a collector from the catalog and
+how to write your own collector. It also gives the reference for each
+collector field.
 
-There are two ways to add one:
+A **collector** reads one value from each host, such as the memory size, the
+version of nginx, whether a file exists, or the value of `JAVA_HOME`. There
+are five sources of collectors:
 
-| | When | Effort |
+| Source | What it is | How you get it |
 |---|---|---|
-| **Switch one on from the catalog** | What you want is in the list below | A click, or one command |
-| **Write your own** | Nothing in the catalog fits | Ten minutes, no programming |
+| built-in | Commands in the KryoState program. They read the operating system, its version, the kernel, the hardware model, the serial number and the machine ID, where the system has them. | They always run. You cannot change them. |
+| catalog | Ready-made collectors in the KryoState program | Switch one on in the web interface or with `kryostate collectors enable` |
+| added | Your own collectors, kept in the database | `kryostate collectors add <file.json>` |
+| your own | Your own collectors in the collectors file, `collectors.json` | Edit the file |
+| external | Programs that run on the KryoState server, not on the host | List them in `externals.json` |
 
-Start with the catalog.
+Use the catalog first. Write your own collector only if no catalog entry
+gives the value.
 
 ## The catalog
 
-The catalog is a list of ready-made collectors built into KryoState. Each one
-runs a read-only command that has already been written for you. The Linux
-commands have been run on real Debian and AlmaLinux hosts. The AIX and
-Windows commands are checked against recorded output, so test them on one of
-your hosts before relying on them. A host that does not have the program is
-left blank, not counted as a failure.
+Each catalog command only reads. Each catalog collector is optional: if a
+host does not have the program, the value stays blank and the run does not
+fail.
 
-| Collector | Records | Systems |
-|---|---|---|
-| CPU cores | `hw.cpu.cores` | Linux, AIX, Windows |
-| Memory total (MB) | `hw.memory.total_mb` | Linux, AIX, Windows |
-| Time zone | `os.timezone` | Linux, AIX, Windows |
-| DNS servers | `net.dns.servers` | Linux, AIX, Windows |
-| SELinux mode | `os.selinux` | Linux |
-| Java, Python, OpenSSL, nginx, Apache httpd and Docker versions | `java.version` and so on | varies |
-| Installed package version, for a package you name | `pkg.<name>.version` | Linux, AIX, Windows |
-| File exists, for a path you give; records `true` or `false` | `file.<name>.exists` | Linux, AIX, Windows |
-| File contents, for a path you give | `file.<name>.contents` | Linux, AIX, Windows |
-| Setting in a config file, for a file, key and optional section you give | `conf.<file>.<section>.<key>` | Linux, AIX, Windows |
-| Environment variable, for a name you give | `env.<name>` | Linux, AIX, Windows |
+**CAUTION:** The AIX and Windows catalog commands are tested only against
+recorded output. Test each one on one of your hosts before you use its
+values. The Linux commands are tested on Debian and AlmaLinux hosts.
 
-KryoState deliberately has no collectors for CPU or memory **usage**. Those
-change by the second, which is the job of a monitoring system.
+| Catalog name | Title | Records | Systems |
+|---|---|---|---|
+| `cpu.cores` | CPU cores | `hw.cpu.cores` | Linux, AIX, Windows |
+| `memory.total` | Memory total (MB) | `hw.memory.total_mb` | Linux, AIX, Windows |
+| `timezone` | Time zone | `os.timezone` | Linux, AIX, Windows |
+| `dns.servers` | DNS servers | `net.dns.servers` | Linux, AIX, Windows |
+| `selinux` | SELinux mode | `os.selinux` | Linux |
+| `java.version` | Java version | `java.version` | Linux, AIX, Windows |
+| `python.version` | Python version | `python.version` | Linux, AIX, Windows |
+| `openssl.version` | OpenSSL version | `openssl.version` | Linux, AIX |
+| `docker.version` | Docker version | `docker.version` | Linux |
+| `nginx.version` | nginx version | `nginx.version` | Linux |
+| `httpd.version` | Apache httpd version | `httpd.version` | Linux |
+| `package.version` | Installed package version, for a package that you name | `pkg.<name>.version` | Linux, AIX, Windows |
+| `file.exists` | File exists, for a path that you give. Records `true` or `false`. | `file.<name>.exists` | Linux, AIX, Windows |
+| `file.contents` | File contents, for a path that you give. Up to 8 KB. | `file.<name>.contents` | Linux, AIX, Windows |
+| `config.value` | Setting in a config file, for a file, a key and an optional section that you give | `conf.<file>.<section>.<key>` | Linux, AIX, Windows |
+| `env.var` | Environment variable, for a name that you give | `env.<name>` | Linux, AIX, Windows |
+
+KryoState makes `<name>` from the last part of the path or from the name. It
+uses lowercase letters, and it changes each group of other characters to `_`.
+For example, `/etc/resolv.conf` gives `file.resolv_conf.exists`.
+
+KryoState has no collectors for CPU usage or memory usage. These values
+change each second. Use a monitoring system for them.
 
 ### Groups
 
-A group switches on several related collectors in one step.
+A group switches on several catalog collectors in one step.
 
 | Group | Switches on |
 |---|---|
@@ -50,92 +66,95 @@ A group switches on several related collectors in one step.
 | Language runtimes (`group.runtimes`) | Java, Python and OpenSSL versions |
 | Web servers (`group.web`) | nginx and Apache httpd versions |
 
-A group only adds. If CPU cores already runs on every host, switching on Host
-basics for one stack leaves it running on every host. If the Web servers
-group already runs on one stack, switching it on for a second stack runs it on
-both.
+A group only adds hosts. It does not remove hosts. For example, if CPU cores
+runs on all hosts, Host basics for one stack does not change that.
 
-### Switching one on in the web interface
+### Switch on a collector in the web interface
 
-1. Open **Collectors**. It lists every collector: the built-in ones, the
-   catalog, your own and external programs. Type in the search box, or narrow
-   the list by category, source (built-in, catalog, your own, external) or
-   status (on or off).
-2. Select the collector to open its page. Under **Where it runs**, open
-   **Switch on** (or **Add another** for the ones that take a path or a name).
-3. Under **Runs on**, leave the box blank to run it on every host, or write
-   which hosts it is for (see "Choosing where a collector runs" below). The
-   preview under the box says how many hosts match and names the first few.
-4. Select **Switch on**.
-5. Back under **Where it runs**, type part of a host name in the box under
-   **Test on a host**, pick the host and select **Test** to see what it reads.
-   The suggestions are the hosts it runs on that have a connection. Nothing
-   is saved by a test. **Turn off** is next to it.
+1. Open **Collectors**.
+2. Find the collector. Type in the search box, or filter by category, source
+   or status.
+3. Select the collector to open its page.
+4. Under **Where it runs**, select **Switch on**. For a collector that takes a
+   path or a name, select **Add another**.
+5. Under **Runs on**, write a query for the hosts. Leave it blank for all
+   hosts.
+6. Select **Switch on**.
 
-The groups are the buttons above the list: open one, choose where it runs and
-switch it on.
+The preview under the **Runs on** box shows how many hosts match, and the
+names of the first hosts. To switch on a group, select its button above the
+list, then do steps 5 and 6.
 
-### Choosing where a collector runs
+To test the collector on one host:
 
-Where a collector runs is a query in the same language as the **Inventory**
-search box, so you can write it once and see the hosts it picks there. Blank
-means every host. Some examples:
+1. Under **Test on a host**, type part of a host name.
+2. Select the host. The list shows only hosts that the collector runs on and
+   that have a target.
+3. Select **Test**. KryoState shows the value and does not save it.
+
+To switch the collector off, select **Turn off**.
+
+### Choose where a collector runs
+
+Where a collector runs is a query in the language of the **Inventory** search
+box (see the [query guide](queries.md)). A blank query means all hosts.
 
 | Query | Runs on |
 |---|---|
-| `stack == "web"` | Members of the web stack |
-| `stack in ("web", "edge")` | Members of either stack |
-| `name in ("web01", "web02", "db01")` | Exactly these hosts |
-| `os.family == "Linux" && stack == "web"` | Linux members of the web stack |
-| `stack == "web" \|\| name == "db01"` | The web stack, and db01 as well |
-| `!name in ("web03")` | Every host except web03 |
+| `stack == "web"` | The members of the web stack |
+| `stack in ("web", "edge")` | The members of the two stacks |
+| `name in ("web01", "web02", "db01")` | These three hosts only |
+| `os.family == "Linux" && stack == "web"` | The Linux members of the web stack |
+| `stack == "web" \|\| name == "db01"` | The web stack, and db01 |
+| `!name in ("web03")` | All hosts except web03 |
 
-`in` takes a list in round or square brackets, and works with any name, not
-only `name`. The editor helps you write it:
+The editor helps you write the query:
 
-- The **Stack** and **System** buttons add a condition such as
-  `stack == "web"`, joined to what is there with `||`. Only the first dozen
-  stacks are shown as buttons; type others in the same way.
-- **Add a host by name** finds hosts as you type, at most ten at a time.
-  Picking one adds it to the query's `name in (...)` list, or starts one.
-- The preview counts the hosts the query matches, and says how many of them
-  run a system the collector has no command for. Those are skipped: a host
-  must both match the query and run one of the collector's systems.
-- A query that does not parse is shown with the column of the problem, and
-  is not saved.
+- The **Stack** and **System** buttons add a condition, such as
+  `stack == "web"`, with `||`. There are buttons for the first 12 stacks
+  only.
+- **Add a host by name** finds hosts as you type, and adds the host to the
+  `name in (...)` list.
+- The preview counts the hosts that match. It also counts the hosts that
+  KryoState skips, because the collector has no command for their system.
+- If the query does not parse, the editor shows the column of the problem.
 
-Each switched-on collector shows where it runs in words, such as **Hosts in
-web** or **Only web01, web02**, with **matches N hosts**. Select that to open
-the **Inventory** filtered to those hosts. **Change where it runs** opens the
-same editor for that row.
+Each host runs the command for its own system. Thus a query does not have to
+separate Linux and Windows hosts. The collector page shows each command.
 
-A collector with a command for several systems, such as one for Linux and
-one for Windows, needs no query to tell them apart: each host runs the
-command for the system it reports. The **Commands** card on its page shows
-each system's command in its own section.
+Each switched-on collector shows where it runs, such as **Hosts in web** or
+**Only web01, web02**, with **matches N hosts**. Select **matches N hosts**
+to see these hosts in the **Inventory**. Select **Change where it runs** to
+edit the query.
 
-If a query stored by an older version, or written by hand, does not parse,
-the collector runs on no host at all rather than on every host, and its page
-says why.
+**CAUTION:** If a stored query does not parse, the collector runs on no
+host. It does not run on all hosts. The collector page tells you why.
 
-On a host's page, **Collectors on this host** lists what runs there, why,
-and on what schedule, with the switched-on collectors that skip it and the
-reason. To try a collector against one host, type the host's name beside
-**Test** on the Collectors page.
+On the page of a host, **Collectors on this host** shows the collectors that
+run there, why, and on what schedule. It also shows the switched-on
+collectors that skip the host, and why.
 
-It is read the next time it is due: once a day for most collectors, every 6
-hours for file and config checks, while `kryostate serve` runs. To read it
-straight away, open **Runs** and select **Collect now**. The collector's page
-has a **Schedule** card to change how often it runs. The value appears on each
-host's page, and you can show it as a column on the **Inventory** page with
-**Columns**.
+### When a catalog collector runs
 
-### Switching one on from the command line
+While `kryostate serve` runs, a collector runs on its schedule. The default
+schedule is one time each day. For File exists, File contents, Setting in a
+config file and Environment variable, the default is every 6 hours. To
+change the schedule, use the **Schedule** card on the collector page.
+
+To collect now:
+
+1. Open **Runs**.
+2. Select **Collect now**.
+
+The value shows on the page of each host. To show it as a column on the
+**Inventory** page, use **Columns**.
+
+### Switch on a collector from the command line
 
 ```sh
-kryostate collectors catalog                                   # see the list
-kryostate collectors try memory.total --host web01             # try it, saves nothing
-kryostate collectors enable memory.total                       # switch it on everywhere
+kryostate collectors catalog                                   # show the catalog
+kryostate collectors try memory.total --host web01             # test it, save nothing
+kryostate collectors enable memory.total                       # switch it on for all hosts
 kryostate collectors enable package.version --param openssl
 kryostate collectors enable file.exists --param /etc/resolv.conf
 kryostate collectors enable env.var --param JAVA_HOME
@@ -144,171 +163,174 @@ kryostate collectors enable nginx.version --where 'name in ("web01", "web02")'
 kryostate collectors enable java.version --where 'stack == "app" && os.family == "Linux"'
 kryostate collectors enable config.value \
     --param /etc/app/app.conf --section database --key host
-kryostate collectors list                                      # what is switched on
-kryostate collectors disable 3                                 # by its number in that list
+kryostate collectors list                                      # show what is switched on
+kryostate collectors disable 3                                 # by its number in the list
 ```
 
-`--where` takes a query, as described in "Choosing where a collector runs".
-Put it in single quotes so the shell leaves the double quotes alone. A query
-that does not parse is refused, with a `^` under the problem. `--stacks a,b`
-is a shorter way to write `--where 'stack in ("a", "b")'`; with both, a host
-must satisfy both. `collectors enable` sets where a collector runs, replacing what was
-there; for a group, it only adds hosts, as above.
+| Flag of `collectors enable` | Use |
+|---|---|
+| `--where '<query>'` | The hosts it runs on. Blank means all hosts. If the query does not parse, the command shows a `^` under the problem and saves nothing. |
+| `--stacks a,b` | The same as `--where 'stack in ("a", "b")'`. If you give `--stacks` and `--where`, a host must match the two. |
+| `--param <value>` | The path, variable name or package name that a collector needs |
+| `--section`, `--key` | For `config.value`: the section and the key |
+| `--attr <name>` | The attribute name to record the value as. In the web interface, this is the **Record as** box. |
 
-For a collector that takes a value, KryoState picks the name it is recorded
-under, such as `file.resolv_conf.exists`. Choose your own with `--attr`, or in
-the **Record as** box on the web page.
+Put the query in single quotes, so that the shell does not change the double
+quotes. `collectors enable` replaces the hosts where a collector runs. For a
+group, it only adds hosts. `collectors disable` takes the number from
+`collectors list`, or the catalog name with `--param`.
 
 ### A setting in a config file
 
-**Setting in a config file** reads one `key = value` line from an `.ini`,
-`.conf` or `.properties` file. You give three things:
+**Setting in a config file** (`config.value`) reads one `key = value` line
+from an `.ini`, `.conf` or `.properties` file. Give three values:
 
 | Field | Example | Meaning |
 |---|---|---|
 | File | `/etc/app/app.conf` | The full path |
-| Key | `host` | The name to the left of the `=` |
-| Section | `database` | Optional. Only read the key inside `[database]` |
+| Key | `host` | The name to the left of `=`. Upper and lower case must match. |
+| Section | `database` | Optional. Read the key only inside `[database]`. |
 
-Without a section, the first matching key anywhere in the file is used.
-Spaces around the `=` do not matter. Lines starting with `#` or `;` are
-comments and are never matched. A host without the file, or a file without
-the key, is left blank.
+- Without a section, KryoState uses the first line with the key in the file.
+- Spaces around `=` are not important.
+- Lines that start with `#` or `;` are comments. KryoState does not read
+  them.
+- If the host has no file, or the file has no key, the value stays blank.
 
-Useful ones are `max_connections` in PostgreSQL's `postgresql.conf`,
-`bind-address` in MySQL's `my.cnf` under `[mysqld]`, and `memory_limit` in
-PHP's `php.ini` under `[PHP]`. Files written as `Key value` without an `=`,
-such as `sshd_config`, are not read this way.
+Examples are `max_connections` in `postgresql.conf`, `bind-address` under
+`[mysqld]` in `my.cnf`, and `memory_limit` under `[PHP]` in `php.ini`.
+KryoState cannot read files in the `Key value` format without `=`, such as
+`sshd_config`.
 
-### File contents, config settings and environment variables
+### Collectors that read content
 
-**File contents**, **Setting in a config file** and **Environment variable**
-show what is inside something on the host, which may be a password or a key.
-An app's config file, for example, often holds a database password. They can always be
-switched on from the command line. The web page offers them only if KryoState
-was started with:
+**WARNING:** File contents, Setting in a config file and Environment variable
+show content from the host. This content can be a password or a key. For
+example, an application config file often contains a database password. Do
+not let unauthenticated users see these values.
+
+You can always switch these collectors on from the command line. The web
+interface offers them only if you start KryoState with this flag:
 
 ```sh
 kryostate serve --allow-content-collectors
 ```
 
-Use that only when people must log in before they reach the page, for
-example through a proxy that asks for a login.
+Use this flag only if users must log in before they get to the web interface,
+for example through a proxy that asks for a login.
 
-A path or a name you give is checked before it is used: it may only contain
-letters, digits, spaces and a few punctuation marks that are common in real
-paths. KryoState puts it inside quotes in the command, so it can never be
-turned into a different command.
+KryoState checks each value that you give before it uses it. Then it puts the
+value in single quotes in the command, so that the value cannot become a
+different command.
+
+| Value | Permitted |
+|---|---|
+| Path | A full path that starts with `/` or a drive letter, 255 characters maximum. Letters, digits, spaces and `. _ - + , @ = ~ : ( ) / \`. No `..`. |
+| Variable name | Letters, digits and `_`, 64 characters maximum. It must not start with a digit. |
+| Package name | Letters, digits, spaces and `. _ + -`, 100 characters maximum. It must start with a letter or a digit. |
+| Config key | Letters, digits and `. _ -`, 64 characters maximum |
+| Config section | Letters, digits, spaces and `. _ - : / =`, 100 characters maximum |
 
 ## Writing your own
 
-When nothing in the catalog fits, you can write a collector of your own. It is
-three things written down together:
+If no catalog entry gives the value, write a collector. You do not have to
+write a program. A collector has three parts:
 
-1. **A command** to run on the host, such as `nginx -v`.
-2. **A rule** that says which part of the output to keep.
-3. **A name** for the value, such as `nginx.version`.
-
-For example:
-
-| | |
+| Part | Example |
 |---|---|
-| The command | `nginx -v 2>&1` |
-| The host prints | `nginx version: nginx/1.24.0` |
-| The rule | keep the numbers after `nginx/` |
-| KryoState records | `nginx.version = 1.24.0` |
+| A command to run on the host | `nginx -v 2>&1`, which prints `nginx version: nginx/1.24.0` |
+| A parse rule that tells which part of the output to keep | Keep the digits and dots after `nginx/` |
+| An attribute name for the value | `nginx.version`, which records `1.24.0` |
 
-nginx is also in the catalog; it is used as the example here because its
-output has a typical shape. The six steps below take you from nothing to a
-working collector. You do not need to write a program.
+nginx is also in the catalog. This guide uses it as the example because its
+output has a typical format.
 
-### Adding a collector with `collectors add`
+You can keep your collectors in the database or in the collectors file. The
+JSON format of a collector is the same for the two.
 
-The quickest way to keep your own collector is in the KryoState database.
-Write it in a JSON file, in the same format as an entry in `collectors.json`
-(see the steps below and [every field](#every-field-for-reference)), and add
-it:
+| | In the database | In the collectors file |
+|---|---|---|
+| Add or change | `kryostate collectors add <file.json>` | Edit `collectors.json` next to the database, or the file that you give with `--collectors` |
+| A running `kryostate serve` | Uses the change at the next run and page view. No restart is necessary. | You must restart it. |
+| Remove | `kryostate collectors rm <id>` | Remove it from the file |
+| Web interface label | **added** | **your own** |
 
-```sh
-kryostate collectors add --example > mine.json   # a working example to edit
-kryostate collectors add mine.json --dry-run     # check it, save nothing
-kryostate collectors add mine.json
-```
+The web interface shows these collectors, but it cannot create, change or
+remove them. The web interface has no login of its own. If it accepted
+commands, all users who can open the page could run commands on all hosts.
+
+If two collectors have the same `id`, the order of precedence is: built-in,
+then the collectors file, then added. The collectors file cannot use the
+`id` of a built-in collector. If an added collector has the same `id` as a
+collector in the file, KryoState uses the file and skips the added collector.
+The server log and `kryostate collectors list` tell you about this.
+
+### Add a collector to the database
+
+1. Run `kryostate collectors add --example > mine.json` to get a working
+   example.
+2. Edit `mine.json`. Steps 1, 3, 4 and 5 below tell you how.
+3. Run `kryostate collectors add mine.json --dry-run` to check the file. This
+   saves nothing.
+4. Run `kryostate collectors add mine.json`.
 
 ```json
 {
-  "id": "mine.kernel",
+  "id": "example.kernel",
   "attr": "custom.kernel",
   "os": ["linux"],
+  "comment": "An example to copy. It runs 'uname -r' and keeps the first line: the kernel release.",
   "command": "uname -r",
   "parse": { "kind": "first_line" },
   "type": "version"
 }
 ```
 
-The file may hold one collector, a list of them (`[ {...}, {...} ]`), or a
-whole collectors file (`{"version": 1, "specs": [...]}`). Every collector in
-it is checked before any is saved, so a file with one mistake changes nothing.
+The file can contain one collector, a list (`[ {...}, {...} ]`), or a full
+collectors file (`{"version": 1, "specs": [...]}`). To read the file from
+standard input, give `-` as the file name. KryoState checks all collectors in
+the file before it saves one. If one collector has an error, KryoState saves
+nothing.
 
-- Adding a file again with the same `id` **replaces** that collector; the
-  command says `updated`.
-- An `id` that a built-in collector, a catalog entry or your `collectors.json`
-  already uses is refused.
-- `kryostate collectors rm mine.kernel` removes it. Values it collected are
-  kept. Only collectors added this way can be removed.
-- `kryostate collectors list` shows them under *Added with kryostate
-  collectors add*, with who added them and when; `collectors show <id>` prints
-  one and says where it comes from. Adding, replacing and removing are
-  recorded in the audit log.
-
-Added collectors run, are scheduled and are shown in the web interface like
-the others, marked **added**. A running `kryostate serve` reads them from the
-database at each collection and page view, so there is no need to restart
-it. The web interface shows them but never creates, changes or removes them.
-
-If `collectors.json` and an added collector have the same `id`, the one in
-the file is used and the added one is skipped (the server log and
-`collectors list` say so). Built-in collectors always come first.
-
-The steps below write your collectors in `collectors.json` instead. Both
-work, and the format is the same; steps 1, 3, 4 and 5 apply either way.
+- If you add an `id` that you added before, KryoState replaces it and shows
+  `updated`.
+- `kryostate collectors rm <id>` removes an added collector. KryoState keeps
+  the values that it collected. You cannot remove other collectors this way.
+- `kryostate collectors list` shows added collectors under *Added with
+  kryostate collectors add*, with who added them and when.
+- The audit log records each add, replacement and removal.
 
 ### Start from a worked example
 
-Every collector's page in the web interface has **View definition**: that
-collector written out exactly as you would write it in your own
-`collectors.json`, with a **Copy** button. The catalog entries and the
-built-in collectors are written in the same format as yours, so the nearest
-one to what you want is a good starting point. Entries that take a path or a
-name are shown with an example value, such as `/etc/resolv.conf`. The same
-is printed on the command line:
+Each collector page in the web interface has **View definition**, with a
+**Copy** button. It shows the collector in the JSON format of
+`collectors.json`. For a collector that takes a path or a name, it uses an
+example value. `kryostate collectors show` prints the same, and tells you
+where the collector comes from:
 
-```
+```sh
 kryostate collectors show cpu.cores
 kryostate collectors show file.exists --param /etc/hosts
 kryostate collectors show builtin.os.version
 ```
 
-Copy the specs into your file and give each one an `id` of its own: ids must
-be unique, and the built-in ones are taken.
+Copy the definition into your file and give it a new, unique `id`.
 
 ### Before you start
 
-You need one host that KryoState already collects from. Open its page in the
-web interface: the **Reachability** card should show `collector_run` as `ok`.
-If it does not, fix that first; the [user guide](user-guide.md#4-tutorial-add-your-first-host)
-shows how.
+You need one host that KryoState collects from now. On the page of the host,
+the **Reachability** card must show `collector_run` as `ok`. If it does not,
+correct this first. The [user guide](user-guide.md#4-tutorial-add-your-first-host)
+tells you how.
 
 ### Step 1: find a command that prints the value
 
-Log in to the host **as the same user KryoState uses** and try commands until
-one prints what you want. Good commands:
+Log in to the host as the user that KryoState uses. Try commands until one
+prints the value. The command must:
 
-- **only read**. Never use a command that changes anything.
-- **finish in a few seconds** and do not ask questions.
-- **print the value on a line of their own**, or close to it.
-
-Examples:
+- only read. Do not use a command that changes something.
+- stop in a few seconds and not ask questions.
+- print the value on a line of its own, or near it.
 
 | To read | Linux and AIX command | Windows (PowerShell) command |
 |---|---|---|
@@ -318,25 +340,22 @@ Examples:
 | A value in a file | `cat /etc/myapp/version` | `Get-Content C:\myapp\version.txt` |
 | Installed package | `rpm -q --qf '%{VERSION}' openssl` | |
 
-**Tip:** some programs, including `nginx -v` and `java -version`, print to the
-error stream instead of normal output. KryoState only reads normal output, so
-add `2>&1` to the end of the command.
-
-On Windows, KryoState runs the command in PowerShell.
+Some programs, such as `nginx -v` and `java -version`, print to the error
+stream. KryoState reads only the standard output. Add `2>&1` to the end of
+the command. On Windows, KryoState runs the command in PowerShell.
 
 ### Step 2: create your collectors file
 
-Run this once:
+Do this step only if you use the collectors file. Run this command one time:
 
 ```sh
 kryostate collectors init
 ```
 
-It creates a file called `collectors.json` next to the KryoState database, and
-prints where it is. Every KryoState command, and the web interface, reads your
-collectors from that file. You never need to name it on the command line.
-
-The file already contains one working example:
+It creates `collectors.json` next to the KryoState database and shows where
+it is. All KryoState commands and the web interface read your collectors from
+this file. You do not have to give its name on the command line. The file
+contains one working example:
 
 ```json
 {
@@ -355,24 +374,15 @@ The file already contains one working example:
 }
 ```
 
+Put each collector in the `specs` list. Put a comma between two collectors.
+Do not put a comma after the last collector.
+
 ### Step 3: describe your collector
 
-Open the file in any text editor and change the example into your collector.
-Each line means:
-
-| Line | What it is | What to write |
-|---|---|---|
-| `id` | A unique name for this collector | Anything unique. A good pattern is system, then what it reads: `linux.nginx.version` |
-| `attr` | The name the value is recorded under | Lowercase words joined by dots: `nginx.version`. This is what you will see on host pages |
-| `os` | Which systems to run on | Any of `"linux"`, `"aix"`, `"windows"`, in a list |
-| `comment` | A note for the next person | Optional. Say why the command is written the way it is |
-| `command` | The command from step 1 | Copy it exactly |
-| `parse` | Which part of the output to keep | See step 4 |
-| `type` | What kind of value it is | Use `"text"`. For a yes-or-no answer use `"bool"` (see "Yes-or-no answers" below) |
-| `stacks` | Optional. Only run on hosts in these stacks | A list of stack names, such as `["web-prod"]`. Leave it out to run on every host |
-| `where` | Optional. Only run on the hosts a query matches | A query, as in the Inventory search box, such as `"name in (\"web01\", \"web02\")"`. With `stacks` as well, a host must satisfy both |
-
-Here is the nginx collector, complete:
+Open the file in a text editor and change the example into your collector.
+Change `id`, `attr`, `os`, `command`, `parse` and `type`. The
+[field reference](#every-field-for-reference) tells what each field means.
+This is the full nginx collector:
 
 ```json
 {
@@ -392,53 +402,39 @@ Here is the nginx collector, complete:
 }
 ```
 
-`"optional": true` tells KryoState that some hosts do not have nginx, and that
-this is fine. Without it, a host without nginx is reported as a partly failed
-collection.
+`"optional": true` tells KryoState that some hosts do not have nginx. Without
+it, KryoState records a host without nginx as a partly failed run.
+
+Two collectors can record the same `attr` for different systems if their
+`id` values are different. For example, add a Windows collector with the
+command `$env:COMPUTERNAME` that records `host.nodename`.
 
 ### Step 4: choose how to read the output
 
-The `parse` line picks the value out of what the command printed. Find the
-row that looks like your output:
+The `parse` field takes the value from the output of the command. Find the
+row that is like your output:
 
-| If the output looks like | Write this | And you get |
+| Output | Write | Value |
 |---|---|---|
-| `UTC` (the value is the whole first line) | `{ "kind": "first_line" }` | `UTC` |
-| `nginx version: nginx/1.24.0` (the value is part of a line) | `{ "kind": "regex", "pattern": "nginx/([0-9.]+)" }` | `1.24.0` |
-| `VERSION_ID="8.6"` (lines of `NAME=value`) | `{ "kind": "kv", "key": "VERSION_ID" }` | `8.6` |
-| `Version : 10.0.17763` (lines of `Name : value`) | `{ "kind": "colon_kv", "key": "Version" }` | `10.0.17763` |
+| `UTC` (the full first line) | `{ "kind": "first_line" }` | `UTC` |
+| `nginx version: nginx/1.24.0` (part of a line) | `{ "kind": "regex", "pattern": "nginx/([0-9.]+)" }` | `1.24.0` |
+| `VERSION_ID="8.6"` (`NAME=value` lines) | `{ "kind": "kv", "key": "VERSION_ID" }` | `8.6` |
+| `Version : 10.0.17763` (`Name : value` lines) | `{ "kind": "colon_kv", "key": "Version" }` | `10.0.17763` |
 | `bos.rte  7.2.5.0  C  F  Base` (columns) | `{ "kind": "field", "marker": "bos.rte", "field": 2 }` | `7.2.5.0` |
 | `{"app": {"version": "4.2"}}` (JSON) | `{ "kind": "json_path", "path": "app.version" }` | `4.2` |
-| several lines, all wanted (a small file) | `{ "kind": "all" }` | every line, up to 8 KB |
+| Many lines, all necessary (a small file) | `{ "kind": "all" }` | All lines, up to 8 KB |
 
-More detail on each:
+The [field reference](#every-field-for-reference) tells how each kind
+works. Use `first_line` if you can make the command print only the value.
 
-- **first_line** keeps the first line that is not blank. It is the simplest
-  choice. Use it whenever you can make the command print only the value.
-- **regex** keeps the part of the output inside the round brackets. The
-  pattern is a Go regular expression. `[0-9.]+` means "digits and dots", which
-  matches most version numbers. If the pattern has several bracketed parts,
-  name the one to keep `(?P<v>...)`.
-- **kv** reads `NAME=value` lines and removes quotes around the value. The
-  key must match exactly, including upper and lower case.
-- **colon_kv** reads `Name : value` lines, as PowerShell's `Format-List`
-  prints them. Upper and lower case do not matter.
-- **field** finds the first line that contains the marker text, splits it on
-  spaces, and keeps column number `field`. The first column is 1.
-- **json_path** reads JSON and follows the names joined by dots.
-- **all** keeps the whole output, without blank lines at the start and end.
-  It is cut at 8 KB, so use it for small files only.
-
-**A common mistake with regex:** inside a JSON file, a backslash must be
-written twice. The pattern `\d+` must be written `"\\d+"`. To avoid this,
-write `[0-9]` instead of `\d`, and `[ ]` instead of `\s`.
+**CAUTION:** In a JSON file, you must write each backslash two times. Write
+the pattern `\d+` as `"\\d+"`. To prevent this problem, write `[0-9]`
+instead of `\d`, and `[ ]` instead of `\s`.
 
 ### Yes-or-no answers
 
-When the question is yes or no, such as "is this file there?" or "is this
-service enabled?", make the command print exactly `true` or `false`, and set
-`"type": "bool"`. This is the good practice for every yes-or-no collector, and
-it is what the catalog's **File exists** does:
+For a yes-or-no question, make the command print `true` or `false`, and set
+`"type": "bool"`. The catalog collector **File exists** does this.
 
 ```json
 {
@@ -451,21 +447,21 @@ it is what the catalog's **File exists** does:
 }
 ```
 
-Do not print `yes`/`no`, `1`/`0` or `installed`/`missing`. With `true` and
-`false`, every host answers in the same words, the charts show two clear
-groups, and an inventory query can test it simply: `myapp.installed` finds
-the hosts where it is true, and `!myapp.installed` the rest.
+Do not print `yes` and `no`, `1` and `0`, or `installed` and `missing`. With
+`true` and `false`, all hosts use the same words, and the charts show two
+groups. The query `myapp.installed == true` finds the hosts where it is true.
+The query `!myapp.installed` finds the other hosts.
 
 ### Step 5: test it
 
-Test your collector against one host. **Nothing is saved**, so you can try as
-many times as you like:
+Test your collector on one host. KryoState saves nothing, so you can test
+many times:
 
 ```sh
 kryostate collectors try linux.nginx.version --host web01
 ```
 
-KryoState connects, runs the command, and shows you what happened:
+KryoState connects, runs the command, and shows the result:
 
 ```text
 collector  linux.nginx.version
@@ -480,100 +476,63 @@ nginx version: nginx/1.24.0
 RESULT     nginx.version = "1.24.0"
 ```
 
-If the result is not what you expected, the message says why and what to try.
+If the result is not correct, the message tells you why and what to try.
 
-You can also test the parse rule with no host at all. Save the command's
-output from step 1 in a file, then:
+You can also test the parse rule without a host. Save the output from step 1
+in a file. Then run:
 
 ```sh
 kryostate collectors try linux.nginx.version --sample nginx-output.txt
 ```
 
-This is the quickest way to get a regex right: edit the pattern, run the
-command again, repeat.
+Use this to get a regex correct. Change the pattern, run the command again,
+and do this again until the result is correct.
 
 ### Step 6: collect
 
-```sh
-kryostate refresh
-```
+1. If you changed the collectors file and `kryostate serve` runs, restart
+   `kryostate serve`.
+2. Run `kryostate refresh`.
 
-Your value now appears:
+The value shows:
 
-- on each host's page, in the **Facts** table;
-- in the inventory, if you add it as a column (**Columns** on the Inventory
-  page, or `kryostate host list --cols nginx.version`);
-- on the **Charts** page, once some hosts have it.
+- on the page of each host, in the **Facts** table.
+- in the inventory, if you add it as a column: **Columns** on the
+  **Inventory** page, or `kryostate host list --cols nginx.version`.
+- on the **Charts** page, when some hosts have it.
 
-If `kryostate serve` was already running when you created or changed the file,
-restart it so that the web interface uses the new version. The
-**Collectors** page in the web interface lists every collector that will run;
-choose **your own** under the source filter to see yours. Each one's page
-shows its command, its rule, a **Test** button and its **Schedule**. Your own
-collectors run once a day by default while `kryostate serve` runs; change
-that on the collector's page, or with
-`kryostate collectors schedule spec.linux.nginx.version --every 6h`. If the
-file has a mistake, the page says what and where, rather than the server
-refusing to start.
+On the **Collectors** page, set the source filter to **your own** or
+**added** to see your collectors. Each collector page shows the command, the
+parse rule, a **Test** button and the **Schedule**. Your collectors run one
+time each day by default while `kryostate serve` runs. To change this, use
+the collector page, or run
+`kryostate collectors schedule spec.linux.nginx.version --every 6h`.
+
+If the collectors file has an error, the server starts, and the
+**Collectors** page shows the error and where it is.
 
 ## When it does not work
 
-| What you see | What it means | What to do |
+| Message or problem | Cause | Action |
 |---|---|---|
-| `line 7, column 5: invalid character` | The file is not valid JSON | Look just before that position. Usually a comma is missing between two collectors, or there is one too many after the last one |
-| `unknown field "optinal"` | A word is misspelled | Correct the spelling. KryoState refuses unknown words so that a typo is never ignored |
-| `duplicate collector id` or `is already defined` | Two collectors have the same `id`, or yours repeats a built-in one | Give each one a different id |
-| `the command failed: ... exited 127` | The program is not installed, or not on the PATH | Use the full path, such as `/usr/sbin/nginx -v 2>&1`, or mark the collector optional |
-| `the parse rule (regex) found nothing` | The command worked, but the rule did not match | Compare the rule with the printed output. Test changes with `--sample` |
-| The output is empty | The program printed to the error stream | Add `2>&1` to the end of the command |
-| `NOTE: the host says it is ...` | The host's system is not in `os` | Add it to the `os` list |
-| The value never appears after `refresh` | The file was not found, the host is not in `os`, or the host is outside the collector's `stacks` or `where` | Run `kryostate collectors list` and check your collector is listed; its page in the web interface counts the hosts it runs on, and shows a `where` that does not parse |
-| `"C:/Program Files/Git/etc/..." is not allowed` | Git Bash on Windows rewrote a path that starts with `/` | Run `export MSYS_NO_PATHCONV=1` first, or use PowerShell or the web page |
-
-## Adding more collectors to the file
-
-Put each collector inside the `specs` list, between `{` and `}`, with a comma
-**between** them and **no** comma after the last one:
-
-```json
-{
-  "version": 1,
-  "specs": [
-    {
-      "id": "linux.nginx.version",
-      "attr": "nginx.version",
-      "os": ["linux"],
-      "command": "nginx -v 2>&1",
-      "parse": { "kind": "regex", "pattern": "nginx/([0-9.]+)" },
-      "type": "text",
-      "optional": true
-    },
-    {
-      "id": "windows.nodename",
-      "attr": "host.nodename",
-      "os": ["windows"],
-      "command": "$env:COMPUTERNAME",
-      "parse": { "kind": "first_line" },
-      "type": "text"
-    }
-  ]
-}
-```
-
-Two collectors can record the same `attr` for different systems, as long as
-their `id` is different. For example, the starter collector records
-`host.nodename` on Linux and AIX, and the second collector above records it
-on Windows.
+| `line 7, column 5: invalid character` | The file is not valid JSON. | Look before that position. Usually a comma is missing between two collectors, or there is a comma after the last one. |
+| `unknown field "optinal"` | A field name has a spelling error. | Correct the spelling. KryoState refuses unknown fields, so that it does not ignore an error. |
+| `duplicate collector id` or `is already defined` | Two collectors have the same `id`, or your `id` is a built-in `id`. | Give each collector a different `id`. |
+| `the command failed: ... exited 127` | The program is not installed, or it is not on the `PATH`. | Use the full path, such as `/usr/sbin/nginx -v 2>&1`, or set `"optional": true`. |
+| `the parse rule (regex) found nothing` | The command ran, but the parse rule did not match. | Compare the parse rule with the output. Test changes with `--sample`. |
+| The output is empty. | The program printed to the error stream. | Add `2>&1` to the end of the command. |
+| `NOTE: the host says it is ...` | The system of the host is not in `os`. | Add the system to the `os` list. |
+| The value does not show after `refresh`. | KryoState did not find the file, the system is not in `os`, or the host is not in `stacks` or `where`. | Run `kryostate collectors list` and make sure that your collector is in the list. The collector page counts the hosts that it runs on, and shows a `where` that does not parse. |
+| `"C:/Program Files/Git/etc/..." is not allowed` | Git Bash on Windows changed a path that starts with `/`. | Run `export MSYS_NO_PATHCONV=1` first, or use PowerShell or the web interface. |
 
 ## Going further
 
-### A vendor application's version
+### A vendor application version
 
-The catalog does not carry collectors for one vendor's products. Many
-applications write their version to a file under their install directory,
-which makes a short collector of your own. Say the vendor's file
-`/opt/acme/etc/version` holds lines such as `VERSION=4.2.1`, and the
-application is only installed on the hosts of the `acme` stack:
+The catalog has no collectors for the products of one vendor. Many
+applications write their version to a file in their install directory. In
+this example, `/opt/acme/etc/version` contains `VERSION=4.2.1`, and only the
+hosts of the `acme` stack have the application:
 
 ```json
 {
@@ -588,26 +547,25 @@ application is only installed on the hosts of the `acme` stack:
 }
 ```
 
-`kv` keeps the value after `VERSION=`. `stacks` limits it to members of that
-stack; leave it out to run it on every Linux and AIX host, where `optional`
-keeps a host without the application from being reported as a failure. Each
-member's page then lists it under **Collectors on this host**, with
-`collectors.json` as the reason it runs there.
+`kv` keeps the value after `VERSION=`. `stacks` limits the collector to the
+members of the stack. Without `stacks`, it runs on all Linux and AIX hosts,
+and `optional` prevents failed runs on hosts without the application. The
+page of each member shows the collector under **Collectors on this host**,
+with `collectors.json` as the reason.
 
 ### Comparing versions
 
 Give a version an attribute name that ends in `.version`, such as
-`nginx.version`. KryoState then groups it by its first two numbers, so the
-charts put `1.24.0` and `1.24.3` together under `1.24`. The full value stays
-in the **Raw** column on the host page. This works for versions written as
-two, three or four numbers separated by dots, such as `1.24` or `9.4.1.2`.
+`nginx.version`. KryoState then groups the value by its first two numbers.
+For example, the charts put `1.24.0` and `1.24.3` together under `1.24`. The
+**Raw** column on the host page keeps the full value. This works for versions
+with two, three or four numbers and dots, such as `1.24` or `9.4.1.2`.
 
-If your program prints versions in another shape, such as `2024 R2`, add a
-**normaliser rule** that says how to read them. Once some hosts' values of an
-attribute are read by a rule, a value the rules cannot read is shown as "not
-understood", so you can see what the rule is missing. To add a rule, create
-`rules.json` next to `collectors.json`. This one reads `2024 R2` as version
-2024.2:
+If your program prints versions in a different format, such as `2024 R2`, add
+a **normaliser rule**. When a normaliser rule reads some values of an
+attribute, the values that no rule can read show as "not understood". Put
+your normaliser rules in `rules.json` next to `collectors.json`. This rule
+reads `2024 R2` as version 2024.2:
 
 ```json
 {
@@ -625,21 +583,31 @@ understood", so you can see what the rule is missing. To add a rule, create
 }
 ```
 
-`pattern` is a Go regular expression with named parts; `value` is what is
-shown and charted. Your rules are tried before the built-in ones. After
-changing a rule, `kryostate renormalize` applies it to the values already
-collected.
+| Field | Meaning |
+|---|---|
+| `id` | A unique name for the normaliser rule |
+| `attr` | The attribute name, `*` for all attributes, or a suffix such as `*.version` |
+| `pattern` | A Go regular expression with named groups |
+| `value` | The value that KryoState shows and uses in charts. `${name}` is a named group. |
+| `family`, `major`, `minor`, `patch` | Optional. The parts of the version. |
+| `comment` | Optional. A note for people. |
+
+KryoState tries your normaliser rules before the built-in rules. After you
+change a normaliser rule, run `kryostate renormalize` to apply it to the
+values that KryoState collected before.
 
 ### Several copies of one program on a host
 
-If a host runs two instances of something, write one collector for each and
-give each a different `scope`, such as `"scope": "instance-a"`. The values
-are recorded side by side instead of replacing each other.
+If a host runs two instances of a program, write one collector for each
+instance. Give each collector a different `scope`, such as
+`"scope": "instance-a"`. KryoState then keeps the two values. One value does
+not replace the other.
 
-### Fixing a rule after collecting
+### Fixing a parse rule after collecting
 
-KryoState keeps the last output of every command. After you correct a `parse`
-rule, apply it to what was already collected, without connecting to any host:
+KryoState keeps the last output of each command. After you correct a `parse`
+rule, apply it to this output. KryoState does not connect to a host for
+this:
 
 ```sh
 kryostate reparse --spec linux.nginx.version
@@ -647,24 +615,21 @@ kryostate reparse --spec linux.nginx.version
 
 ### External programs
 
-Some facts about a host are not on the host at all: which hypervisor cluster
-it runs on, its tags in a cloud account, its owner in a CMDB. No command run on
-the host can read them. For these, write an **external program**: a program
-of your own, in any language, that looks the host up somewhere else and prints
-what it found.
+Some values are not on the host, such as the hypervisor cluster of the host,
+its cloud tags, or its owner in a CMDB. A command on the host cannot read
+them. For these values, write an **external program**. It is a program in a
+language of your choice. It finds the host in a different system and prints
+what it finds.
 
-The difference from every other collector is where it runs. An external
-program runs **on the machine that runs KryoState, not on the host**. KryoState
-runs it once for each host and reads what it prints.
+An external program runs on the KryoState server, not on the host. KryoState
+runs it one time for each host:
 
-1. KryoState starts the program with the host in its environment:
-   `KRYOSTATE_TARGET` is the host's name and `KRYOSTATE_ADDRESS` its address.
-2. The program looks the host up, for example in vCenter, and prints one JSON
-   envelope of facts to standard output.
-3. KryoState checks the envelope and records each fact as a value of that host,
-   like any collected value.
-
-The envelope looks like this:
+1. KryoState starts the program. `KRYOSTATE_TARGET` contains the host name
+   and `KRYOSTATE_ADDRESS` contains its address.
+2. The program finds the host, for example in vCenter.
+3. The program prints one JSON envelope of facts to standard output.
+4. KryoState checks the envelope and records each fact as a value of the
+   host.
 
 ```json
 {
@@ -677,12 +642,24 @@ The envelope looks like this:
 }
 ```
 
-Each `key` is an attribute name and needs at least one dot. If anything in the
-envelope is wrong, none of it is recorded, so a broken program shows up as a
-failed run instead of half an answer.
+| Envelope field | Meaning |
+|---|---|
+| `schema` | Must be `kryostate.facts/v1` |
+| `collector` | The name of the program. Required. |
+| `status` | `ok` or `failed` |
+| `error` | Optional. Why the program failed. |
+| `target` | Optional. The host that the facts are about. |
+| `complete` | Optional. `true` if the facts are all the items of a category. |
+| `facts` | Up to 500 facts. Each fact has `key`, `value`, and an optional `type`, `scope` and `observed_at`. |
 
-Tell KryoState about the program in `externals.json`, in the same folder as the
-database and `collectors.json`, and restart the server:
+Each `key` is an attribute name with at least one dot, 120 characters
+maximum. Each `value` is 4096 characters maximum. The `type` is one of the
+types in the [field reference](#every-field-for-reference). If one part of
+the envelope is not correct, KryoState records none of it. The run then
+shows as failed.
+
+List the program in `externals.json`, in the same directory as the database
+and `collectors.json`. Then restart `kryostate serve`.
 
 ```json
 {
@@ -698,35 +675,82 @@ database and `collectors.json`, and restart the server:
 }
 ```
 
-Besides the two variables above it gets only `KRYOSTATE_SCHEMA`, `PATH` and
-what you list in `env`. It gets no credentials unless you put one there. The
-program appears on the **Collectors** page with the source "external".
+| Field | Meaning |
+|---|---|
+| `name` | The name of the program. The collector is `external.<name>`. |
+| `path` | The path of the program on the KryoState server |
+| `args` | Optional. A list of arguments. |
+| `timeout` | Optional. The maximum time, such as `30s`. The default is 60 seconds. |
+| `env` | Optional. A list of `NAME=value` variables to give to the program |
+| `comment` | Optional. A note that the **Collectors** page shows |
+
+The program gets only `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
+`KRYOSTATE_SCHEMA`, `PATH` and the variables in `env`. It gets no
+credential, unless you put one in `env`. The **Collectors** page shows the
+program with the source **external**.
 
 ## Every field, for reference
 
+### Collector fields
+
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | Unique name. Must not repeat a built-in id |
-| `attr` | yes | Name the value is recorded under |
-| `os` | yes | List of `linux`, `aix`, `windows` |
-| `command` | yes | Command to run. Read-only |
-| `parse` | yes | How to read the output: `kind`, plus `pattern`, `key`, `marker` and `field`, or `path` |
-| `type` | no | `text` (default), `version`, `path`, `number`, `bool` (the command prints `true` or `false`) or `list` |
-| `optional` | no | `true` when some hosts legitimately lack the value |
-| `stacks` | no | Only run on hosts in these stacks |
-| `where` | no | Only run on hosts this query matches, such as `stack == "web" && os.family == "Linux"`. A query that does not parse runs nowhere, and the collector's page says why |
-| `scope` | no | Separates several instances on one host |
-| `comment` | no | A note for people. KryoState ignores it |
+| `id` | yes | A unique name. It must not be the `id` of a built-in collector. |
+| `attr` | yes | The attribute name to record the value as |
+| `os` | yes | A list of `linux`, `aix` and `windows` |
+| `command` | yes | The command to run. It must only read. |
+| `parse` | yes | The parse rule. See "Parse rules" below. |
+| `type` | no | The type of the value. See "Value types" below. The default is `text`. |
+| `optional` | no | `true` if some hosts do not have the value. Then a missing value is not a partly failed run. |
+| `stacks` | no | A list of stack names. The collector runs only on members of these stacks. |
+| `where` | no | A query, such as `stack == "web" && os.family == "Linux"`. The collector runs only on hosts that match. With `stacks`, a host must match the two. A query that does not parse runs on no host, and the collector page tells you why. |
+| `scope` | no | A name that keeps the values of several instances on one host apart |
+| `comment` | no | A note for people. KryoState does not use it. |
 
-## Why your own collectors are not written in the web interface
+A collector runs on a host only if the system of the host is in `os`.
+KryoState refuses fields that are not in this table.
 
-A collector you write is a command that KryoState runs on every host. The web
-interface has no login of its own, so if it could take a command, anyone who
-can open the page could run commands across your estate. Your own collectors
-therefore live in a file, or are added with `kryostate collectors add`, which
-only people with access to the KryoState machine can do.
+A collectors file has two fields: `version`, which must be 1 or more, and
+`specs`, which is the list of collectors.
 
-The catalog is different: its commands are built into KryoState, and the page
-can only switch them on or off and choose where they run. A path or a name
-you give a catalog collector is checked and quoted, so it cannot become a
-different command.
+### Parse rules
+
+| `kind` | Other fields | What it keeps |
+|---|---|---|
+| `first_line` | none | The first line that is not blank, without spaces at the start and end. This is the default if `kind` is blank. |
+| `regex` | `pattern` | The part of the output that a [Go regular expression](https://pkg.go.dev/regexp/syntax) matches: the group named `v` (`(?P<v>...)`), or else the first group in round brackets, or else the full match. Spaces at the start and end are removed. |
+| `kv` | `key` | The value of the first `key=value` line with this key. The key must match exactly, with upper and lower case. Quotes around the value are removed. |
+| `colon_kv` | `key` | The value of the first `key : value` line with this key, as PowerShell `Format-List` and `prtconf` print it. Upper and lower case are not important. |
+| `field` | `marker`, `field` | Column `field` of the first line that contains `marker` and has that many columns. Spaces divide the columns. The first column is 1. |
+| `json_path` | `path` | The value at `path` in a JSON document. `path` is names with dots, such as `app.version`. A JSON object or list is kept as JSON. |
+| `all` | none | The full output, without blank lines at the start and end. KryoState cuts it at 8 KB. Use it only for small files. |
+
+If the parse rule finds nothing, KryoState records a failure for the value.
+A `regex` pattern that does not compile, or a missing `pattern`,
+`key`, `marker` or `path`, is an error when KryoState loads the collector.
+A `field` value less than 1 is also an error.
+
+### Value types
+
+| `type` | Use it for |
+|---|---|
+| `text` | Any text. This is the default. |
+| `version` | A version number |
+| `path` | A file or directory path |
+| `number` | A number, such as a count or a size |
+| `bool` | A yes-or-no value. The command prints `true` or `false`. |
+| `list` | A list, such as `192.0.2.10,192.0.2.11` |
+
+### Checks for `collectors add`
+
+`kryostate collectors add` checks more than the collectors file does. It
+refuses a collector if one of these is true:
+
+- The `id` starts with `catalog.`, `builtin.`, `spec.` or `external.`.
+- The `id` is the `id` of a built-in collector, a catalog entry or a
+  collector in the collectors file.
+- The `attr` is not lowercase words with dots, such as `app.version`.
+- A value in `os` is not `linux`, `aix` or `windows`.
+- The `type` is not one of the value types above.
+- The `where` query does not parse.
+- A stack in `stacks` does not exist.

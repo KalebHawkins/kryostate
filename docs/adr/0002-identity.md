@@ -2,80 +2,68 @@
 
 Status: accepted, partly superseded
 
-> Since November 2026 what a host reports always wins, and the disagreements,
-> findings and decisions this record describes were removed. Read the
-> README for the current behaviour; the reasoning below is kept as history.
+> Since November 2026, the value from a host always wins, and kryostate has no
+> disagreements, findings or decisions. Read the [user guide](../user-guide.md) for the current behaviour.
 
 ## Context
 
-Written inventories key on the hostname, because it is the thing people say out
-loud. It is a poor key, and it fails in several ways at once:
+Written inventories use the hostname as the key. A hostname is a bad key:
 
-- A name can resolve to more than one address. A document that carries one of
-  them records whichever the resolver or a sort function put first, which is
-  not evidence about where to connect.
-- A documented name can resolve in no zone at all. It may be decommissioned,
-  it may be in a zone nobody configured, it may be a typo.
-- A naming convention can mislabel a host. A decoder that reads an environment
-  letter out of a name will file a development rig as production, with
-  confidence and no evidence.
-- A name carries no site. A parser that infers one is inventing data and
-  attributing it to the machine.
+- A name can resolve to more than one address. A document that keeps one
+  address keeps the first address from the resolver or a sort. This is not
+  evidence of where to connect.
+- A documented name can resolve in no zone. The host can be decommissioned,
+  in a zone that is not configured, or the name can have a typing error.
+- A naming convention can give an incorrect label. A decoder that reads an
+  environment letter from a name can record a development host as
+  production.
+- A name has no site. A parser that finds a site in a name makes up data.
 
-Each of these is a case where a name-keyed record is confidently wrong. That is
-worse than a record that is absent, because nothing prompts anyone to check it.
+In each case, the record is incorrect but looks correct. This is worse than
+no record, because nothing tells a person to examine it.
 
 ## Decision
 
-**Identity is an opaque internal ID.** Every other identifier — hostname,
-FQDN, serial number, machine ID, UUID — is *evidence* in an `identity` table,
-with a scheme and a last-seen timestamp.
+**Identity is an opaque internal ID.** All other identifiers (hostname, FQDN,
+serial number, machine ID, UUID) are evidence in the `identity` table. Each
+has a scheme and a last-seen time.
 
-`ResolveCI(kind, label, evidence)` tries evidence strongest-first:
+`ResolveCI(kind, label, evidence)` tries the strongest evidence first:
 
-- No match: create a new configuration item.
-- One match: use it, and record the evidence seen.
-- **More than one match: return `ErrAmbiguousIdentity` and stop.**
+| Result | Action |
+|---|---|
+| No match | Create a new configuration item. |
+| One match | Use it, and record the evidence. |
+| More than one match | Return `ErrAmbiguousIdentity` and stop. |
 
-The third case is the important one. Two records matching the evidence means
-either a rename, a rebuild, or two machines with the same name. Merging them
-destroys one record's history; creating a third makes the problem permanent.
-Both are decisions a person should make, so the import stops and says so.
+More than one match means a rename, a rebuild, or two hosts with the same
+name. A merge deletes the history of one record. A third record makes the
+problem permanent. Thus, a person must decide, and the import stops.
 
-Two further rules follow from the same reasoning:
+**A value from a hostname can suggest a role. It cannot set site,
+environment or identity.** The `precedence` table has `allowed=0` for the
+`derived` source on `env` and `site`. kryostate removes these claims before it
+ranks. They cannot win, even if they are the only claim.
 
-**Hostname-derived values may suggest a role; they may never establish site,
-environment or identity.** The `derived` source is marked `allowed=0` for
-`env` and `site` in the precedence table, so a derived claim about either is
-filtered out *before* ranking. It cannot win even when it is the only claimant.
-This is the third bullet of the Context written into the schema rather than
-into a comment.
-
-**Addresses are observations, never instructions.** Every A record is recorded.
-None is a management endpoint until a person chooses one with `SelectAddress`,
-which records who chose it. A name with several addresses and no choice is
-raised as a discrepancy, because that is a question for an operator, not an
-ordering problem for a sort function.
+**Addresses are observations, not instructions.** kryostate records every A
+record. An address becomes the management address only when a person selects
+it with `SelectAddress`, which records the person. A name with more than one
+address and no selection is a question for an operator.
 
 ## Consequences
 
-- A rename is a new identity row against the same configuration item, not a
-  new host.
-- A rebuilt machine keeping its name but changing its machine ID produces an
-  ambiguity a person resolves, instead of a silent merge of two histories.
-- Imports can halt on a row. That is intended: a stopped import with a named
-  problem is better than a finished import with a wrong merge in it.
-- There is no way to ask "the host called X" without going through the identity
-  table. Slightly more code; it is the whole point.
+- A rename adds an identity row to the same configuration item. It does not
+  make a new host.
+- If a rebuilt host keeps its name but has a new machine ID, a person resolves
+  the ambiguity. kryostate does not merge the two histories.
+- An import can stop on a row. This is intentional: an import that stops with
+  a named problem is better than a finished import with an incorrect merge.
+- To find a host by name, code must use the identity table.
 
 ## Alternatives considered
 
-**FQDN as the key.** Better than a bare name, still wrong. Machines are
-renamed, moved between zones, and exist in no zone at all.
-
-**Serial number or machine ID as the key.** Stable, but unknown until the host
-has been collected from successfully — and the records that most need identity
-are the ones nothing can reach.
-
-**Automatic merge on strong-evidence match.** Tempting, and it is exactly the
-operation whose errors are unrecoverable.
+| Alternative | Reason for rejection |
+|---|---|
+| FQDN as the key | Hosts are renamed, move between zones, or are in no zone. |
+| Serial number or machine ID as the key | It is unknown until a collection succeeds. The hosts that most need an identity are the hosts that kryostate cannot reach. |
+| Automatic merge on a strong-evidence match | An incorrect merge cannot be reversed. |

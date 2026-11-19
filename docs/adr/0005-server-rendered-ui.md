@@ -2,82 +2,69 @@
 
 Status: accepted, partly superseded
 
-> Since November 2026 what a host reports always wins, and the disagreements,
-> findings and decisions this record describes were removed. Read the
-> README for the current behaviour; the reasoning below is kept as history.
+> Since November 2026, the value from a host always wins, and kryostate has no
+> disagreements, findings or decisions. Read the [user guide](../user-guide.md) for the current behaviour.
 
 ## Context
 
-The interface has to do four things: list hosts with filters, show one host's
-facts and their provenance, draw distributions of values, and let an operator
-record a decision about a disagreement. All four are a request, a query, and
-some HTML.
+The interface must list hosts with filters, show the values of one host and
+their sources, and draw the distribution of values. At the time of this
+decision, it also let an operator record a decision about a disagreement.
+Each of these is a request, a query and some HTML.
 
-The default answer in 2025 is a JavaScript application with a JSON API behind
-it. That buys client-side routing and optimistic updates, and costs a build
-step, a dependency tree, a second data model, and a second set of bugs where
-the two disagree. This tool exists because duplicated state drifts, so a
-client-side copy of the inventory is a poor fit for it.
+A JavaScript application with a JSON API adds a build step, a dependency tree
+and a second data model. Two data models can disagree. kryostate exists
+because copies of the same data drift apart.
 
 ## Decision
 
-Go's `html/template` on the server, HTMX for partial updates, charts rendered
-as SVG by Go.
+kryostate uses Go `html/template` on the server, HTMX for partial updates, and
+SVG charts that Go makes.
 
-**The URL is the only source of truth for filter state.** Every filter —
-attribute, value, stack, search, contested, the three kinds of unknown — is a
-query parameter. Two people who open the same URL see the same view. There is
-no client-side state to get out of step with it.
+**The URL is the only source of filter state.** Each filter is a query
+parameter. Two people who open the same URL see the same view.
 
-**One handler serves both a page and a fragment.** With `HX-Request: true` it
-returns the content template; otherwise it wraps it in the layout. Every
-response sets `Vary: HX-Request`, because without it a cache between here and
-the browser will serve a fragment as a page, and the back button paints a bare
-table where a page should be. `HX-History-Restore-Request` is treated as a page
-request for the same reason.
+**One handler serves a page and a fragment.** If the request has
+`HX-Request: true`, the handler returns the content template. If not, it puts
+the content in the layout. kryostate treats `HX-History-Restore-Request` as a
+page request. Each response sets `Vary: HX-Request, HX-History-Restore-Request`,
+so that a cache does not return a fragment as a page.
 
-**Charts are SVG strings built in Go.** Each bar is an `<a>` with `hx-get`,
-`hx-target` and `hx-push-url`, so clicking a bar lands on the filtered table it
-counted. A chart library would add a build step, a supply chain, and a
-re-initialisation bug on every swap, in exchange for an animation nobody asked
-for. Unknown buckets are drawn with an SVG hatch pattern, so they are
-distinguishable from measured values without relying on colour.
+**Go makes the charts as SVG.** Each mark is a link to the filtered table
+that it counts. A chart library would add a build step, a supply chain and a
+reload bug on each swap. Unknown buckets have an SVG hatch pattern, so you can
+see them without colour.
 
-**Long tails fold; unknowns never do.** Above fourteen bars the remainder is
-collapsed into "N more values", which links nowhere, because it is not a filter
-anyone can act on. Unknown buckets are exempt: they are the hosts worth
-chasing.
+**Long tails fold, but unknown buckets never fold.** A chart card shows 8
+bars, and the overlay shows 30. kryostate folds the remaining values into
+"Other", which is not a link. Unknown buckets are never folded, because they
+show the hosts that need work.
 
-**Every asset ships in the binary.** HTMX and the SSE extension are vendored
-into `internal/web/static` and embedded. A host with no route to the internet
-serves a working interface. No asset is fetched from a third party at runtime.
+**All assets are in the binary.** HTMX and its SSE extension are in
+`internal/web/static`, and Go embeds them. A host with no route to the
+internet gets a working interface.
 
-**Glass is applied to chrome only.** Header, navigation, cards. Surfaces
-carrying tabular data are solid and high contrast. A translucent, blurred
-backdrop behind a column of version numbers is harder to read than a plain one,
-and this is a tool for reading version numbers.
+**Glass effects are only on the chrome.** The header, navigation and cards
+can use them. Surfaces with tables are solid and have high contrast, because a
+blurred background makes version numbers difficult to read.
 
 ## Consequences
 
-- No build step. `go build` produces the application.
-- No JSON API. One will be needed eventually and will be added as a second
-  representation, not as the thing the interface runs on.
-- Handler tests assert real HTML, including the fragment-versus-page behaviour
-  and the `Vary` header.
-- Rendering happens on the server, so a page with a thousand rows costs server
-  time. At this size that is microseconds.
-- Interactions needing genuine client state — a drag-reorder, a live-filtering
-  text box with no round trip — are not available without writing JavaScript.
-  None of the four things this interface does need them.
+- There is no build step. `go build` makes the application.
+- At the time of this decision, there was no JSON API. A read-only JSON API
+  under `/api/v1` now exists as a second representation. The interface does
+  not use it.
+- Handler tests examine the real HTML, the fragment and page behaviour, and
+  the `Vary` header.
+- The server renders each page, so a page with many rows uses server time. At
+  this size, the time is microseconds.
+- Interactions that need client state, such as drag-to-reorder, need
+  JavaScript.
 
 ## Alternatives considered
 
-**A single-page application with a JSON API.** A second data model and a build
-step to maintain, for a tool whose point is that two copies of the truth drift
-apart.
-
-**Plain forms with full page loads.** Would work. HTMX costs 50 KB in the
-binary, 14 KB gzipped on the wire, and keeps scroll position when disposing of
-a disagreement, which matters when working through a list of them.
-
-**A charting library.** See above. The charts are bars with labels and counts.
+| Alternative | Reason for rejection |
+|---|---|
+| A single-page application with a JSON API | A second data model and a build step, for a tool that exists because copies of data drift apart. |
+| Plain forms with full page loads | This works. But HTMX is only 50 KB in the binary (14 KB compressed), and it keeps the scroll position. |
+| A chart library | The charts are bars with labels and counts. Refer to the Decision section. |

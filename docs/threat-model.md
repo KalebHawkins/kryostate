@@ -1,288 +1,223 @@
 # Threat model
 
-This document exists because the tool holds the means to log in to every host
-it describes. That makes the machine running it worth more to an attacker than
-any single machine in the inventory, and it is worth saying so before making
-any claim about how credentials are handled.
+This document is for operators and reviewers. It tells what kryostate
+protects, from whom, and which protections it does not have. kryostate can
+log in to every host, so the computer that runs it is the most valuable
+target.
 
-It describes the design as built. Where a protection is absent, that is stated
-rather than left for a reader to assume.
+## Assets
 
-## What is being protected
+| Order | Asset | If an attacker gets it |
+|---|---|---|
+| 1 | Credential material: keys, passwords, passphrases | The attacker can log in to the hosts. |
+| 2 | Connection data: addresses, user names, what runs where | The attacker can plan an attack. |
+| 3 | The record: the assertion history, and the applications, stacks and roles that people stated | People make decisions on false data. |
 
-1. **Credential material** — keys, passwords and passphrases used to reach
-   hosts. Compromise means the estate, not the inventory.
-2. **Connection detail** — addresses, usernames, which host runs what. Useful
-   to someone planning an attack even without credentials.
-3. **The record itself** — the assertion history: what each host reported,
-   and the applications, stacks and roles people stated. Compromise means
-   decisions get made on fabricated evidence.
-
-The order matters. A design that protects the record but leaks credentials has
+If a design protects the record but discloses credentials, the design has
 failed.
 
-## Who is being defended against
+## Attackers
 
-| | |
+| Attacker | Examples |
 |---|---|
-| Someone who obtains a copy of the database file | A backup tape, a snapshot, a developer laptop |
-| Someone who can edit a collector or a credential helper | A contributor, a compromised build, an operator with write access to the configuration |
-| Someone who controls a target host | A compromised server answering a collection |
-| Someone on the network between the tool and a target | DNS answers, TCP connections |
-| Someone who can reach the web interface | See the section on authentication below |
+| A person with a copy of the database file | A backup, a snapshot, a developer laptop |
+| A person who can edit a collector or a credential helper | A contributor, a compromised build, an operator who can write the configuration |
+| A person who controls a host | A compromised host that answers a collection |
+| A person on the network between kryostate and a host | DNS answers, TCP connections |
+| A person who can connect to the web interface | Refer to [The web interface](#the-web-interface). |
 
-**Not defended against:** anyone with privileges on the host running the tool.
-They can read process memory, attach a debugger, replace the binary, or read
-whatever the credential helper returns. No design in this tool prevents that.
+kryostate gives no protection against a person with privileges on the
+computer that runs it. That person can read memory, attach a debugger,
+replace the binary or read the output of the credential helper.
 
 ## Credentials
 
-The database stores *references*, never material. A reference is
-`scheme:value`:
+The database stores only credential references (`scheme:value`), never
+material. kryostate rejects a reference with no scheme. A guess can try a
+password as a file path and write it to a log.
 
-| Scheme | Resolves to | Material in this process |
+| Scheme | Source | Material in the kryostate process |
 |---|---|---|
-| `agent:` | A handle to an ssh-agent socket | None — the agent signs |
-| `keyring:` | An entry in the OS keystore | While in use |
-| `file:` | A file, decrypted first if it ends `.age` | While in use |
+| `agent:` | An ssh-agent socket | None. The agent signs. Use this scheme when possible. |
+| `keyring:` | The OS keystore | While in use |
+| `file:` | A file, decrypted first if its name ends in `.age` | While in use |
 | `exec:` | The standard output of a command | While in use |
-| `env:` | An environment variable | For the process lifetime |
+| `env:` | An environment variable | For the life of the process |
 
-`agent:` is the one to prefer, because no key enters this process at any point.
-`env:` is the weakest and is offered because container deployments expect it;
-anything that can read the process environment reads the credential, and it
-lives in memory for as long as the process does.
+**WARNING:** Any process that can read the environment of kryostate can read an
+`env:` credential. `env:` is the weakest scheme. Use it only if your container
+deployment needs it.
 
-A reference without a scheme is rejected rather than guessed at. Guessing is
-how a password ends up being tried as a file path and written to a log.
+### A stolen database file
 
-### What a stolen database file gives an attacker
+The file gives assets 2 and 3: host names, addresses, what runs where, the
+credential reference of each target and the full assertion history. It does
+not give credentials or access to the hosts.
 
-Everything in categories 2 and 3 above: hostnames, addresses, what runs where,
-which credential reference each host uses, and the full assertion history. It
-does not give them credentials. Theft of the file leaks the inventory. It does
-not hand over access to the hosts the inventory describes.
+It also gives up to 8 KB of command output for each host and collector spec.
+The shipped commands read release files and version strings. Your own
+collectors decide what else is stored.
 
-It also gives them up to 8 KB of output per host and collector spec.
-The shipped commands read release files and version strings, but a site that
-adds its own decides what ends up there. `kryostate evidence list --show` is how you
-find out, `evidence rm` is how you remove it, and `collect --no-evidence` is how you
-never store it. The cost of that last option is that fixing a parse rule then
-requires connecting to every host again.
+| Task | Command |
+|---|---|
+| Show the stored output | `kryostate evidence list --show` |
+| Delete stored output | `kryostate evidence rm` |
+| Do not store output | `kryostate collect --no-evidence` |
 
-### What is audited
+With `--no-evidence`, kryostate must connect to every host again after you
+correct a parse rule.
 
-Every credential resolution writes an audit row naming the reference with its
-value truncated, the action, and whether it succeeded. The material is never
-written. The row records which credential was used. It does not record where
-that credential is kept.
+### Audit
 
-Every change a person makes to a host is audited too, with who made it:
-disabling and enabling it, and deleting it. Deleting a host
-(`kryostate host rm`) removes everything
-recorded about it except its audit rows. Those stay, and one more records the
-deletion with the host's name and the reason given, so the trail still says
-what was deleted, by whom and why after the host itself is gone. Nothing in
-the tool deletes audit rows.
+| Event | Audit row |
+|---|---|
+| Credential resolution | Action, the reference with its value truncated, and success or failure. It never contains the material, or where the credential is kept. |
+| Disable, enable or delete a host | The change and the person. A deletion also records the host name and the reason. |
+| Hold or release a credential | The hold or the release |
 
-A disabled host is not contacted at all: no collection, external collector,
-health check, DNS lookup or collector test reaches it, whatever its
-connections say. Disabling is therefore also the way to stop credentials being
-offered to a machine that may no longer be the one they were meant for.
+`kryostate host rm` deletes all data about the host except its audit rows.
+Thus, the trail shows what was deleted, by whom and why. No part of
+kryostate deletes audit rows.
 
-### Account lockout
+kryostate does not contact a disabled host: no collection, external
+collector, health check, DNS lookup or collector test. Disable a host to stop
+credentials going to a host that is possibly not the correct host.
 
-A password credential is usually a directory account, and a directory locks an
-account after a few bad passwords. A tool that logs in to every host is well
-placed to lock its own operator out within seconds of a password change, so
-password logins (`keyring:`, `env:`, `exec:`, and all WinRM) are rationed:
+### Account lockout protection
 
-- In each run, connections with a password not yet proven in that run go one
-  at a time (`engine.connectGuarded`).
-- SSH offers the password at most once per connection, by `password` or at a
-  keyboard-interactive prompt, never both (`collect.passwordAuth`).
-- WinRM runs one trivial command before the collectors, so a bad password is
-  one failure per host and not one per command.
-- Two authentication failures in a row put the credential on hold in the
-  `credential_hold` table, which every process sharing the database reads. A
-  held credential is not sent to any host until a person stores a new password
-  or releases the hold. Holding and releasing are audited.
+A directory locks an account after some bad passwords. kryostate logs in to
+every host, so it can lock its own account quickly after a password change.
+Thus, it limits password logins: `keyring:`, `env:`, `exec:` and all WinRM.
 
-Keys and agents are not rationed: a refused key does not lock an account.
+| Protection | Effect |
+|---|---|
+| `engine.connectGuarded` | In a run, targets with a password that has not logged in yet in that run connect one at a time. |
+| `collect.passwordAuth` | SSH offers the password one time for each connection, by `password` or keyboard-interactive, never both. |
+| WinRM first command | WinRM runs one small command before the collectors, so a bad password fails one time for each host. |
+| Credential hold | Two authentication failures in sequence put the credential on hold in the `credential_hold` table. All processes that share the database read it. |
+
+kryostate sends a held credential to no host until a person stores a new
+password or runs `kryostate secret release <ref>`. Keys and agents have no
+limits, because a refused key does not lock an account.
 
 ### Deliberate omissions
 
-- **No cryptography is implemented here.** Where material must rest on disk it
-  is held in an age-encrypted file using `filippo.io/age`. This project does
-  not implement its own cipher.
-- **Zeroing is best-effort.** `Secret.Zero` overwrites the slice it holds. Go
-  copies and moves memory, so this narrows the window in which a heap dump is
-  useful and does not close it.
-- **Secrets never pass through a template.** The web layer has no access to
+- **No cryptography of its own.** Material on disk is in an age-encrypted
+  file, read with `filippo.io/age`.
+- **Zeroing is best-effort.** `Secret.Zero` overwrites its slice, but Go
+  copies and moves memory. This makes a heap dump less useful, but not
+  useless.
+- **No secret goes through a template.** The web layer has no access to
   resolved material, and no handler resolves a reference.
 
 ## Transport
 
-**SSH host keys are pinned on first connection.** A changed key aborts the
-connection with `ErrHostKeyChanged` and does not retry. The first connection is
-trust-on-first-use and is therefore the weak moment; pin keys out of band if
-that matters to you.
+| Rule | Details |
+|---|---|
+| SSH host keys | kryostate records the key on the first connection (trust on first use, policy `pinned`). A changed key stops the connection with `ErrHostKeyChanged`, with no retry. The `strict` policy refuses a host with no recorded key (`ErrHostKeyUnknown`). No command sets `strict` at this time. |
+| WinRM | HTTPS only, port 5986 by default, with certificate verification. `engine.dial` sets HTTPS, and no flag turns it off. The password goes with HTTP Basic authentication inside TLS. If a host has no certificate, kryostate does not collect from it. |
+| Timeouts | kryostate never retries a command after a timeout. The remote command can still run, so a retry can run it two times. |
+| Output size | Output has a limit before kryostate reads it. Parsers get bounded bytes and hold no credentials. A very large answer is truncated. |
+| Host answers | A host decides its own answers, and its values win over a person or a document. kryostate records the collector and keeps the raw bytes, so you can trace a false answer. |
 
-**WinRM is used over HTTPS only.** `engine.dial` sets HTTPS and there is no
-flag to turn it off, because a Negotiate exchange over plain HTTP on a
-collection run that touches every Windows host in the estate is not a trade
-worth exposing. An estate that cannot present a certificate on 5986 is one this
-tool declines to collect from rather than one it quietly downgrades for.
-
-**A timed-out command is never retried.** A local timeout means this process
-stopped waiting; it does not mean the remote command stopped running. Retrying
-would run it twice.
-
-**Collector output is bounded** before it is read, and parsers receive bounded
-bytes and hold no credentials. A compromised host that answers with four
-gigabytes of output gets truncated, not obeyed.
-
-**A target decides its own answers.** Everything a host reports is attributed
-to the collector that asked, with the raw bytes kept. What a host reports wins
-over what a person or a document said, so a lying host is believed: the
-kept output and the assertion history are how a fabricated answer is traced
-afterwards.
+**CAUTION:** The first SSH connection is the weak point. If this is a risk,
+record the host keys through a different, trusted channel.
 
 ## External collectors
 
-An operator-supplied collector runs **on the machine hosting this tool**, not
-on the target. Its environment holds `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
-`KRYOSTATE_SCHEMA`, `PATH`, and any variables its own definition lists — nothing
-inherited from this process. On Windows the Go runtime also passes
-`SystemRoot`, which cannot be suppressed: a process without it cannot load a
-DLL. A test asserts this boundary rather than assuming it.
+An external collector runs on the computer that runs kryostate, not on the
+host. Its environment contains only `KRYOSTATE_TARGET`, `KRYOSTATE_ADDRESS`,
+`KRYOSTATE_SCHEMA`, `PATH` and the variables in its own definition. On Windows,
+Go also adds `SystemRoot`, because no process can load a DLL without it. A
+test makes sure of this boundary. The collector gets no key, password or agent
+socket.
 
-It is given no key, no password and no agent socket; a collector that needs to
-log in somewhere brings its own credential.
+**WARNING:** An external collector runs with the privileges of kryostate. The
+boundary does not make it safe. Review each external collector before you
+install it.
 
-This boundary stops a contributed script from borrowing the keys to the estate.
-It does **not** make installing one safe: the program runs with this process's
-privileges, and installing one is a privileged act. Review them the way you
-would review anything else that runs as that user.
-
-Its output is validated as a whole and rejected as a whole. Ten good facts and
-one malformed one is a bug, and taking the ten hides it.
+kryostate rejects all of the output if one value is malformed, because the
+malformed value shows a bug.
 
 ## The web interface
 
-**There is no authentication built in.** This is a deliberate decision, and
-the reasoning is that an authentication system is the wrong thing for one
-project to invent badly when every environment that would run this already has
-one.
+kryostate has no built-in authentication. Your environment already has an
+authentication system, so put an authenticating proxy in front of `serve`.
 
-The consequence: **binding the server to anything other than localhost without
-an authenticating proxy in front of it publishes your inventory.** Anyone who
-can reach the port can read every host, every address, and every credential
-*reference* — and can start a collection run against the estate or change how
-often each collector runs.
+**WARNING:** Without an authenticating proxy, do not listen on an address
+other than localhost. All persons who can connect to the port can read every
+host, address and credential reference. They can start a collection run and
+change the schedule of each collector.
 
-The server reads `X-Forwarded-User`, `X-Remote-User` or
-`X-Auth-Request-Preferred-Username` to attribute changes, falling back to
-`anonymous`. **These headers are trusted completely.** They are only meaningful
-behind a proxy that sets them and strips any the client sent. Directly exposed,
-the attribution on every recorded change is whatever the client typed.
+The server records the user name of each change from `X-Forwarded-User`,
+`X-Remote-User` or `X-Auth-Request-Preferred-Username`, else `anonymous`.
 
-Other properties worth knowing:
+**WARNING:** The server trusts these headers completely. Use them only behind a
+proxy that sets them and removes the client's copies. Without it, a client can
+write any user name into the record.
 
-- All state-changing operations are `POST`, and every `POST` passes Go's
-  `http.CrossOriginProtection`: a request a browser marks as coming from
-  another site is refused, so another page cannot submit forms through a
-  visitor's browser. It is not a token, and it does nothing about a client
-  that is not a browser. Origins a proxy serves the page under are listed with
-  `serve --trusted-origin`.
-- A second collection run cannot start while one is in progress, so clicking
-  twice does not open two waves of sessions into the estate.
-- Scheduled collection is throttled: at most 4 sessions at once and 1 per
-  host, hosts spread out at random, an unreachable host backed off from 10
-  minutes up to 6 hours, and no schedule shorter than 5 minutes. A visitor who
-  sets every collector to that shortest interval still cannot exceed those
-  limits. A manual run waits for scheduled sessions and the other way round.
-- An inventory query is parsed and evaluated in Go over values already
-  loaded; no part of it reaches SQL. Its patterns are Go regular
-  expressions, which run in time linear in the input.
-- The JSON API under `/api/v1` is read-only: anything but `GET` is
-  refused with 405. It is reached on the same port with the same lack of
-  login, so it is protected by the same proxy. It leaves out what the pages
-  would not hand to another tool: credential references, host keys,
-  notification destinations and passwords.
-- The progress stream drops updates to a slow client rather than blocking a
-  collection run.
-- Every asset ships in the binary. The interface makes no request to the
-  internet, which matters in an estate that has no route to one.
+| Area | Protection |
+|---|---|
+| Cross-site requests | All changes are `POST`, and each `POST` goes through Go `http.CrossOriginProtection`. It refuses a request that a browser marks as from a different site. It is not a token and does not stop other clients. Give proxy origins with `serve --trusted-origin`. |
+| Runs | Only one collection run at a time. |
+| Schedules | Maximum 4 sessions and 1 for each host. Hosts are spread at random. Backoff for an unreachable host is 10 minutes to 6 hours. The shortest schedule is 5 minutes. Manual and scheduled sessions wait for each other. |
+| Queries | Go evaluates them on loaded values. No part goes to SQL. Go regular expressions run in linear time. |
+| JSON API `/api/v1` | Read-only: methods other than `GET` get 405. Same port and no login, so the same proxy must protect it. It omits credential references, host keys, notification destinations and passwords. |
+| Progress stream | Drops updates to a slow client. It does not block the run. |
+| Assets | All are in the binary. The interface sends no requests to the internet. |
 
-### What the page can change, and what it cannot
+### Changes the page cannot make
 
-Because anyone who reaches the page can use it, the page is limited to changes
-that cannot turn it into a way to run commands or to take credentials.
+All persons who can connect to the page can use it. Thus, it cannot run
+commands or disclose credentials.
 
-- **No command can be typed into it.** Collectors written by hand live in a
-  file on the server. The page can switch on catalog collectors, whose
-  commands are compiled in. A catalog template takes values (a path, a key, a
-  section, a variable or package name) that must match narrow patterns with
-  no quote, `$`, backtick, `;`, `|`, `&`, `>`, newline or `..`, and are placed
-  inside single quotes, where neither `sh` nor PowerShell expands anything.
-  Tests feed each pattern injection attempts.
-- **Templates that read content are off by default on the page.** File
-  contents, a setting from a config file and an environment variable can
-  return secrets (an app's config file often holds its database password).
-  The page offers them only under `serve --allow-content-collectors`. The command line
-  always can, because whoever runs it already has the database.
-- **Connections it creates or edits use `agent:` only, without a bastion.** A
-  page that could change a password-bearing connection's address could send
-  that password to a machine of the attacker's choosing.
-- **It cannot clear a pinned host key.** `kryostate target forget-host-key`
-  does that, on the command line, and the old key is written to the audit
-  log. Otherwise a visitor could clear a pin and let an impersonating host
-  answer the next collection.
-- **It shows, but cannot change, what collectors run.** A collector's page,
-  and its **View definition** panel, show the commands of your own collectors
-  and the path, arguments and environment variable names of an external
-  program. The values of an external program's environment variables are
-  shown as `(hidden)`, because they may hold that program's own credential.
-  Do not put secrets in a command in `collectors.json`: anyone who can reach
-  the page can read it.
+- **No typed commands.** Your own collectors are in a file on the server. The
+  page can switch on catalog collectors with compiled-in commands. Template
+  values (a path, key, section, variable or package name) must match narrow
+  patterns. These do not allow a quote, `$`, backtick, `;`, `|`, `&`, `>`,
+  newline or `..`. The value goes in single quotes, where `sh` and PowerShell
+  expand nothing. Tests send injection attempts to each pattern.
+- **No content templates by default.** File contents, configuration settings
+  and environment variables can contain secrets. The page offers them only
+  with `serve --allow-content-collectors`. The command line always can.
+- **Only `agent:` targets with no bastion.** Otherwise, a person could change
+  the address of a password target and get the password.
+- **No host key reset.** Use `kryostate target forget-host-key`. The old key
+  goes to the audit log.
+- **No collector changes.** The page shows your collector commands, and the
+  path, arguments and environment variable names of external programs. It
+  shows environment variable values as `(hidden)`.
+
+**WARNING:** All persons who can connect to the page can read the commands in
+`collectors.json`. Do not put secrets in them.
 
 ## Separation of duties
 
-The process that listens on a port and the process that holds fleet
-credentials can be different. By default they are not: `serve` runs the
-collection schedules and the Runs page's **Collect now**, so it needs the
-ssh-agent. To split them, start `serve --no-schedule` as a user with no
-credentials, and run `collect` or `refresh` on a timer as a different OS user
-that holds them. In that arrangement **Collect now** in the web interface
-cannot log in to any host; collection happens only through the timer.
+By default, `serve` runs the schedules and **Collect now**, so it needs the
+ssh-agent. To keep credentials out of the web process:
 
-**The design permits that separation; it does not enforce it.** Both are
-subcommands of one binary against one database, and nothing stops an operator
-running `serve` as the same user that holds the credentials. Enforcing it would
-mean two binaries and a protocol between them, which has not been built.
+1. Start `kryostate serve --no-schedule` as an OS user with no credentials.
+2. Run `kryostate collect` or `kryostate refresh` on a timer as an OS user
+   with the credentials.
+
+Then **Collect now** cannot log in to a host. kryostate permits this
+separation but does not enforce it. Both commands are in one binary and use
+one database.
 
 ## Known gaps
 
-These are the weaknesses known at the time of writing.
-
-- No authentication and no authorisation. Both are delegated to a proxy that
-  may not be there. Cross-site form submission is refused, but only for
-  browsers that send `Sec-Fetch-Site` or `Origin`.
-- The database is not encrypted at rest. File permissions and disk encryption
-  are the control.
-- Trust-on-first-use for SSH host keys. A changed key stops collection from
-  that host, with the new key's fingerprint in the error, until someone runs
-  `target forget-host-key`; nothing checks that they compared it first.
-- Audit rows live in the same database as the data they describe, so an
-  attacker who can write to it can edit them.
-- `env:` credential references sit in process memory for the process lifetime.
-- No rate limiting of web requests. Scheduled collection is throttled, but
-  anyone who reaches the page can start a full collection run, one at a time,
-  as often as they like.
-- `govulncheck` reports fourteen findings in the Go standard library when
-  built with Go 1.27.1, two of them escaping bugs in `html/template`
-  (GO-2026-6600 and GO-2026-6599). They are fixed in 1.27.2. Build with a
-  current toolchain and run `govulncheck ./...` yourself; the `go` directive is
-  left at 1.27.1 only so that the project still builds on an unpatched one,
-  which is a tradeoff and not a judgement that the findings do not matter.
+- No authentication or authorization. A proxy must supply them. Cross-site
+  protection works only for browsers that send `Sec-Fetch-Site` or `Origin`.
+- No encryption at rest. Use file permissions and disk encryption.
+- Trust on first use for SSH host keys. After `target forget-host-key`,
+  nothing makes sure that the person compared the new fingerprint.
+- Audit rows are in the same database. An attacker who can write it can
+  change them.
+- `env:` credentials stay in memory for the life of the process.
+- No rate limit on web requests. A person who can connect can start full
+  runs, one at a time, without a limit.
+- With Go 1.27.1, `govulncheck` reports fourteen standard library findings.
+  Two are escaping bugs in `html/template` (GO-2026-6600, GO-2026-6599), fixed
+  in Go 1.27.2. Build with a current toolchain and run `govulncheck ./...`.
+  The `go` directive stays at 1.27.1 only so that older toolchains can build
+  the project.
