@@ -39,6 +39,49 @@ type Store struct {
 	attrCache    []AttrInfo
 	attrCacheGen int64
 	attrCacheOK  bool
+
+	// stmts holds the statements written on every collected value,
+	// prepared once. Preparing one compiles every trigger it can fire,
+	// which costs far more than running it; see stmt.
+	stmtMu sync.Mutex
+	stmts  map[string]*sql.Stmt
+}
+
+// stmt returns q prepared, preparing it the first time. It is for the few
+// statements run once per collected value: a write to assertion,
+// assertion_norm or read_failure fires the triggers that keep fact_now, and
+// compiling those each time would cost most of the write.
+func (s *Store) stmt(ctx context.Context, q string) (*sql.Stmt, error) {
+	s.stmtMu.Lock()
+	defer s.stmtMu.Unlock()
+	if st, ok := s.stmts[q]; ok {
+		return st, nil
+	}
+	st, err := s.db.PrepareContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	if s.stmts == nil {
+		s.stmts = map[string]*sql.Stmt{}
+	}
+	s.stmts[q] = st
+	return st, nil
+}
+
+func (s *Store) execStmt(ctx context.Context, q string, args ...any) (sql.Result, error) {
+	st, err := s.stmt(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return st.ExecContext(ctx, args...)
+}
+
+func (s *Store) queryRowStmt(ctx context.Context, q string, args ...any) (*sql.Row, error) {
+	st, err := s.stmt(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return st.QueryRowContext(ctx, args...), nil
 }
 
 // Timestamps are compared lexically in SQL, so the format has to be
@@ -86,7 +129,15 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	s.stmtMu.Lock()
+	for _, st := range s.stmts {
+		st.Close()
+	}
+	s.stmts = nil
+	s.stmtMu.Unlock()
+	return s.db.Close()
+}
 
 // DB exposes the handle for the few callers that need their own transaction.
 func (s *Store) DB() *sql.DB { return s.db }
@@ -357,11 +408,15 @@ func (s *Store) Assert(ctx context.Context, a model.Assertion, n *Normalized) (i
 
 	var lastRaw string
 	var lastID int64
-	err := s.db.QueryRowContext(ctx,
+	row, err := s.queryRowStmt(ctx,
 		`SELECT id, raw_value FROM assertion
 		 WHERE ci_id=? AND attr=? AND scope=? AND source_id=? AND retracted_at IS NULL
 		 ORDER BY `+freshness+` DESC, observed_at DESC, id DESC LIMIT 1`,
-		a.CIID, a.Attr, a.Scope, a.SourceID).Scan(&lastID, &lastRaw)
+		a.CIID, a.Attr, a.Scope, a.SourceID)
+	if err != nil {
+		return 0, err
+	}
+	err = row.Scan(&lastID, &lastRaw)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
@@ -375,7 +430,7 @@ func (s *Store) Assert(ctx context.Context, a model.Assertion, n *Normalized) (i
 		// with its original observation time, and assigning that would make a
 		// value confirmed this morning look a week stale, handing the
 		// attribute to a source that has said nothing since.
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := s.execStmt(ctx,
 			`UPDATE assertion SET confirmed_at=MAX(confirmed_at, ?) WHERE id=?`,
 			ts(a.ObservedAt), lastID); err != nil {
 			return 0, err
@@ -383,7 +438,7 @@ func (s *Store) Assert(ctx context.Context, a model.Assertion, n *Normalized) (i
 		return lastID, nil
 	}
 
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.execStmt(ctx,
 		`INSERT INTO assertion (ci_id, attr, raw_value, value_type, source_id, scope, run_id, spec_id, observed_at, received_at, confirmed_at)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		a.CIID, a.Attr, a.Raw, string(a.ValueType), a.SourceID, a.Scope, a.RunID, a.SpecID,
@@ -406,7 +461,7 @@ func (s *Store) Assert(ctx context.Context, a model.Assertion, n *Normalized) (i
 // SetNormalized writes or replaces the derived form of an assertion. Replacing
 // it is safe precisely because the raw value is never touched.
 func (s *Store) SetNormalized(ctx context.Context, assertionID int64, n Normalized) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.execStmt(ctx,
 		`INSERT INTO assertion_norm (assertion_id, norm_value, family, major, minor, patch, rule_id, normalizer_version)
 		 VALUES (?,?,?,?,?,?,?,?)
 		 ON CONFLICT(assertion_id) DO UPDATE SET
@@ -420,7 +475,7 @@ func (s *Store) SetNormalized(ctx context.Context, assertionID int64, n Normaliz
 // ClearNormalized removes the derived form of an assertion, for when a rule
 // that used to match it no longer does.
 func (s *Store) ClearNormalized(ctx context.Context, assertionID int64) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.execStmt(ctx,
 		`DELETE FROM assertion_norm WHERE assertion_id=?`, assertionID)
 	return err
 }
@@ -493,7 +548,7 @@ func (s *Store) RetractAssertion(ctx context.Context, id int64, at time.Time) er
 	if at.IsZero() {
 		at = time.Now()
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.execStmt(ctx,
 		`UPDATE assertion SET retracted_at=? WHERE id=? AND retracted_at IS NULL`, ts(at), id)
 	return err
 }

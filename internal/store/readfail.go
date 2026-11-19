@@ -64,7 +64,7 @@ func (s *Store) RecordReadFailure(ctx context.Context, f ReadFailure) error {
 // that began before the reading is closed: output replayed from storage
 // arrives with its original time and says nothing about a failure since.
 func (s *Store) clearReadFailure(ctx context.Context, ciID, attr, scope string, sourceID int64, at time.Time) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.execStmt(ctx,
 		`UPDATE read_failure SET cleared_at=?
 		 WHERE ci_id=? AND attr=? AND scope=? AND source_id=? AND cleared_at IS NULL AND since <= ?`,
 		ts(at), ciID, attr, scope, sourceID, ts(at))
